@@ -1,0 +1,37 @@
+name: Build Windows VST3
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache downloaded dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: deps-${{ hashFiles('cmake/Dependencies.cmake') }}
+
+      - name: Configure
+        run: cmake -S . -B build -A x64
+
+      - name: Build plugin and tools
+        run: cmake --build build --config Release --target Monstrosity_VST3 monstrosity_render monstrosity_bench --parallel
+
+      - name: Smoke test (load NAM Core example A2 model, hot-swap stress)
+        shell: pwsh
+        run: |
+          $m = "build/_deps/namcore-src/example_models/A2.nam"
+          ./build/tools/Release/monstrosity_bench.exe $m --stress --seconds 5 build/_deps/namcore-src/example_models/lstm.nam
+          ./build/tools/Release/monstrosity_render.exe $m build/_deps/namcore-src/example_audio/input.wav render.wav
+
+      - name: Upload VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: MONSTROSITY-VST3-windows-x64
+          path: build/plugin/Monstrosity_artefacts/Release/VST3/MONSTROSITY.vst3

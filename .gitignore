@@ -1,0 +1,30 @@
+# Build output
+build*/
+out/
+cmake-build-*/
+_deps/
+*.vst3
+*.exe
+*.dll
+*.pdb
+*.obj
+*.lib
+*.a
+*.so
+
+# IDE / OS
+.vs/
+.vscode/
+.idea/
+*.user
+.DS_Store
+Thumbs.db
+
+# Audio / captures: never commit third-party captures or test renders
+*.nam
+*.wav
+!tests/data/*.wav
+
+# Secrets
+.env
+*.key
