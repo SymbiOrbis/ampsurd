@@ -55,6 +55,8 @@ MonstrosityProcessor::MonstrosityProcessor()
     inputParam = params.getRawParameterValue("input");
     outputParam = params.getRawParameterValue("output");
     normaliseParam = params.getRawParameterValue("normalise");
+    limiter.prepare(48000.0); // valid state even before the host calls prepareToPlay
+    limiterLatency.store(limiter.getLatencySamples());
     setStatus({}, "No capture loaded. Click LOAD and choose a .nam file.", false, false);
     startTimerHz(5);
 }
@@ -93,7 +95,9 @@ void MonstrosityProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     inputGain.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(inputParam->load()));
     outputGain.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(outputParam->load()));
     loadMeasurer.reset(sampleRate, maxBlock);
-    setLatencySamples(slot.getLatencySamples());
+    limiter.prepare(sampleRate);
+    limiterLatency.store(limiter.getLatencySamples());
+    setLatencySamples(slot.getLatencySamples() + limiter.getLatencySamples());
 }
 
 void MonstrosityProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
@@ -133,14 +137,24 @@ void MonstrosityProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
         slot.process(inBuffer.data(), outBuffer.data(), n, normalise);
 
         for (int i = 0; i < n; ++i)
+            outBuffer[(size_t) i] *= outputGain.getNextValue();
+
+        // Last stage: the safety limiter guarantees |y| <= -1 dBFS (no digital clipping).
+        limiter.process(outBuffer.data(), n);
+
+        for (int i = 0; i < n; ++i)
         {
-            const float y = (float) outBuffer[(size_t) i] * outputGain.getNextValue();
-            out[start + i] = std::isfinite(y) ? y : 0.0f;
-            const float a = std::abs(out[start + i]);
+            const float y = (float) outBuffer[(size_t) i];
+            out[start + i] = y;
+            const float a = std::abs(y);
             outPeak = juce::jmax(outPeak, a);
-            clip = clip || a > 1.0f;
+            clip = clip || a > 1.0f; // should never happen; kept as a self-check
         }
     }
+
+    const float gr = (float) limiter.getAndResetMaxReductionDb();
+    if (gr > limiterReductionDb.load(std::memory_order_relaxed))
+        limiterReductionDb.store(gr, std::memory_order_relaxed);
 
     for (int ch = 1; ch < numOut; ++ch)
         buffer.copyFrom(ch, 0, buffer, 0, 0, numSamples);
@@ -179,7 +193,7 @@ void MonstrosityProcessor::loadCapture(const juce::File& file)
                 setStatus(file.getFullPathName(), text, false, false);
                 juce::MessageManager::callAsync([this, latency, aliveFlag] {
                     if (aliveFlag->load())
-                        setLatencySamples(latency);
+                        setLatencySamples(latency + limiterLatency.load());
                 });
                 return;
             }
@@ -201,7 +215,7 @@ void MonstrosityProcessor::unloadCapture()
             return;
         slot.submit(monstrosity::CaptureModel::makeEmpty(currentSampleRate, currentMaxBlock));
     });
-    setLatencySamples(0);
+    setLatencySamples(limiterLatency.load());
 }
 
 void MonstrosityProcessor::timerCallback()

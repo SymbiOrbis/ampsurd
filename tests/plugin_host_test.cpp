@@ -2,7 +2,7 @@
 // host, points it at a capture via the saved-state mechanism (exactly what a DAW does on
 // project load), renders a WAV and writes the result for comparison with monstrosity_render.
 //
-// Usage: plugin_host_test <MONSTROSITY.vst3> <model.nam> <input.wav> <output.wav> [block]
+// Usage: plugin_host_test <MONSTROSITY.vst3> <model.nam> <input.wav> <output.wav> [block] [outputGainDb] [inputGainDb]
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -60,6 +60,21 @@ int main(int argc, char** argv)
     juce::AudioProcessor::copyXmlToBinary(*outer, newState);
     plugin->setStateInformation(newState.getData(), (int) newState.getSize());
 
+    // Optional: drive the plugin's Output / Input gain parameters (to test the safety limiter).
+    auto setParam = [&](const juce::String& name, float db) {
+        for (auto* prm : plugin->getParameters())
+            if (prm->getName(32) == name)
+            {
+                if (auto* r = dynamic_cast<juce::RangedAudioParameter*>(prm))
+                    r->setValueNotifyingHost(r->convertTo0to1(db));
+                else
+                    prm->setValueNotifyingHost(db); // VST3-hosted params are normalised already
+                std::cout << name << " set to " << prm->getCurrentValueAsText() << "\n";
+            }
+    };
+    if (argc > 6) setParam("Output", (float) ((std::atof(argv[6]) + 40.0) / 52.0)); // range -40..+12 dB
+    if (argc > 7) setParam("Input", (float) ((std::atof(argv[7]) + 24.0) / 48.0));   // range -24..+24 dB
+
     // The capture loads on the plugin's background thread; give it time, keep "audio" running.
     juce::AudioBuffer<float> io(2, block);
     juce::MidiBuffer midi;
@@ -84,6 +99,8 @@ int main(int argc, char** argv)
     }
     const auto ms = juce::Time::getMillisecondCounterHiRes() - t0;
     std::cout << "Rendered " << input.getNumSamples() / sr << " s in " << ms << " ms\n";
+    std::cout << "Output peak: " << juce::Decibels::gainToDecibels(output.getMagnitude(0, 0, output.getNumSamples()), -200.0f)
+              << " dBFS\n";
 
     plugin->getStateInformation(state);
     if (auto o = juce::AudioProcessor::getXmlFromBinary(state.getData(), (int) state.getSize()))

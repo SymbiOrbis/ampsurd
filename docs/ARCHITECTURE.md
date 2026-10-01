@@ -7,6 +7,7 @@ plugin/        JUCE VST3 shell: parameters, state save/restore, temporary UI, lo
 core/          monstrosity_core — plain C++20, no JUCE. Reusable (e.g. the future single-capture product)
   CaptureModel   one loaded .nam capture: load (NAM Core get_dsp), resample, normalise, process
   CaptureSlot    real-time home of one capture: lock-free hand-over, 20 ms crossfade, safe deletion
+  SafetyLimiter  always-on output protection: never above -1 dBFS (1 ms lookahead)
 external (CMake FetchContent, pinned commits)
   NeuralAmpModelerCore v0.6.0, AudioDSPTools, Eigen, JUCE 9.0.3
 tools/         monstrosity_render, monstrosity_bench, compat_test.py   (correctness / CPU / stress)
@@ -27,7 +28,7 @@ NAM Core registers architectures through static initialisers; the build links it
 
 ```
 DAW input ch 1 → input gain → [CaptureSlot → CaptureModel: (resample to 48k) NAM (resample back)
-               → loudness normalise] → output gain → all output channels
+               → loudness normalise] → output gain → safety limiter (≤ -1 dBFS) → all output channels
 ```
 
 Internal processing is double precision (NAM Core's default sample type).

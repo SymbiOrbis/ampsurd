@@ -70,6 +70,15 @@ void MonstrosityEditor::timerCallback()
 
     inMeter = juce::jmax(processor.getAndResetInputPeak(), inMeter * 0.85f);
     outMeter = juce::jmax(processor.getAndResetOutputPeak(), outMeter * 0.85f);
+    const float gr = processor.getAndResetLimiterReductionDb();
+    if (gr > 0.05f)
+    {
+        limitDb = juce::jmax(gr, limitHold > 0 ? limitDb : 0.0f);
+        limitHold = 30; // ~1 s
+    }
+    else if (limitHold > 0 && --limitHold == 0)
+        limitDb = 0.0f;
+
     if (processor.getAndResetClip())
         clipHold = 45; // ~1.5 s
     else if (clipHold > 0)
@@ -107,8 +116,21 @@ void MonstrosityEditor::paint(juce::Graphics& g)
     drawMeter({ getWidth() - 70, 214, 14, 90 }, inMeter, "IN");
     drawMeter({ getWidth() - 40, 214, 14, 90 }, outMeter, "OUT");
 
-    g.setColour(clipHold > 0 ? juce::Colours::red : juce::Colours::darkred.withAlpha(0.4f));
-    g.fillEllipse((float) getWidth() - 66.0f, 200.0f, 36.0f, 8.0f);
+    // Safety limiter indicator: lights up when the output is being turned down to stay below -1 dBFS.
+    const auto limitArea = juce::Rectangle<int>(getWidth() - 100, 318, 86, 16);
+    g.setColour(limitHold > 0 ? juce::Colours::orange : kPanel);
+    g.fillRoundedRectangle(limitArea.toFloat(), 3.0f);
+    g.setColour(limitHold > 0 ? juce::Colours::black : kText.withAlpha(0.4f));
+    g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+    g.drawText(limitHold > 0 ? "LIMIT -" + juce::String(limitDb, 1) + " dB" : "LIMIT", limitArea,
+               juce::Justification::centred);
+
+    // Clip self-check: must never light up (the limiter makes clipping impossible).
+    if (clipHold > 0)
+    {
+        g.setColour(juce::Colours::red);
+        g.fillEllipse((float) getWidth() - 66.0f, 200.0f, 36.0f, 8.0f);
+    }
 }
 
 void MonstrosityEditor::resized()

@@ -9,3 +9,6 @@ foreach(tool monstrosity_render monstrosity_bench)
     target_link_libraries(${tool} PRIVATE Threads::Threads)
   endif()
 endforeach()
+
+add_executable(limiter_test limiter_test.cpp)
+target_link_libraries(limiter_test PRIVATE monstrosity_core)

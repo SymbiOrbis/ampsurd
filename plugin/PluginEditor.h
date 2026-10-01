@@ -34,6 +34,8 @@ private:
     std::unique_ptr<juce::FileChooser> chooser;
     float inMeter = 0.0f, outMeter = 0.0f;
     int clipHold = 0;
+    float limitDb = 0.0f;
+    int limitHold = 0;
     bool statusIsError = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MonstrosityEditor)

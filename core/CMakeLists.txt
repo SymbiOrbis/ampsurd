@@ -28,7 +28,8 @@ endif()
 # ---------------------------------------------------------------------------
 add_library(monstrosity_core STATIC
   src/CaptureModel.cpp
-  src/CaptureSlot.cpp)
+  src/CaptureSlot.cpp
+  src/SafetyLimiter.cpp)
 target_include_directories(monstrosity_core PUBLIC include)
 target_include_directories(monstrosity_core SYSTEM PRIVATE "${audiodsptools_SOURCE_DIR}/dsp")
 # NAM Core registers each architecture's loader through static initialisers. A plain

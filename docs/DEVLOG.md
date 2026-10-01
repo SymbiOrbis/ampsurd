@@ -4,6 +4,35 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-01 — Session 1b: no-clipping guarantee — Claude (Opus 5.5)
+
+### Implemented
+- `core/SafetyLimiter` — always-on lookahead brick-wall limiter, ceiling -1 dBFS, 1 ms
+  lookahead, 120 ms release. Last stage of the plugin (after Output gain).
+- Plugin: latency now = capture resampling latency + limiter lookahead; "LIMIT -x dB"
+  indicator in the UI; clip LED kept only as a self-check that must never light.
+- `tools/limiter_test` (guarantee, transparency, distortion); `plugin_host_test` accepts
+  output/input gain arguments and prints output peak.
+- Docs: owner decisions recorded in `REVIEW.md` §4.
+
+### Tested
+- limiter_test: 60 s of extreme signal (spikes to +60 dBFS, random blocks) at 44.1/48/96 kHz →
+  max output exactly -1.000000 dBFS. Below ceiling: bit-identical to input delayed 48 samples.
+  Sine +12 dB over ceiling: 0.026 % distortion (35 % if clipped).
+- Real VST3: default gains → output identical to engine (just delayed 48 samples); Input +24 dB
+  and Output +12 dB with A2, LSTM and A1 captures at 48 and 44.1 kHz → peak -1.0 dBFS.
+  Latency reported 48 (48 kHz) / 71 (44.1 kHz).
+- Regression: compat_test ALL PASS; hot-swap stress clean.
+
+### Known issues
+- Same as Session 1. Limiter ceiling is sample-peak (not oversampled true-peak); -1 dB margin.
+
+### Next recommended step
+- Owner: create GitHub repo (see chat), confirm AGPLv3, build on Windows + REAPER checklist.
+- Then Milestone 2.
+
+---
+
 ## 2026-10-01 — Session 1: review + Milestone 1 (one capture) — Claude (Opus 5.5)
 
 ### Implemented

@@ -53,10 +53,13 @@ REAPER picks up the new version.
    level, MONSTROSITY "Normalise loudness" OFF, NAM plugin "Normalize" OFF.)
 2. Switch captures while playing: any click, dropout or glitch?
 3. Note the **CPU** value in the top right at 64 and 128 samples buffer size.
-4. Switch the project to **44.1 kHz** and **96 kHz**: still sounds right? (A latency of 27 /
-   42 samples is expected and is reported to REAPER.)
-5. Save the project, close REAPER, reopen: is the capture restored?
-6. Rename/move the capture file and reopen the project: you should see a "Capture file not
+4. Switch the project to **44.1 kHz** and **96 kHz**: still sounds right? (Reported latency of
+   48 samples at 48 kHz, 71 at 44.1 kHz and about 138 at 96 kHz is expected.)
+5. Turn **OUTPUT** fully up and play hard: the orange **LIMIT** light shows how much the
+   safety limiter turns the level down. REAPER's track meter must never go above -1 dB, and
+   the red clip dot next to the meters must never appear.
+6. Save the project, close REAPER, reopen: is the capture restored?
+7. Rename/move the capture file and reopen the project: you should see a "Capture file not
    found" message, not a crash.
 
 Optional CPU measurement (in Developer PowerShell):

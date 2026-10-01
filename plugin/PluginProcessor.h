@@ -10,6 +10,7 @@
 
 #include "monstrosity/CaptureModel.h"
 #include "monstrosity/CaptureSlot.h"
+#include "monstrosity/SafetyLimiter.h"
 
 // Milestone 1: guitar in -> one NAM capture -> out.
 // The engine (monstrosity_core) is already slot-based so Milestone 2 adds slots, not rewrites.
@@ -60,6 +61,8 @@ public:
     float getAndResetOutputPeak() { return outputPeak.exchange(0.0f); }
     float getAndResetInputPeak() { return inputPeak.exchange(0.0f); }
     bool getAndResetClip() { return clipped.exchange(false); }
+    // Deepest safety-limiter gain reduction in dB since the last call (0 = not limiting).
+    float getAndResetLimiterReductionDb() { return limiterReductionDb.exchange(0.0f); }
 
     juce::AudioProcessorValueTreeState params;
 
@@ -70,6 +73,8 @@ private:
 
     // Audio engine (one slot for Milestone 1).
     monstrosity::CaptureSlot slot;
+    monstrosity::SafetyLimiter limiter; // always on: output can never exceed -1 dBFS
+    std::atomic<int> limiterLatency { 0 };
 
     // Guards the sample-rate / block-size configuration so a capture is never prepared
     // for a stale configuration. Taken only by prepareToPlay() and the loader thread,
@@ -87,6 +92,7 @@ private:
     juce::AudioProcessLoadMeasurer loadMeasurer;
     std::atomic<float> inputPeak { 0.0f }, outputPeak { 0.0f };
     std::atomic<bool> clipped { false };
+    std::atomic<float> limiterReductionDb { 0.0f };
 
     mutable juce::CriticalSection statusLock; // message + loader threads only
     Status status;

@@ -21,11 +21,13 @@ jobs:
         run: cmake -S . -B build -A x64
 
       - name: Build plugin and tools
-        run: cmake --build build --config Release --target Monstrosity_VST3 monstrosity_render monstrosity_bench --parallel
+        run: cmake --build build --config Release --target Monstrosity_VST3 monstrosity_render monstrosity_bench limiter_test --parallel
 
       - name: Smoke test (load NAM Core example A2 model, hot-swap stress)
         shell: pwsh
         run: |
+          ./build/tools/Release/limiter_test.exe
+          if ($LASTEXITCODE -ne 0) { exit 1 }
           $m = "build/_deps/namcore-src/example_models/A2.nam"
           ./build/tools/Release/monstrosity_bench.exe $m --stress --seconds 5 build/_deps/namcore-src/example_models/lstm.nam
           ./build/tools/Release/monstrosity_render.exe $m build/_deps/namcore-src/example_audio/input.wav render.wav

@@ -85,17 +85,30 @@ switch would only replace the thin `plugin/` layer.
 - **Name**: "Neural Amp Modeler"/"NAM" may be used descriptively ("loads NAM captures"), but
   should not be used as if it were MONSTROSITY's own brand.
 
-## 4. Decisions needed from you
+## 4. Decisions (answered by the owner 2026-10-01)
 
-None of these block Milestones 1–2.
-
-1. **Loudness normalisation default** — I set "Normalise loudness" ON by default (uses each
-   capture's loudness metadata, same reference as the official NAM plugin). This is the basis
-   for meaningful percentage mixing later. OK?
-2. **GitHub** — I can't create a GitHub repository for you. If you create an empty private repo
-   and connect GitHub to Claude, I'll push there; the included workflow then builds the Windows
-   VST3 automatically in the cloud on every change.
-3. **Open or closed source** (only before public release; see §3).
+1. **Loudness normalisation ON by default — accepted, with the condition "no digital clipping
+   is acceptable".** Implemented as an always-on output **safety limiter** (see
+   `core/include/monstrosity/SafetyLimiter.h`):
+   - Output can never exceed **-1 dBFS** (sample peak). Proven by `tools/limiter_test` and by
+     the real VST3 with Input +24 dB and Output +12 dB on several captures.
+   - It turns the level down smoothly instead of clipping (a sine 12 dB over the ceiling comes
+     out with 0.03 % distortion vs 35 % if it were clipped). Below -1 dBFS it is bit-transparent.
+   - Cost: 1 ms lookahead latency (48 samples at 48 kHz), reported to the DAW.
+   - The -1 dB margin also covers inter-sample ("true") peaks for practically all guitar material.
+   - Limits of the guarantee: MONSTROSITY cannot undo clipping that already happened before it,
+     i.e. in the audio interface's converter (keep the Studio 26c input LED out of the red) or
+     in later plugins/master bus in the DAW.
+   - Mixing note for Milestone 2: percentages that total 100 % form a weighted average, so the
+     mix itself can never peak higher than the loudest individual capture.
+2. **GitHub — existing account, new repository.** No separate GitHub user is needed: a
+   repository is its own isolated space. Pending: owner creates the empty repo and connects it.
+3. **Licence — owner is willing to go open source.** Open source is *not strictly required* while
+   total annual revenue (incl. capture packs) stays ≤ USD 20,000 under the JUCE Starter licence.
+   Recommended: publish MONSTROSITY's own code under **AGPLv3** (the licence JUCE offers for open
+   source use), which removes the revenue limit entirely at no cost. The name, logo, artwork and
+   all capture packs stay the owner's property and are not covered by the code licence.
+   Pending owner confirmation before a LICENSE file is added.
 
 ## 5. Mixing law (to be tested in Milestone 2, not assumed)
 
