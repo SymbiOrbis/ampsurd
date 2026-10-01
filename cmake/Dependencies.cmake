@@ -12,8 +12,8 @@ set(FETCHCONTENT_QUIET OFF)
 if(MONSTROSITY_BUILD_PLUGIN)
   FetchContent_Declare(JUCE
     GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
-    GIT_TAG        be29c81492b6151c8ea8d14c840e1311963b3a83 # 9.0.3
-    GIT_SHALLOW    FALSE
+    GIT_TAG        9.0.3 # commit be29c81492b6151c8ea8d14c840e1311963b3a83
+    GIT_SHALLOW    TRUE
     GIT_PROGRESS   TRUE)
   FetchContent_MakeAvailable(JUCE)
 endif()
@@ -33,6 +33,7 @@ FetchContent_MakeAvailable(NAMCORE)
 FetchContent_Declare(AUDIODSPTOOLS
   GIT_REPOSITORY https://github.com/sdatkinson/AudioDSPTools.git
   GIT_TAG        0827c6c2fc0deced568536142ea86f189e0b98a1
+  GIT_SUBMODULES ""
   SOURCE_SUBDIR  _monstrosity_do_not_build)
 FetchContent_MakeAvailable(AUDIODSPTOOLS)
 
@@ -43,5 +44,6 @@ set(MONSTROSITY_EIGEN_GIT "https://gitlab.com/libeigen/eigen.git" CACHE STRING "
 FetchContent_Declare(EIGEN
   GIT_REPOSITORY ${MONSTROSITY_EIGEN_GIT}
   GIT_TAG        bc3b39870ecb690a623a3f49149a358b95c5781d
+  GIT_SUBMODULES ""
   SOURCE_SUBDIR  _monstrosity_do_not_build)
 FetchContent_MakeAvailable(EIGEN)
