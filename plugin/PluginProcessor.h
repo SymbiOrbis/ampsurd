@@ -80,6 +80,12 @@ public:
     float getEffectivePercent(int slot) const { return engine.getEffectivePercent(slot); }
     bool isSlotAudible(int slot) const;
 
+    // --- Create Frankenstein (message thread) ---
+    void setFrankenstein(bool on);                  // on: sets up a sensible split first if needed
+    void setFrankensteinSections(int sections);     // 2..5, redistributes dividers
+    ampsurd::FrankensteinLayout getFrankensteinLayout() const; // what is heard right now (mute/solo aware)
+    bool isFrankensteinOn() const { return frankOnParam->load() > 0.5f; }
+
     // Alignment diagnostics for the EDIT panel.
     struct AlignInfo
     {
@@ -167,6 +173,12 @@ private:
     std::atomic<float>* gateThresholdParam = nullptr;
     std::atomic<float>* gateDecayParam = nullptr;
     std::atomic<float>* tunerMuteParam = nullptr;
+    std::atomic<float>* frankOnParam = nullptr;
+    std::atomic<float>* frankSectionsParam = nullptr;
+    std::atomic<float>* frankWidthParam = nullptr;
+    std::array<std::atomic<float>*, 5> frankAmpParam {};
+    std::array<std::atomic<float>*, 4> frankDivParam {};
+    ampsurd::FrankensteinSettings readFrankenstein() const noexcept;
 
     std::mutex configMutex; // sample rate / block size; never taken by the audio thread
     std::atomic<double> currentSampleRate { 48000.0 };

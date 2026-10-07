@@ -82,6 +82,26 @@ juce::AudioProcessorValueTreeState::ParameterLayout AmpsurdProcessor::createLayo
     }
     layout.add(std::make_unique<AudioParameterBool>(ParameterID { "tunerMute", 1 }, "Mute While Tuning", false));
 
+    // Create Frankenstein: frequency-split blending
+    layout.add(std::make_unique<AudioParameterBool>(ParameterID { "frankOn", 1 }, "Frankenstein", false));
+    layout.add(std::make_unique<AudioParameterInt>(ParameterID { "frankSections", 1 }, "Frankenstein Sections", 2, 5, 2));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { "frankWidth", 1 }, "Frankenstein Width",
+                                                     NormalisableRange<float>(0.0f, 90.0f, 0.1f), 30.0f,
+                                                     AudioParameterFloatAttributes().withLabel("%")));
+    for (int k = 0; k < 5; ++k)
+        layout.add(std::make_unique<AudioParameterChoice>(ParameterID { "frankAmp" + String(k + 1), 1 },
+                                                          "Frankenstein Section " + String(k + 1) + " Amp",
+                                                          StringArray { "Amp 1", "Amp 2", "Amp 3", "Amp 4", "Amp 5" }, k));
+    static constexpr float divDefaults[4] = { 150.0f, 600.0f, 2000.0f, 5000.0f };
+    for (int k = 0; k < 4; ++k)
+    {
+        NormalisableRange<float> r(30.0f, 16000.0f, 0.1f);
+        r.setSkewForCentre(700.0f);
+        layout.add(std::make_unique<AudioParameterFloat>(ParameterID { "frankDiv" + String(k + 1), 1 },
+                                                         "Frankenstein Divider " + String(k + 1), r, divDefaults[k],
+                                                         AudioParameterFloatAttributes().withLabel("Hz")));
+    }
+
     const auto defaults = ampsurd::ParametricEq::defaultBands();
     for (int s = 0; s < kNumSlots; ++s)
     {
@@ -140,6 +160,11 @@ AmpsurdProcessor::AmpsurdProcessor()
     gateThresholdParam = params.getRawParameterValue("gateThreshold");
     gateDecayParam = params.getRawParameterValue("gateDecay");
     tunerMuteParam = params.getRawParameterValue("tunerMute");
+    frankOnParam = params.getRawParameterValue("frankOn");
+    frankSectionsParam = params.getRawParameterValue("frankSections");
+    frankWidthParam = params.getRawParameterValue("frankWidth");
+    for (int k = 0; k < 5; ++k) frankAmpParam[(size_t) k] = params.getRawParameterValue("frankAmp" + juce::String(k + 1));
+    for (int k = 0; k < 4; ++k) frankDivParam[(size_t) k] = params.getRawParameterValue("frankDiv" + juce::String(k + 1));
 
     for (int s = 0; s < kNumSlots; ++s)
     {
@@ -272,6 +297,7 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         rotation = rotation || (engine.isSlotLoaded(s) && std::abs(a.phaseRadians) > 1e-4);
     }
     settings.rotationActive = rotation;
+    settings.frankenstein = readFrankenstein();
 
     const float* in = numIn > 0 ? buffer.getReadPointer(0) : nullptr;
     float* out = buffer.getWritePointer(0);
@@ -641,6 +667,82 @@ void AmpsurdProcessor::endMixGesture(int)
         if (countsAsLoaded(getSlotStatus(s).state))
             if (auto* p = params.getParameter(slotParamId(s, "mix"))) p->endChangeGesture();
     mixGestureSlot = -1;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Create Frankenstein (message thread)
+// ---------------------------------------------------------------------------------------------
+ampsurd::FrankensteinSettings AmpsurdProcessor::readFrankenstein() const noexcept
+{
+    ampsurd::FrankensteinSettings f;
+    f.enabled = frankOnParam->load() > 0.5f;
+    f.sections = juce::jlimit(2, 5, (int) std::lround(frankSectionsParam->load()));
+    f.width = juce::jlimit(0.0f, 0.9f, frankWidthParam->load() / 100.0f);
+    for (int k = 0; k < 5; ++k) f.amp[(size_t) k] = juce::jlimit(0, 4, (int) std::lround(frankAmpParam[(size_t) k]->load()));
+    for (int k = 0; k < 4; ++k) f.dividerHz[(size_t) k] = frankDivParam[(size_t) k]->load();
+    return f;
+}
+
+ampsurd::FrankensteinLayout AmpsurdProcessor::getFrankensteinLayout() const
+{
+    std::array<bool, 5> audible {};
+    for (int s = 0; s < kNumSlots; ++s) audible[(size_t) s] = isSlotAudible(s);
+    return ampsurd::computeFrankensteinLayout(readFrankenstein(), audible);
+}
+
+void AmpsurdProcessor::setFrankensteinSections(int sections)
+{
+    sections = juce::jlimit(2, 5, sections);
+    // amps: keep existing assignments, give new sections loaded amps that are not used yet
+    std::vector<int> loadedSlots;
+    for (int s = 0; s < kNumSlots; ++s)
+        if (countsAsLoaded(getSlotStatus(s).state)) loadedSlots.push_back(s);
+    const int oldK = juce::jlimit(2, 5, (int) std::lround(frankSectionsParam->load()));
+    for (int k = oldK; k < sections; ++k)
+    {
+        int pick = k % kNumSlots;
+        for (int s : loadedSlots)
+        {
+            bool used = false;
+            for (int j = 0; j < k; ++j) used = used || (int) std::lround(frankAmpParam[(size_t) j]->load()) == s;
+            if (!used) { pick = s; break; }
+        }
+        setParam(params, "frankAmp" + juce::String(k + 1), (float) pick);
+    }
+    // dividers evenly spaced (log) between 120 Hz and 4.5 kHz
+    for (int j = 0; j < sections - 1; ++j)
+    {
+        const double t = (j + 1.0) / sections;
+        setParam(params, "frankDiv" + juce::String(j + 1), (float) (120.0 * std::pow(4500.0 / 120.0, t)));
+    }
+    setParam(params, "frankSections", (float) sections);
+}
+
+void AmpsurdProcessor::setFrankenstein(bool on)
+{
+    if (on)
+    {
+        // first use (or the assigned amps are gone): one section per loaded amp, in slot order
+        std::vector<int> loadedSlots;
+        for (int s = 0; s < kNumSlots; ++s)
+            if (countsAsLoaded(getSlotStatus(s).state)) loadedSlots.push_back(s);
+        const auto f = readFrankenstein();
+        bool valid = true;
+        for (int k = 0; k < f.sections; ++k)
+            valid = valid && countsAsLoaded(getSlotStatus(f.amp[(size_t) k]).state);
+        bool distinct = false;
+        for (int k = 1; k < f.sections; ++k) distinct = distinct || f.amp[(size_t) k] != f.amp[0];
+        if (!valid || !distinct)
+        {
+            const int K = juce::jlimit(2, 5, (int) loadedSlots.size());
+            for (int k = 0; k < K; ++k)
+                setParam(params, "frankAmp" + juce::String(k + 1),
+                         (float) (loadedSlots.empty() ? k : loadedSlots[(size_t) (k % (int) loadedSlots.size())]));
+            setParam(params, "frankSections", (float) K);
+            setFrankensteinSections(K);
+        }
+    }
+    setParam(params, "frankOn", on ? 1.0f : 0.0f);
 }
 
 // ---------------------------------------------------------------------------------------------

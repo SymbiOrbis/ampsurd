@@ -129,6 +129,30 @@ int main(int argc, char** argv)
         save(*ed, out.getChildFile("05_scaled_1800.png"));
     }
 
+    // Create Frankenstein
+    {
+        proc->setFrankenstein(true);
+        proc->setFrankensteinSections(3);
+        setP(*proc, "frankWidth", 40.0f);
+        setP(*proc, "frankAmp1", 4.0f); // section 1: amp 5 (lows)
+        setP(*proc, "frankAmp2", 0.0f); // section 2: amp 1 (mids)
+        setP(*proc, "frankAmp3", 2.0f); // section 3: amp 3 (highs)
+        for (int b = 0; b < 8; ++b) { buf.clear(); proc->processBlock(buf, midi); }
+        std::unique_ptr<juce::AudioProcessorEditor> ed(proc->createEditor());
+        auto* e = dynamic_cast<AmpsurdEditor*>(ed.get());
+        e->refreshAll();
+        save(*ed, out.getChildFile("07_frankenstein.png"));
+        setP(*proc, AmpsurdProcessor::slotParamId(0, "mute"), 1.0f); // mute the middle section's amp
+        for (int b = 0; b < 8; ++b) { buf.clear(); proc->processBlock(buf, midi); }
+        e->refreshAll();
+        save(*ed, out.getChildFile("08_frankenstein_muted.png"));
+        float share = 0;
+        for (int i = 0; i < 5; ++i) share += proc->getEffectivePercent(i);
+        std::cout << "Frankenstein: spectrum shares total " << share << " %, amp 5 " << proc->getEffectivePercent(4)
+                  << " %, amp 3 " << proc->getEffectivePercent(2) << " %\n";
+        setP(*proc, AmpsurdProcessor::slotParamId(0, "mute"), 0.0f);
+    }
+
     // 3. preset round trip
     const auto presetFile = out.getChildFile("Test rig.ampsurd");
     proc->savePreset(presetFile);

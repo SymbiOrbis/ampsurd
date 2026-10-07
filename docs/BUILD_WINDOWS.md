@@ -95,6 +95,14 @@ REAPER picks up the new version.
     while notes keep their attack and sustain. Drag the white marker on the GUITAR LEVEL meter
     to set the threshold just above the level shown when you are not playing.
 
+12. Create Frankenstein (button in the master row, bottom): load 2–5 different captures, click
+    **CREATE FRANKENSTEIN**. Choose 2–5 sections at the top. Click inside a section to choose
+    which amp plays there. Drag the vertical dividers left/right while playing (e.g. a tight amp
+    for the lows, a fuzzy one for the highs). Turn **WIDTH** from 0 % (abrupt hand-over) to 90 %
+    (smooth overlap). MUTE one amp: its section should disappear and the neighbours meet in the
+    middle. Listen for clicks while dragging and switching; does the loudness stay about the same
+    when you switch Frankenstein on/off? **EXIT** returns to the normal fader blend.
+
 Expected latency shown by REAPER: 104 samples at 48 kHz, 123 at 44.1 kHz.
 
 Optional measurements (in Developer PowerShell):

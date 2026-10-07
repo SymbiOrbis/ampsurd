@@ -35,7 +35,8 @@ add_library(ampsurd_core STATIC
   src/Engine.cpp
   src/CaptureAnalyzer.cpp
   src/NoiseGate.cpp
-  src/PitchDetector.cpp)
+  src/PitchDetector.cpp
+  src/Frankenstein.cpp)
 target_include_directories(ampsurd_core PUBLIC include)
 target_include_directories(ampsurd_core SYSTEM PRIVATE "${audiodsptools_SOURCE_DIR}/dsp")
 # NAM Core registers each architecture's loader through static initialisers. A plain

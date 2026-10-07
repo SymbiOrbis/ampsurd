@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "ampsurd/CaptureSlot.h"
+#include "ampsurd/Frankenstein.h"
 #include "ampsurd/ParametricEq.h"
 #include "ampsurd/PathAligner.h"
 
@@ -50,6 +51,7 @@ struct SlotSettings
 struct EngineSettings
 {
     std::array<SlotSettings, kNumSlots> slots {};
+    FrankensteinSettings frankenstein {};   // frequency-split blending replaces the fader blend when enabled
     bool rotationActive = false; // true when any path uses phase rotation
 };
 
@@ -83,6 +85,9 @@ public:
                                       const std::array<std::array<double, kNumSlots>, kNumSlots>& C,
                                       const std::array<bool, kNumSlots>& valid) noexcept;
 
+    // Pure function: loaded && !muted && (no solo || soloed).
+    static std::array<bool, kNumSlots> computeAudible(const EngineSettings& s, const std::array<bool, kNumSlots>& isLoaded) noexcept;
+
     // Pure function: effective percentages (sum to 1 over audible loaded slots).
     static std::array<double, kNumSlots> computeProportions(const EngineSettings& s,
                                                             const std::array<bool, kNumSlots>& isLoaded) noexcept;
@@ -100,7 +105,9 @@ private:
     std::array<std::atomic<bool>, kNumSlots> loaded;
     std::atomic<float> compensationDb { 0.0f };
 
-    std::vector<double> scratch;
+    std::vector<double> scratch, frankOut;
+    FrankensteinMixer frankenstein;
+    double frankMix = 0.0, frankCoef = 0.0;
     double gainCoef = 0.0;
     double sampleRate = 48000.0;
 };

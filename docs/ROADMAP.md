@@ -12,7 +12,7 @@ Each step is tested in REAPER before the next starts.
 - Tuner: reads the clean DI input, keeps working when AMPSURD's BYPASS is on, optional
   "mute while tuning". On by default. (Not available when the DAW itself bypasses the plugin.)
 
-## 2. "Create Frankenstein" — frequency-split blending
+## 2. "Create Frankenstein" — frequency-split blending — IMPLEMENTED 2026-10-07, awaiting REAPER test
 Button in the lower corner. The centre area becomes a frequency map (low → high, same scale as the
 EQ/tuner). The user chooses the number of sections (2–5) and assigns a loaded NAM to each section.
 - Vertical dividers can be dragged to set where one amp hands over to the next.
@@ -23,7 +23,8 @@ EQ/tuner). The user chooses the number of sections (2–5) and assigns a loaded 
   then complementary crossover filters (weights sum to 1 at every frequency) are applied to the
   aligned, level-matched outputs. Low-latency IIR crossovers (Linkwitz-Riley family) are preferred
   over linear-phase FIR, which would add 10–40 ms of latency. CPU impact negligible.
-- Open design point: Frankenstein mode replaces the fader blend while active (faders inactive).
+- Decided: Frankenstein mode replaces the fader blend while active (faders inactive, % = share of
+  the spectrum). Linkwitz-Riley 24 dB/oct tree with shared all-pass compensation, no added latency.
 
 ## 3. Stereo width: per-amp PAN
 - One PAN control per slot (centre by default), constant-power pan law, stereo output.

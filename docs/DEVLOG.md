@@ -6,6 +6,32 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-07 — Session 2d: "Create Frankenstein" (frequency-split blending) — Claude (Opus 5.5)
+
+- core: `Frankenstein` — layout (2–5 sections, amp per section, dividers, WIDTH 0–90 %, muted /
+  unloaded amps removed and neighbours meeting in the log-frequency middle, solo = full spectrum) and
+  `FrankensteinMixer`: Linkwitz-Riley 24 dB/oct crossover tree (8 crossovers / 9 bands, two crossover
+  points per divider; the band between them is shared with alpha = 0.5·(1 − 2^(−4h)) so both amps are
+  exactly −6 dB at the divider for every WIDTH), shared all-pass phase compensation (perfect
+  reconstruction), 25 ms glides of frequencies and weights, fixed-size arrays (no audio-thread allocation).
+- Engine: applied after alignment / EQ / level match, mix law replaced by the spectrum split while
+  active; 30 ms crossfade when switching on/off; percentages show each amp's share of the spectrum.
+- plugin: 12 new parameters (frankOn, frankSections, frankWidth, frankAmp1–5, frankDiv1–4; 205 total).
+- UI: CREATE FRANKENSTEIN button in the master row; centre area becomes a frequency map with section
+  buttons 2–5, WIDTH slider, EXIT; hatched hand-over zones; draggable dividers (merged ones dashed);
+  click a section to choose its amp; faders inactive while Frankenstein is on. Master row re-spaced
+  (BYPASS was clipped), hint moved to the header.
+- Tested: `frankenstein_test` ALL PASS — same amp everywhere → flat within 0.0000 dB; sections always
+  add up flat; 1 kHz split −49 dB out of band, −6.0/−6.0 dB at the divider; WIDTH 90 % keeps amp A at
+  −12.3 dB one octave above (−24.8 dB at 0 %); mute → neighbours meet at 632 Hz; solo flat; 2000 blocks
+  of random changes bounded. `engine_test` with real captures: on/off while playing clean, loudness
+  −0.08 dB. Regression: VST3 single capture bit-identical to the NAM reference, 5 captures +12 dB →
+  −1.00 dBFS, bypass sample-identical, limiter/gate/tuner ALL PASS. Screenshots 07/08.
+- CI now also builds and runs `frankenstein_test`.
+- Next: per-amp PAN (stereo output), then the release package.
+
+---
+
 ## 2026-10-07 — Session 2c: noise gate + tuner — Claude (Opus 5.5)
 
 - core: `NoiseGate` (key = DI after INPUT gain, applied after the mix; 4 ms RMS detector, 4 dB

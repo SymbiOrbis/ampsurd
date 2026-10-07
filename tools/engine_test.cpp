@@ -228,6 +228,45 @@ int main(int argc, char** argv)
         check(worst < 0.5, "MIX: real engine output loudness matches the target in every setting (worst %.2f dB)", worst);
     }
 
+    // ---------------- 6b. Frankenstein in the real engine ----------------
+    {
+        std::array<std::shared_ptr<const CaptureAnalyzer::Measurement>, kNumSlots> meas {};
+        meas[0] = CaptureAnalyzer::measure(CaptureAnalyzer::render(*loadAt(argv[1]), test, false), sr);
+        meas[1] = CaptureAnalyzer::measure(CaptureAnalyzer::render(*loadAt(argv[2]), test, false), sr);
+        const auto rig = CaptureAnalyzer::analyseRig(meas);
+        Engine eng;
+        eng.getSlot(0).submit(loadAt(argv[1]));
+        eng.getSlot(1).submit(loadAt(argv[2]));
+        eng.prepare(sr, 256, 10.0);
+        EngineSettings s;
+        for (int i = 0; i < 2; ++i)
+        {
+            s.slots[(size_t) i].delaySamples = rig->autoDelay[(size_t) i];
+            s.slots[(size_t) i].polarity = rig->align[(size_t) i].polarity;
+            s.slots[(size_t) i].levelGain = CaptureAnalyzer::levelMatchGain(rig->loudnessDb[(size_t) i]);
+        }
+        s.frankenstein.enabled = true;
+        s.frankenstein.sections = 2;
+        s.frankenstein.amp = { 0, 1, 0, 0, 0 };
+        s.frankenstein.dividerHz[0] = 800.0f;
+        s.frankenstein.width = 0.3f;
+        std::vector<double> out(test.size());
+        bool finite = true;
+        for (size_t pos = 0; pos < test.size(); pos += 256)
+        {
+            const int n = (int) std::min<size_t>(256, test.size() - pos);
+            if (pos == 256 * 100) s.frankenstein.enabled = false; // switch off and on while playing
+            if (pos == 256 * 140) s.frankenstein.enabled = true;
+            eng.process(test.data() + pos, out.data() + pos, n, s);
+            for (int k = 0; k < n; ++k) finite = finite && std::isfinite(out[pos + (size_t) k]);
+        }
+        CaptureAnalyzer::kWeightInPlace(out, sr);
+        const double errDb = 10 * std::log10(power(out, 256 * 160)) - CaptureAnalyzer::kTargetLoudnessDb;
+        check(finite && std::abs(errDb) < 2.0 && std::abs(eng.getEffectivePercent(0) + eng.getEffectivePercent(1) - 100.0f) < 0.01,
+              "FRANKENSTEIN: real captures split at 800 Hz, switched off/on while playing: clean, loudness %+.2f dB vs single-capture level, spectrum shares %.0f%% + %.0f%%",
+              errDb, eng.getEffectivePercent(0), eng.getEffectivePercent(1));
+    }
+
     // ---------------- 7. Percentages with mute / solo ----------------
     {
         EngineSettings s;

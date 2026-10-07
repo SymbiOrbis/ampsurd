@@ -215,6 +215,36 @@ private:
     double lastValidMs = 0.0;
 };
 
+// "Create Frankenstein": the spectrum as a map of sections, each played by one amp.
+class FrankensteinPanel final : public juce::Component
+{
+public:
+    explicit FrankensteinPanel(AmpsurdProcessor&);
+    void paint(juce::Graphics&) override;
+    void resized() override;
+    void mouseMove(const juce::MouseEvent&) override;
+    void mouseDown(const juce::MouseEvent&) override;
+    void mouseDrag(const juce::MouseEvent&) override;
+    void mouseUp(const juce::MouseEvent&) override;
+    void refresh();
+
+private:
+    juce::Rectangle<float> mapArea() const;
+    float xForHz(double hz) const;
+    double hzForX(float x) const;
+    int dividerAt(juce::Point<float>) const;     // visible divider index or -1
+    void chooseAmpForSection(int visibleIndex);
+
+    AmpsurdProcessor& proc;
+    std::array<juce::TextButton, 4> sectionButtons { juce::TextButton { "2" }, juce::TextButton { "3" },
+                                                     juce::TextButton { "4" }, juce::TextButton { "5" } };
+    juce::TextButton exitButton { "EXIT" };
+    juce::Slider widthSlider;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> widthAtt;
+    ampsurd::FrankensteinLayout layout;
+    int dragDivider = -1, dragParam = -1, hoverDivider = -1;
+};
+
 class CentrePanel final : public juce::Component
 {
 public:
@@ -251,14 +281,13 @@ public:
 private:
     AmpsurdProcessor& proc;
     juce::Slider inputSlider, outputSlider;
-    juce::TextButton bypassButton { "BYPASS" }, gateButton { "GATE" };
+    juce::TextButton bypassButton { "BYPASS" }, gateButton { "GATE" }, frankButton { "CREATE FRANKENSTEIN" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> gateAtt;
     LevelMeter inMeter, outMeter;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> inAtt, outAtt;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAtt;
     float limitDb = 0.0f;
     int limitHold = 0;
-    juce::String cpuText;
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -289,9 +318,11 @@ class BrandingFooter final : public juce::Component
 public:
     BrandingFooter();
     void paint(juce::Graphics&) override;
+    void setCpuText(const juce::String& t) { if (t != cpuText) { cpuText = t; repaint(); } }
 
 private:
     std::array<std::unique_ptr<juce::Drawable>, 3> logos;
+    juce::String cpuText;
 };
 
 } // namespace ampsurd::ui

@@ -32,6 +32,10 @@ void Engine::prepare(double sr, int maxBlockSize, double maxDelayMs)
         gains[(size_t) i] = 0.0;
     }
     gainCoef = 1.0 - std::exp(-1.0 / (0.025 * sr)); // 25 ms gain smoothing
+    frankCoef = 1.0 - std::exp(-1.0 / (0.030 * sr)); // 30 ms crossfade blend <-> Frankenstein
+    frankOut.assign((size_t) maxBlock, 0.0);
+    frankenstein.prepare(sr, maxBlock);
+    frankMix = 0.0;
 }
 
 void Engine::setCovariance(const std::array<std::array<double, kNumSlots>, kNumSlots>& C,
@@ -43,6 +47,17 @@ void Engine::setCovariance(const std::array<std::array<double, kNumSlots>, kNumS
             cov[(size_t) i][(size_t) j].store(C[(size_t) i][(size_t) j], std::memory_order_relaxed);
         covValid[(size_t) i].store(valid[(size_t) i], std::memory_order_release);
     }
+}
+
+std::array<bool, kNumSlots> Engine::computeAudible(const EngineSettings& s, const std::array<bool, kNumSlots>& isLoaded) noexcept
+{
+    bool anySolo = false;
+    for (int i = 0; i < kNumSlots; ++i)
+        anySolo = anySolo || (isLoaded[(size_t) i] && s.slots[(size_t) i].solo);
+    std::array<bool, kNumSlots> a {};
+    for (int i = 0; i < kNumSlots; ++i)
+        a[(size_t) i] = isLoaded[(size_t) i] && !s.slots[(size_t) i].mute && (!anySolo || s.slots[(size_t) i].solo);
+    return a;
 }
 
 std::array<double, kNumSlots> Engine::computeProportions(const EngineSettings& s,
@@ -169,6 +184,40 @@ void Engine::process(const double* in, double* out, int n, const EngineSettings&
         }
         if (std::abs(target - g) < 1e-9) g = target;
         gains[(size_t) i] = g;
+    }
+
+    // 4. "Create Frankenstein": frequency-split blending of the same aligned, EQ'd, level-matched paths.
+    const bool frankOn = s.frankenstein.enabled;
+    if (frankOn || frankMix > 0.0)
+    {
+        const auto audible = computeAudible(s, isLoaded);
+        const auto layout = computeFrankensteinLayout(s.frankenstein, audible);
+        frankenstein.setTarget(layout);
+        if (frankMix == 0.0)
+        {
+            frankenstein.reset();        // start from a clean state, no frequency sweep
+            frankenstein.snapToTarget();
+        }
+        std::array<const double*, kFrankMaxSlots> amps {};
+        std::array<double, kFrankMaxSlots> lg {};
+        for (int i = 0; i < kNumSlots; ++i)
+        {
+            amps[(size_t) i] = isLoaded[(size_t) i] ? scratch.data() + (size_t) i * (size_t) stride : nullptr;
+            lg[(size_t) i] = s.slots[(size_t) i].levelGain;
+        }
+        frankenstein.process(amps, lg, frankOut.data(), n);
+
+        const double target = frankOn ? 1.0 : 0.0;
+        for (int k = 0; k < n; ++k)
+        {
+            frankMix += (target - frankMix) * frankCoef;
+            out[k] = (1.0 - frankMix) * out[k] + frankMix * frankOut[(size_t) k];
+        }
+        if (std::abs(target - frankMix) < 1e-6) frankMix = target;
+
+        if (frankOn)
+            for (int i = 0; i < kNumSlots; ++i) // percentages = share of the spectrum each amp plays
+                effectivePercent[(size_t) i].store((float) (100.0 * layout.spectrumShare[(size_t) i]), std::memory_order_relaxed);
     }
 }
 

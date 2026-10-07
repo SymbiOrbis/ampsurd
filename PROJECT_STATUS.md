@@ -10,7 +10,7 @@ Amp Modeler captures in parallel → blended into one sound. Windows VST3 first.
 > Everything below marked **tested** was run on a Linux build of the same code (unit tests,
 > the real VST3 binary loaded by a test host, rendered UI screenshots). **Windows:** since
 > 2026-10-07 GitHub Actions builds the Windows x64 VST3 with MSVC on every push and runs
-> `limiter_test`, `engine_test` and a capture load/hot-swap stress test there — first run passed.
+> `limiter_test`, `engine_test`, `gate_tuner_test`, `frankenstein_test` and a capture load/hot-swap stress test there — first run passed.
 > **Not yet tried in REAPER by a person.**
 
 ## First REAPER test by the owner (2026-10-07, Windows 11, 48 kHz)
@@ -37,13 +37,14 @@ EQ bands 1/10 as low/high cut, mouse wheel adjusts the nearest EQ point.
 | FREE: TIME (fractional delay ±1 ms), PHASE (rotation ±180°), RESET | done | delay accurate to 0.2°, rotation flat ±0.7° from 30 Hz–18 kHz; mix law holds with rotation |
 | Master: INPUT, OUTPUT, meters, BYPASS (time-aligned dry) | done | bypass output = dry input delayed by latency, sample-identical |
 | No digital clipping (−1 dBFS safety limiter) | done | 5 captures, OUTPUT +12 dB, 44.1/48 kHz → peak −1.00 / −1.28 dBFS |
-| Complete-rig presets: PRESET menu, SAVE, SAVE AS, DAW project state | done | round trip 189/189 parameters + 5/5 slots; missing capture → FILE MISSING, no crash |
+| Complete-rig presets: PRESET menu, SAVE, SAVE AS, DAW project state | done | round trip 205/205 parameters + 5/5 slots; missing capture → FILE MISSING, no crash |
 | Fixed five-slot layout, fixed-size filename typography with wrapping | done | screenshots in `docs/screenshots/` (filenames shown character-exact, e.g. "4x12") |
 | Branding footer with three equal logo areas | placeholders | real logos: drop files into `plugin/assets/logos/` (see README there) |
 | Resizable window (scales whole UI, fixed aspect) | done | rendered at 1200x800 and 1800x1200 |
 | Noise gate, NS-2 style (detects on DI, gates after the amps), on by default at -70 dB RMS / 120 ms; GATE button in master row | done, awaiting REAPER test | `gate_tuner_test`: bit-transparent while playing, closed on -80 dB hiss, fully open 0.98 ms after a note starts (before the amp signal, 1.17 ms); off = bit-identical |
 | Chromatic tuner on the clean DI (works when BYPASS is on), MUTE OUTPUT while shown | done, awaiting REAPER test | correct note F#1..E6 (46 Hz-1.3 kHz), worst error 0.14 cents; no false notes on hiss |
 | Centre area: gate + tuner; EDIT replaces them, CLOSE returns | done | screenshots |
+| Create Frankenstein: 2–5 frequency sections, amp per section, draggable dividers, WIDTH 0–90 %, muted amp's section closes (neighbours meet in the middle), solo = full spectrum | done, awaiting REAPER test | `frankenstein_test`: same amp in all sections → flat 0.0000 dB; split −6.0/−6.0 dB at the divider, −49 dB out of band; random dragging bounded; real captures on/off clean, loudness −0.08 dB; no added latency |
 
 Latency: 104 samples (2.17 ms) at 48 kHz, 123 at 44.1 kHz (constant; includes 1 ms limiter
 look-ahead and 1 ms alignment reserve). CPU: five A2 Full captures ≈ 40–48 % of one 2.8 GHz cloud
@@ -79,12 +80,12 @@ Renamed everything to AMPSURD. New: `core/{Engine,PathAligner,ParametricEq,Captu
 ## Build & test
 
 - Windows: `docs/BUILD_WINDOWS.md` (or download the CI build once GitHub is set up).
-- Tests (any platform): `limiter_test`, `engine_test <a.nam> <b.nam>`, `mix_experiment <2-5 .nam>`,
+- Tests (any platform): `limiter_test`, `gate_tuner_test`, `frankenstein_test`, `engine_test <a.nam> <b.nam>`, `mix_experiment <2-5 .nam>`,
   `compat_test.py`, `plugin_host_test`, `ui_snapshot` — see `docs/DEVLOG.md`.
 
 ## Roadmap
 
-See `docs/ROADMAP.md`: gate + tuner (done) → Create Frankenstein → per-amp pan → release package.
+See `docs/ROADMAP.md`: gate + tuner (done) → Create Frankenstein (done) → per-amp pan → release package.
 
 ## Next concrete step
 

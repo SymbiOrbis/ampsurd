@@ -323,7 +323,7 @@ void SlotComponent::refresh(bool isSelected)
     editButton.setEnabled(loaded);
     soloButton.setEnabled(loaded);
     muteButton.setEnabled(loaded);
-    fader.setEnabled(loaded);
+    fader.setEnabled(loaded && !proc.isFrankensteinOn()); // Frankenstein replaces the fader blend
     editButton.setToggleState(selected, juce::dontSendNotification);
 
     juce::String tip = st.state == AmpsurdProcessor::SlotState::empty ? juce::String("Empty slot") : st.info;
@@ -1108,6 +1108,241 @@ void TunerPanel::paint(juce::Graphics& g)
 }
 
 // =============================================================================================
+// Create Frankenstein
+// =============================================================================================
+namespace
+{
+constexpr double kMapLo = 20.0, kMapHi = 20000.0;
+}
+
+FrankensteinPanel::FrankensteinPanel(AmpsurdProcessor& p) : proc(p)
+{
+    for (int i = 0; i < 4; ++i)
+    {
+        auto& b = sectionButtons[(size_t) i];
+        addAndMakeVisible(b);
+        b.onClick = [this, i] { proc.setFrankensteinSections(i + 2); };
+        b.setTooltip("Number of sections (amps) across the spectrum");
+    }
+    addAndMakeVisible(exitButton);
+    exitButton.onClick = [this] { proc.setFrankenstein(false); };
+    exitButton.setTooltip("Back to the normal blend (faders)");
+    widthSlider.setSliderStyle(juce::Slider::LinearHorizontal);
+    widthSlider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 56, 20);
+    addAndMakeVisible(widthSlider);
+    widthAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.params, "frankWidth", widthSlider);
+    widthSlider.textFromValueFunction = [](double v) { return juce::String(juce::roundToInt(v)) + " %"; };
+    widthSlider.updateText();
+    widthSlider.setTooltip("How gradually one amp hands over to the next: 0 % = abrupt, 90 % = smooth morph");
+}
+
+juce::Rectangle<float> FrankensteinPanel::mapArea() const
+{
+    return getLocalBounds().toFloat().reduced(16.0f, 0.0f).withTrimmedTop(52.0f).withTrimmedBottom(30.0f);
+}
+
+float FrankensteinPanel::xForHz(double hz) const
+{
+    const auto m = mapArea();
+    return m.getX() + m.getWidth() * (float) (std::log(hz / kMapLo) / std::log(kMapHi / kMapLo));
+}
+
+double FrankensteinPanel::hzForX(float x) const
+{
+    const auto m = mapArea();
+    return kMapLo * std::pow(kMapHi / kMapLo, (double) juce::jlimit(0.0f, 1.0f, (x - m.getX()) / m.getWidth()));
+}
+
+void FrankensteinPanel::resized()
+{
+    auto r = getLocalBounds().reduced(16, 12).removeFromTop(26);
+    exitButton.setBounds(r.removeFromRight(64));
+    r.removeFromRight(24);
+    widthSlider.setBounds(r.removeFromRight(220));
+    r.removeFromRight(60);
+    for (int i = 3; i >= 0; --i)
+    {
+        sectionButtons[(size_t) i].setBounds(r.removeFromRight(30));
+        r.removeFromRight(4);
+    }
+}
+
+int FrankensteinPanel::dividerAt(juce::Point<float> p) const
+{
+    const auto m = mapArea();
+    if (p.y < m.getY() - 4 || p.y > m.getBottom() + 4) return -1;
+    int best = -1;
+    float bestD = 8.0f;
+    for (int j = 0; j < layout.numVisible - 1; ++j)
+    {
+        const float d = std::abs(p.x - xForHz(layout.visibleDividersHz[(size_t) j]));
+        if (d < bestD) { bestD = d; best = j; }
+    }
+    return best;
+}
+
+void FrankensteinPanel::paint(juce::Graphics& g)
+{
+    g.setColour(line);
+    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), 3.0f, 1.0f);
+    drawLabel(g, "FRANKENSTEIN", { 16, 12, 200, 26 }, text, juce::Justification::centredLeft, 11.5f);
+    drawLabel(g, "SECTIONS", { sectionButtons[0].getX() - 76, 12, 70, 26 }, textDim, juce::Justification::centredRight);
+    drawLabel(g, "WIDTH", { widthSlider.getX() - 56, 12, 50, 26 }, textDim, juce::Justification::centredRight);
+
+    const auto m = mapArea();
+    g.setColour(line);
+    g.drawRect(m, 1.0f);
+
+    // overlap zones (hatched), where two amps blend
+    for (int j = 0; j < layout.numVisible - 1; ++j)
+    {
+        const float x0 = xForHz(layout.crossoverHz[(size_t) (2 * j)]), x1 = xForHz(layout.crossoverHz[(size_t) (2 * j + 1)]);
+        if (x1 - x0 < 2.0f) continue;
+        juce::Graphics::ScopedSaveState ss(g);
+        g.reduceClipRegion(juce::Rectangle<float>(x0, m.getY() + 1, x1 - x0, m.getHeight() - 2).toNearestInt());
+        g.setColour(grid.brighter(0.15f));
+        for (float x = x0 - m.getHeight(); x < x1; x += 7.0f)
+            g.drawLine(x, m.getBottom(), x + m.getHeight(), m.getY(), 1.0f);
+    }
+
+    // sections
+    for (int i = 0; i < layout.numVisible; ++i)
+    {
+        const auto& sec = layout.visibleSections[(size_t) i];
+        const float x0 = xForHz(sec.loHz), x1 = xForHz(sec.hiHz);
+        auto col = juce::Rectangle<float>(x0, m.getY(), x1 - x0, m.getHeight()).reduced(8.0f, 10.0f);
+        const auto st = proc.getSlotStatus(sec.slot);
+        g.setColour(text);
+        g.setFont(Fonts::get().semibold(28.0f));
+        g.drawText(juce::String(sec.slot + 1), col.removeFromTop(40.0f), juce::Justification::centred, false);
+        g.setFont(Fonts::get().medium(13.0f));
+        g.setColour(textDim);
+        g.drawFittedText(st.fileName, col.removeFromTop(54.0f).toNearestInt(), juce::Justification::centredTop, 3, 1.0f);
+    }
+
+    // dividers
+    for (int j = 0; j < layout.numVisible - 1; ++j)
+    {
+        const float x = xForHz(layout.visibleDividersHz[(size_t) j]);
+        const bool merged = layout.dividerIsMerged[(size_t) j];
+        const bool hot = j == hoverDivider || j == dragDivider;
+        g.setColour(merged ? textFaint : text);
+        if (merged)
+        {
+            for (float y = m.getY(); y < m.getBottom(); y += 8.0f)
+                g.fillRect(x - 0.5f, y, 1.0f, 4.0f);
+        }
+        else
+        {
+            g.fillRect(x - (hot ? 1.5f : 1.0f), m.getY(), hot ? 3.0f : 2.0f, m.getHeight());
+            g.fillRoundedRectangle(x - 5.0f, m.getY() - 6.0f, 10.0f, 12.0f, 2.0f);
+        }
+        const double hz = layout.visibleDividersHz[(size_t) j];
+        const juce::String lbl = hz >= 1000.0 ? juce::String(hz / 1000.0, 2) + " kHz" : juce::String(juce::roundToInt(hz)) + " Hz";
+        g.setFont(Fonts::get().medium(11.5f));
+        g.drawText(lbl, juce::Rectangle<float>(x - 40.0f, m.getBottom() - 18.0f, 80.0f, 14.0f), juce::Justification::centred, false);
+    }
+
+    // frequency axis
+    g.setFont(Fonts::get().regular(11.0f));
+    g.setColour(textDim);
+    for (double f : { 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0 })
+    {
+        const float x = xForHz(f);
+        g.fillRect(x - 0.5f, m.getBottom(), 1.0f, 4.0f);
+        g.drawText(f >= 1000 ? juce::String((int) (f / 1000)) + "k" : juce::String((int) f),
+                   juce::Rectangle<float>(x - 20.0f, m.getBottom() + 5.0f, 40.0f, 13.0f), juce::Justification::centred, false);
+    }
+
+    const int hidden = juce::jlimit(2, 5, (int) std::lround(proc.params.getRawParameterValue("frankSections")->load())) - layout.numVisible;
+    g.setFont(Fonts::get().regular(11.5f));
+    g.setColour(textDim);
+    const juce::String hint = layout.numVisible == 0 ? juce::String("All amps used here are muted or empty")
+                            : hidden > 0 ? juce::String(hidden) + " section(s) hidden (muted or empty amp)"
+                                         : juce::String("Drag a divider to move the hand-over. Click a section to choose its amp.");
+    g.drawText(hint, juce::Rectangle<float>(130.0f, 12.0f, (float) sectionButtons[0].getX() - 76.0f - 140.0f, 26.0f),
+               juce::Justification::centredLeft, true);
+}
+
+void FrankensteinPanel::refresh()
+{
+    layout = proc.getFrankensteinLayout();
+    const int K = juce::jlimit(2, 5, (int) std::lround(proc.params.getRawParameterValue("frankSections")->load()));
+    for (int i = 0; i < 4; ++i)
+        sectionButtons[(size_t) i].setToggleState(i + 2 == K, juce::dontSendNotification);
+    repaint();
+}
+
+void FrankensteinPanel::mouseMove(const juce::MouseEvent& e)
+{
+    const int d = dividerAt(e.position);
+    hoverDivider = (d >= 0 && !layout.dividerIsMerged[(size_t) d]) ? d : -1;
+    setMouseCursor(hoverDivider >= 0 ? juce::MouseCursor::LeftRightResizeCursor
+                   : mapArea().contains(e.position) ? juce::MouseCursor::PointingHandCursor
+                                                    : juce::MouseCursor::NormalCursor);
+}
+
+void FrankensteinPanel::mouseDown(const juce::MouseEvent& e)
+{
+    const int d = dividerAt(e.position);
+    if (d >= 0 && !layout.dividerIsMerged[(size_t) d])
+    {
+        dragDivider = d;
+        dragParam = layout.visibleSections[(size_t) d + 1].sourceIndex - 1; // boundary below section k = divider k-1
+        if (auto* p = proc.params.getParameter("frankDiv" + juce::String(dragParam + 1))) p->beginChangeGesture();
+        return;
+    }
+    if (!mapArea().contains(e.position)) return;
+    for (int i = 0; i < layout.numVisible; ++i)
+        if (e.position.x >= xForHz(layout.visibleSections[(size_t) i].loHz) && e.position.x < xForHz(layout.visibleSections[(size_t) i].hiHz))
+            chooseAmpForSection(i);
+}
+
+void FrankensteinPanel::mouseDrag(const juce::MouseEvent& e)
+{
+    if (dragDivider < 0 || dragParam < 0) return;
+    // keep dividers in order: stay at least 1/6 octave away from the neighbouring dividers
+    const int K = juce::jlimit(2, 5, (int) std::lround(proc.params.getRawParameterValue("frankSections")->load()));
+    double lo = 30.0, hi = 16000.0;
+    if (dragParam > 0) lo = proc.params.getRawParameterValue("frankDiv" + juce::String(dragParam))->load() * std::pow(2.0, 1.0 / 6.0);
+    if (dragParam < K - 2) hi = proc.params.getRawParameterValue("frankDiv" + juce::String(dragParam + 2))->load() / std::pow(2.0, 1.0 / 6.0);
+    const double hz = juce::jlimit(lo, juce::jmax(lo, hi), hzForX(e.position.x));
+    if (auto* p = proc.params.getParameter("frankDiv" + juce::String(dragParam + 1)))
+        p->setValueNotifyingHost(p->convertTo0to1((float) hz));
+    refresh();
+}
+
+void FrankensteinPanel::mouseUp(const juce::MouseEvent&)
+{
+    if (dragParam >= 0)
+        if (auto* p = proc.params.getParameter("frankDiv" + juce::String(dragParam + 1))) p->endChangeGesture();
+    dragDivider = dragParam = -1;
+}
+
+void FrankensteinPanel::chooseAmpForSection(int visibleIndex)
+{
+    const int k = layout.visibleSections[(size_t) visibleIndex].sourceIndex;
+    juce::PopupMenu menu;
+    menu.addSectionHeader("Section " + juce::String(visibleIndex + 1) + " plays:");
+    for (int s = 0; s < AmpsurdProcessor::kNumSlots; ++s)
+    {
+        const auto st = proc.getSlotStatus(s);
+        const bool usable = st.state == AmpsurdProcessor::SlotState::loaded;
+        menu.addItem(s + 1, juce::String(s + 1) + "   " + (usable ? st.fileName : juce::String("(empty)")), usable,
+                     s == layout.visibleSections[(size_t) visibleIndex].slot);
+    }
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this).withMousePosition(), [this, k](int r) {
+        if (r > 0)
+            if (auto* p = proc.params.getParameter("frankAmp" + juce::String(k + 1)))
+            {
+                p->beginChangeGesture();
+                p->setValueNotifyingHost(p->convertTo0to1((float) (r - 1)));
+                p->endChangeGesture();
+            }
+    });
+}
+
+// =============================================================================================
 CentrePanel::CentrePanel(AmpsurdProcessor& p) : gatePanel(p), tunerPanel(p)
 {
     addAndMakeVisible(gatePanel);
@@ -1186,6 +1421,9 @@ MasterPanel::MasterPanel(AmpsurdProcessor& p) : proc(p)
     addAndMakeVisible(gateButton);
     gateAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.params, "gateOn", gateButton);
     gateButton.setTooltip("Noise gate on/off (settings in the centre area when no amp is in EDIT)");
+    addAndMakeVisible(frankButton);
+    frankButton.onClick = [this] { proc.setFrankenstein(!proc.isFrankensteinOn()); };
+    frankButton.setTooltip("Split the spectrum between the amps: e.g. lows from one amp, mids from another, highs from a third");
     inputSlider.setTooltip("Input level into all five amps (how hard they are driven)");
     outputSlider.setTooltip("Output level. AMPSURD never outputs above -1 dBFS");
 }
@@ -1194,9 +1432,9 @@ void MasterPanel::resized()
 {
     auto r = getLocalBounds().reduced(16, 0);
     auto block = [&](juce::Slider& s, LevelMeter& m) {
-        auto b = r.removeFromLeft(380);
+        auto b = r.removeFromLeft(320);
         b.removeFromLeft(64);
-        auto sl = b.removeFromLeft(200);
+        auto sl = b.removeFromLeft(156);
         s.setBounds(sl.withSizeKeepingCentre(sl.getWidth(), 24));
         b.removeFromLeft(14);
         m.setBounds(b.withSizeKeepingCentre(b.getWidth(), 6));
@@ -1204,7 +1442,9 @@ void MasterPanel::resized()
     };
     block(inputSlider, inMeter);
     block(outputSlider, outMeter);
-    r.removeFromLeft(84); // room for the LIMIT indicator next to the output meter
+    r.removeFromLeft(78); // room for the LIMIT indicator next to the output meter
+    frankButton.setBounds(r.removeFromLeft(164).withSizeKeepingCentre(164, 28));
+    r.removeFromLeft(8);
     gateButton.setBounds(r.removeFromLeft(72).withSizeKeepingCentre(72, 28));
     r.removeFromLeft(8);
     bypassButton.setBounds(r.removeFromLeft(86).withSizeKeepingCentre(86, 28));
@@ -1215,10 +1455,10 @@ void MasterPanel::paint(juce::Graphics& g)
     g.setColour(line);
     g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), 3.0f, 1.0f);
     drawLabel(g, "INPUT", { 16, 0, 60, getHeight() }, textDim);
-    drawLabel(g, "OUTPUT", { 16 + 404, 0, 60, getHeight() }, textDim);
+    drawLabel(g, "OUTPUT", { 16 + 344, 0, 60, getHeight() }, textDim);
 
     // safety limiter: shown as text, never only by colour
-    const auto lim = juce::Rectangle<int>(outMeter.getRight() + 12, getHeight() / 2 - 8, 70, 16);
+    const auto lim = juce::Rectangle<int>(outMeter.getRight() + 8, getHeight() / 2 - 8, 66, 16);
     if (limitHold > 0)
     {
         g.setColour(onFill);
@@ -1228,9 +1468,6 @@ void MasterPanel::paint(juce::Graphics& g)
     else
         drawLabel(g, "LIMIT", lim, textFaint, juce::Justification::centred, 10.5f);
 
-    g.setColour(textDim);
-    g.setFont(Fonts::get().regular(12.5f));
-    g.drawText(cpuText, getLocalBounds().reduced(16, 0), juce::Justification::centredRight, false);
 }
 
 void MasterPanel::refresh()
@@ -1241,8 +1478,8 @@ void MasterPanel::refresh()
     const int oldHold = limitHold;
     if (gr > 0.05f) { limitDb = juce::jmax(gr, limitHold > 0 ? limitDb : 0.0f); limitHold = 30; }
     else if (limitHold > 0) --limitHold;
-    const juce::String cpu = "CPU " + juce::String(juce::roundToInt(proc.getCpuLoadPercent())) + "%";
-    if (cpu != cpuText || limitHold != oldHold || limitHold > 0) { cpuText = cpu; repaint(); }
+    frankButton.setToggleState(proc.isFrankensteinOn(), juce::dontSendNotification);
+    if (limitHold != oldHold || limitHold > 0) repaint();
 }
 
 // =============================================================================================
@@ -1394,6 +1631,10 @@ void BrandingFooter::paint(juce::Graphics& g)
 {
     g.setColour(line);
     g.fillRect(0.0f, 0.0f, (float) getWidth(), 1.0f);
+
+    g.setColour(textDim);
+    g.setFont(Fonts::get().regular(12.0f));
+    g.drawText(cpuText, getLocalBounds().reduced(24, 0), juce::Justification::centredRight, false);
 
     static const char* names[3] = { "THE BLACK DEATH ENSEMBLE", "DARK MATTER", "SYMBIORBIS" };
     const int boxW = 168, boxH = 26, gap = 12, labelW = 140;

@@ -2,7 +2,7 @@
 
 using namespace ampsurd::ui;
 
-AmpsurdEditor::Content::Content(AmpsurdProcessor& p) : header(p), edit(p), centre(p), master(p)
+AmpsurdEditor::Content::Content(AmpsurdProcessor& p) : header(p), edit(p), centre(p), frankenstein(p), master(p)
 {
     addAndMakeVisible(header);
     for (int s = 0; s < AmpsurdProcessor::kNumSlots; ++s)
@@ -12,6 +12,7 @@ AmpsurdEditor::Content::Content(AmpsurdProcessor& p) : header(p), edit(p), centr
     }
     addChildComponent(edit);   // EDIT replaces the gate + tuner in the centre area
     addAndMakeVisible(centre);
+    addChildComponent(frankenstein); // replaces the gate + tuner while Create Frankenstein is on
     addAndMakeVisible(master);
     addAndMakeVisible(footer);
 }
@@ -42,6 +43,7 @@ void AmpsurdEditor::Content::resized()
     r.removeFromBottom(14);
     edit.setBounds(r);
     centre.setBounds(r);
+    frankenstein.setBounds(r);
 }
 
 AmpsurdEditor::AmpsurdEditor(AmpsurdProcessor& p) : AudioProcessorEditor(&p), proc(p), content(p)
@@ -98,11 +100,16 @@ void AmpsurdEditor::timerCallback()
         content.slots[(size_t) s]->refresh(s == selected);
     content.edit.refresh();
     const bool editing = content.edit.getSlot() >= 0;
+    const bool frank = !editing && proc.isFrankensteinOn();
     content.edit.setVisible(editing);
-    content.centre.setVisible(!editing);
-    proc.setTunerVisible(!editing);
-    if (!editing)
+    content.frankenstein.setVisible(frank);
+    content.centre.setVisible(!editing && !frank);
+    proc.setTunerVisible(!editing && !frank);
+    if (frank)
+        content.frankenstein.refresh();
+    else if (!editing)
         content.centre.refresh();
+    content.footer.setCpuText("CPU " + juce::String(juce::roundToInt(proc.getCpuLoadPercent())) + "%");
     content.master.refresh();
     content.header.refresh();
 }
