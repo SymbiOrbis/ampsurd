@@ -162,6 +162,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout AmpsurdProcessor::createLayo
         group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { slotParamId(s, "phase"), 1 }, n + "Phase",
                                                               NormalisableRange<float>(-180.0f, 180.0f, 0.1f), 0.0f,
                                                               AudioParameterFloatAttributes().withLabel("deg")));
+        group->addChild(std::make_unique<AudioParameterFloat>(
+            ParameterID { slotParamId(s, "pan"), 1 }, n + "Pan", NormalisableRange<float>(-100.0f, 100.0f, 1.0f), 0.0f,
+            AudioParameterFloatAttributes().withStringFromValueFunction([](float v, int) {
+                const int i = juce::roundToInt(v);
+                return i == 0 ? juce::String("C") : (i < 0 ? "L" : "R") + juce::String(std::abs(i));
+            })));
         addEqBandParams(*group, s, n);
         layout.add(std::move(group));
     }
@@ -208,6 +214,7 @@ AmpsurdProcessor::AmpsurdProcessor()
         sp.alignMode = params.getRawParameterValue(slotParamId(s, "align"));
         sp.timeMs = params.getRawParameterValue(slotParamId(s, "time"));
         sp.phaseDeg = params.getRawParameterValue(slotParamId(s, "phase"));
+        sp.pan = params.getRawParameterValue(slotParamId(s, "pan"));
         for (int b = 0; b < kNumBands; ++b)
         {
             sp.freq[(size_t) b] = params.getRawParameterValue(bandParamId(s, b, "freq"));
@@ -257,6 +264,7 @@ void AmpsurdProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     }
     inBuffer.assign((size_t) maxBlock, 0.0);
     outBuffer.assign((size_t) maxBlock, 0.0);
+    outBufferR.assign((size_t) maxBlock, 0.0);
     dryBuffer.assign((size_t) maxBlock, 0.0);
     rawBuffer.assign((size_t) maxBlock, 0.0f);
     gate.prepare(sampleRate);
@@ -328,6 +336,7 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         ss.solo = sp.solo->load() > 0.5f;
         ss.eqEnabled = sp.eqOn->load() > 0.5f;
         ss.eq = getEqBands(s);
+        ss.pan = sp.pan->load() / 100.0f;
         const auto a = effectiveAlign(s, sr);
         ss.delaySamples = a.delaySamples;
         ss.polarity = a.polarity;
@@ -342,6 +351,7 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
 
     const float* in = numIn > 0 ? buffer.getReadPointer(0) : nullptr;
     float* out = buffer.getWritePointer(0);
+    float* outR = numOut > 1 ? buffer.getWritePointer(1) : nullptr; // stereo: per-amp PAN
     const int maxBlock = (int) inBuffer.size();
     const int latency = juce::jlimit(0, (int) dryDelay.size() - 1, totalLatency.load(std::memory_order_relaxed));
     float inPeak = 0.0f, outPeak = 0.0f;
@@ -367,12 +377,18 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         tuner.push(rawBuffer.data(), n); // tuner works on the clean DI, also when bypassed
         keyPeak = juce::jmax(keyPeak, inPeak);
 
-        engine.process(inBuffer.data(), outBuffer.data(), n, settings);
-        gate.process(inBuffer.data(), outBuffer.data(), n); // NS-2 style: listen to the DI, silence after the amps
+        double* L = outBuffer.data();
+        double* R = outBufferR.data();
+        engine.process(inBuffer.data(), L, R, n, settings);
+        gate.process(inBuffer.data(), L, n, R); // NS-2 style: listen to the DI, silence after the amps
 
         for (int i = 0; i < n; ++i)
-            outBuffer[(size_t) i] *= outputGain.getNextValue();
-        limiter.process(outBuffer.data(), n); // never above -1 dBFS
+        {
+            const double og = outputGain.getNextValue();
+            L[i] *= og;
+            R[i] *= og;
+        }
+        limiter.process(L, R, n); // never above -1 dBFS, stereo-linked
 
         for (int i = 0; i < n; ++i)
         {
@@ -380,13 +396,19 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
             if (std::abs(bypassTarget - bypassMix) < 1e-6) bypassMix = bypassTarget;
             muteMix += (muteTarget - muteMix) * bypassCoef;
             if (std::abs(muteTarget - muteMix) < 1e-6) muteMix = muteTarget;
-            const double y = ((1.0 - bypassMix) * outBuffer[(size_t) i] + bypassMix * dryBuffer[(size_t) i]) * (1.0 - muteMix);
+            const double dry = bypassMix * dryBuffer[(size_t) i];
+            double y = ((1.0 - bypassMix) * L[i] + dry) * (1.0 - muteMix);
+            const double yR = ((1.0 - bypassMix) * R[i] + dry) * (1.0 - muteMix);
+            if (outR != nullptr)
+                outR[start + i] = (float) yR;
+            else
+                y = 0.5 * (y + yR); // mono output bus: fold down (centred amps unchanged)
             out[start + i] = (float) y;
-            outPeak = juce::jmax(outPeak, (float) std::abs(y));
+            outPeak = juce::jmax(outPeak, (float) std::abs(y), (float) std::abs(yR));
         }
     }
 
-    for (int ch = 1; ch < numOut; ++ch)
+    for (int ch = 2; ch < numOut; ++ch)
         buffer.copyFrom(ch, 0, buffer, 0, 0, numSamples);
 
     if (inPeak > inputPeak.load(std::memory_order_relaxed)) inputPeak.store(inPeak, std::memory_order_relaxed);

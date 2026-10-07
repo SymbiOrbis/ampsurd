@@ -4,7 +4,10 @@
 //
 //   in ─┬─ slot 1: capture → align (time/polarity/phase) → EQ → mix gain ─┐
 //       ├─ slot 2 ...                                                    ├─ Σ (blend or
-//       └─ slot 5 ...                                                    ┘   Frankenstein) → GLOBAL EQ → out
+//       └─ slot 5 ...                                                    ┘   Frankenstein) → GLOBAL EQ → out L/R
+//
+// PAN (per amp, stereo output): constant power with the centre at 0 dB (a centred amp is exactly as
+// before, both channels identical); hard left/right = +3 dB on one channel, nothing on the other.
 //
 // MIX LAW (see docs/REVIEW.md §5 and tools/mix_experiment):
 //   1. Percentages: p_i = w_i / Σ w_j over audible loaded slots (mute/solo aware), Σ p_i = 1.
@@ -46,6 +49,7 @@ struct SlotSettings
     double polarity = 1.0;      // +1 / -1
     double phaseRadians = 0.0;  // frequency-independent phase rotation
     double levelGain = 1.0;     // level match (from the capture's measured loudness), linear
+    float pan = 0.0f;           // -1 = hard left, 0 = centre, +1 = hard right
 };
 
 struct EngineSettings
@@ -74,8 +78,16 @@ public:
     void setCovariance(const std::array<std::array<double, kNumSlots>, kNumSlots>& C,
                        const std::array<bool, kNumSlots>& valid) noexcept;
 
-    // Audio thread. out may alias nothing; n <= maxBlockSize.
-    void process(const double* in, double* out, int n, const EngineSettings& settings) noexcept;
+    // Audio thread. Outputs must not alias the input; n <= maxBlockSize.
+    void process(const double* in, double* outL, double* outR, int n, const EngineSettings& settings) noexcept;
+    // Mono convenience (tests / tools): left channel only.
+    void process(const double* in, double* out, int n, const EngineSettings& settings) noexcept
+    {
+        process(in, out, nullptr, n, settings);
+    }
+
+    // Pan gains {left, right}: constant power, centre = exactly {1, 1}.
+    static std::array<double, 2> panGains(float pan) noexcept;
 
     // Any thread (diagnostics / UI).
     float getEffectivePercent(int i) const noexcept { return effectivePercent[(size_t) i].load(std::memory_order_relaxed); }
@@ -86,6 +98,12 @@ public:
     static double computeCompensation(const std::array<double, kNumSlots>& p,
                                       const std::array<std::array<double, kNumSlots>, kNumSlots>& C,
                                       const std::array<bool, kNumSlots>& valid) noexcept;
+    // With PAN: loudness = sum of both channels' powers (as ITU-R BS.1770 does), so amps panned apart
+    // (which add less coherently) are compensated too. All centred -> identical to the mono version.
+    static double computeCompensation(const std::array<double, kNumSlots>& p,
+                                      const std::array<std::array<double, kNumSlots>, kNumSlots>& C,
+                                      const std::array<bool, kNumSlots>& valid,
+                                      const std::array<std::array<double, 2>, kNumSlots>& pan) noexcept;
 
     // Pure function: loaded && !muted && (no solo || soloed).
     static std::array<bool, kNumSlots> computeAudible(const EngineSettings& s, const std::array<bool, kNumSlots>& isLoaded) noexcept;
@@ -98,8 +116,8 @@ private:
     std::array<CaptureSlot, kNumSlots> slots;
     std::array<PathAligner, kNumSlots> aligners;
     std::array<ParametricEq, kNumSlots> eqs;
-    ParametricEq globalEq;
-    std::array<double, kNumSlots> gains {};
+    ParametricEq globalEq, globalEqR;
+    std::array<double, kNumSlots> gains {}, gainsR {};
 
     std::array<std::array<std::atomic<double>, kNumSlots>, kNumSlots> cov;
     std::array<std::atomic<bool>, kNumSlots> covValid;
@@ -108,7 +126,7 @@ private:
     std::array<std::atomic<bool>, kNumSlots> loaded;
     std::atomic<float> compensationDb { 0.0f };
 
-    std::vector<double> scratch, frankOut;
+    std::vector<double> scratch, frankOut, frankOutR, scratchR;
     FrankensteinMixer frankenstein;
     double frankMix = 0.0, frankCoef = 0.0;
     double gainCoef = 0.0;

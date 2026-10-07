@@ -33,9 +33,10 @@ high cut), no alignment; EQ ON / FLAT / CLOSE. Vertical GLOBAL EQ button next to
 lit and reading "ON" while active. Subdued, non-editable Global EQ curve behind an amp's EQ in EDIT
 (only when on and not flat). Complete state stored in presets.
 
-## 3. Stereo width: per-amp PAN
+## 3. Stereo width: per-amp PAN — IMPLEMENTED 2026-10-08, awaiting REAPER test
 - One PAN control per slot (centre by default), constant-power pan law, stereo output.
 - Amps stay mono (no extra CPU). No stereo input processing.
+- Centre = exactly as before; loudness compensation counts both channels; limiter stereo-linked.
 
 ## 4. Public release package
 - Code signing (SignPath Foundation, free for OSI-licensed open source) so Windows Smart App Control

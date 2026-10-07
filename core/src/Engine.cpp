@@ -30,11 +30,15 @@ void Engine::prepare(double sr, int maxBlockSize, double maxDelayMs)
         aligners[(size_t) i].prepare(sr, maxDelay);
         eqs[(size_t) i].prepare(sr);
         gains[(size_t) i] = 0.0;
+        gainsR[(size_t) i] = 0.0;
     }
     gainCoef = 1.0 - std::exp(-1.0 / (0.025 * sr)); // 25 ms gain smoothing
     frankCoef = 1.0 - std::exp(-1.0 / (0.030 * sr)); // 30 ms crossfade blend <-> Frankenstein
     frankOut.assign((size_t) maxBlock, 0.0);
+    frankOutR.assign((size_t) maxBlock, 0.0);
+    scratchR.assign((size_t) maxBlock, 0.0);
     globalEq.prepare(sr);
+    globalEqR.prepare(sr);
     frankenstein.prepare(sr, maxBlock);
     frankMix = 0.0;
 }
@@ -92,9 +96,27 @@ std::array<double, kNumSlots> Engine::computeProportions(const EngineSettings& s
     return p;
 }
 
+std::array<double, 2> Engine::panGains(float pan) noexcept
+{
+    if (pan == 0.0f)
+        return { 1.0, 1.0 }; // exactly unity: a centred amp sounds exactly as without PAN
+    const double theta = (std::clamp((double) pan, -1.0, 1.0) + 1.0) * 0.25 * 3.14159265358979323846;
+    return { std::sqrt(2.0) * std::cos(theta), std::sqrt(2.0) * std::sin(theta) };
+}
+
 double Engine::computeCompensation(const std::array<double, kNumSlots>& p,
                                    const std::array<std::array<double, kNumSlots>, kNumSlots>& C,
                                    const std::array<bool, kNumSlots>& valid) noexcept
+{
+    std::array<std::array<double, 2>, kNumSlots> centred {};
+    for (auto& g : centred) g = { 1.0, 1.0 };
+    return computeCompensation(p, C, valid, centred);
+}
+
+double Engine::computeCompensation(const std::array<double, kNumSlots>& p,
+                                   const std::array<std::array<double, kNumSlots>, kNumSlots>& C,
+                                   const std::array<bool, kNumSlots>& valid,
+                                   const std::array<std::array<double, 2>, kNumSlots>& pan) noexcept
 {
     // Unmeasured slots: unit power, fully coherent with everything (=> no boost).
     auto var = [&](int i) { return valid[(size_t) i] ? std::max(0.0, C[(size_t) i][(size_t) i]) : 1.0; };
@@ -110,7 +132,9 @@ double Engine::computeCompensation(const std::array<double, kNumSlots>& p,
             const double cij = (i == j) ? var(i)
                              : (valid[(size_t) i] && valid[(size_t) j]) ? C[(size_t) i][(size_t) j]
                                                                         : std::sqrt(var(i) * var(j));
-            den += p[(size_t) i] * p[(size_t) j] * cij;
+            // average over the two channels of the pan gains' products (centre: exactly 1)
+            const double w = 0.5 * (pan[(size_t) i][0] * pan[(size_t) j][0] + pan[(size_t) i][1] * pan[(size_t) j][1]);
+            den += p[(size_t) i] * p[(size_t) j] * cij * w;
         }
     }
     if (num <= 0.0)
@@ -122,12 +146,13 @@ double Engine::computeCompensation(const std::array<double, kNumSlots>& p,
     return std::clamp(std::sqrt(num / den), minG, maxG);
 }
 
-void Engine::process(const double* in, double* out, int n, const EngineSettings& s) noexcept
+void Engine::process(const double* in, double* out, double* outR, int n, const EngineSettings& s) noexcept
 {
     const int stride = (int) (scratch.size() / kNumSlots);
     if (n > stride)
     {
         std::fill(out, out + n, 0.0);
+        if (outR != nullptr) std::fill(outR, outR + n, 0.0);
         return;
     }
 
@@ -151,11 +176,16 @@ void Engine::process(const double* in, double* out, int n, const EngineSettings&
         for (int j = 0; j < kNumSlots; ++j)
             C[(size_t) i][(size_t) j] = cov[(size_t) i][(size_t) j].load(std::memory_order_relaxed);
     }
-    const double G = computeCompensation(p, C, valid);
+    std::array<std::array<double, 2>, kNumSlots> pan {};
+    for (int i = 0; i < kNumSlots; ++i) pan[(size_t) i] = panGains(s.slots[(size_t) i].pan);
+    const double G = computeCompensation(p, C, valid, pan);
+    // Right channel is accumulated separately (or not at all for mono callers).
+    double* R = outR != nullptr ? outR : scratchR.data();
     compensationDb.store((float) (20.0 * std::log10(G)), std::memory_order_relaxed);
 
     // 3. Align, EQ, gain, sum.
     std::fill(out, out + n, 0.0);
+    std::fill(R, R + n, 0.0);
     const double rotationMix = s.rotationActive ? 1.0 : 0.0;
     for (int i = 0; i < kNumSlots; ++i)
     {
@@ -171,17 +201,22 @@ void Engine::process(const double* in, double* out, int n, const EngineSettings&
         eq.setBands(ss.eqEnabled ? ss.eq : ParametricEq::neutralised(ss.eq)); // OFF also releases the cuts
         eq.process(buf, n);
 
-        const double target = p[(size_t) i] * G * ss.levelGain;
-        double g = gains[(size_t) i];
-        if (g == 0.0 && target == 0.0)
+        const double base = p[(size_t) i] * G * ss.levelGain;
+        const double target = base * pan[(size_t) i][0], targetR = base * pan[(size_t) i][1];
+        double g = gains[(size_t) i], gr = gainsR[(size_t) i];
+        if (g == 0.0 && target == 0.0 && gr == 0.0 && targetR == 0.0)
             continue;
         for (int k = 0; k < n; ++k)
         {
             g += (target - g) * gainCoef;
+            gr += (targetR - gr) * gainCoef;
             out[k] += g * buf[k];
+            R[k] += gr * buf[k];
         }
         if (std::abs(target - g) < 1e-9) g = target;
+        if (std::abs(targetR - gr) < 1e-9) gr = targetR;
         gains[(size_t) i] = g;
+        gainsR[(size_t) i] = gr;
     }
 
     // 4. "Create Frankenstein": frequency-split blending of the same aligned, EQ'd, level-matched paths.
@@ -197,19 +232,21 @@ void Engine::process(const double* in, double* out, int n, const EngineSettings&
             frankenstein.snapToTarget();
         }
         std::array<const double*, kFrankMaxSlots> amps {};
-        std::array<double, kFrankMaxSlots> lg {};
+        std::array<double, kFrankMaxSlots> lg {}, lgR {};
         for (int i = 0; i < kNumSlots; ++i)
         {
             amps[(size_t) i] = isLoaded[(size_t) i] ? scratch.data() + (size_t) i * (size_t) stride : nullptr;
-            lg[(size_t) i] = s.slots[(size_t) i].levelGain;
+            lg[(size_t) i] = s.slots[(size_t) i].levelGain * pan[(size_t) i][0];
+            lgR[(size_t) i] = s.slots[(size_t) i].levelGain * pan[(size_t) i][1];
         }
-        frankenstein.process(amps, lg, frankOut.data(), n);
+        frankenstein.process(amps, lg, lgR, frankOut.data(), frankOutR.data(), n);
 
         const double target = frankOn ? 1.0 : 0.0;
         for (int k = 0; k < n; ++k)
         {
             frankMix += (target - frankMix) * frankCoef;
             out[k] = (1.0 - frankMix) * out[k] + frankMix * frankOut[(size_t) k];
+            R[k] = (1.0 - frankMix) * R[k] + frankMix * frankOutR[(size_t) k];
         }
         if (std::abs(target - frankMix) < 1e-6) frankMix = target;
 
@@ -219,8 +256,14 @@ void Engine::process(const double* in, double* out, int n, const EngineSettings&
     }
 
     // 5. Global EQ on the complete blend (same EQ as the paths; OFF glides to flat, then costs nothing).
-    globalEq.setBands(s.globalEqEnabled ? s.globalEq : ParametricEq::neutralised(s.globalEq));
+    const auto geq = s.globalEqEnabled ? s.globalEq : ParametricEq::neutralised(s.globalEq);
+    globalEq.setBands(geq);
     globalEq.process(out, n);
+    if (outR != nullptr)
+    {
+        globalEqR.setBands(geq);
+        globalEqR.process(outR, n);
+    }
 }
 
 } // namespace ampsurd

@@ -13,6 +13,7 @@ void SafetyLimiter::prepare(double sampleRate, double lookaheadMs, double releas
     releaseCoef = 1.0 - std::exp(-1.0 / (std::max(1.0, releaseMs) * 0.001 * sampleRate));
 
     delay.assign((size_t) lookahead, 0.0);
+    delayR.assign((size_t) lookahead, 0.0);
     dqVal.assign((size_t) lookahead + 1, 1.0);
     dqIdx.assign((size_t) lookahead + 1, 0);
     avgBuf.assign((size_t) lookahead + 1, 1.0);
@@ -22,6 +23,7 @@ void SafetyLimiter::prepare(double sampleRate, double lookaheadMs, double releas
 void SafetyLimiter::reset() noexcept
 {
     std::fill(delay.begin(), delay.end(), 0.0);
+    std::fill(delayR.begin(), delayR.end(), 0.0);
     std::fill(avgBuf.begin(), avgBuf.end(), 1.0);
     delayPos = 0;
     dqHead = dqSize = 0;
@@ -39,7 +41,7 @@ double SafetyLimiter::getAndResetMaxReductionDb() noexcept
     return g >= 1.0 ? 0.0 : -20.0 * std::log10(std::max(g, 1e-9));
 }
 
-void SafetyLimiter::process(double* x, int n) noexcept
+void SafetyLimiter::process(double* x, double* xr, int n) noexcept
 {
     const int window = lookahead + 1;
     const int cap = (int) dqVal.size();
@@ -54,7 +56,8 @@ void SafetyLimiter::process(double* x, int n) noexcept
     for (int i = 0; i < n; ++i)
     {
         const double in = std::isfinite(x[i]) ? x[i] : 0.0;
-        const double a = std::abs(in);
+        const double inR = xr == nullptr ? 0.0 : (std::isfinite(xr[i]) ? xr[i] : 0.0);
+        const double a = std::max(std::abs(in), std::abs(inR));
         const double required = a > ceiling ? ceiling / a : 1.0;
 
         // --- sliding-window minimum over the last L+1 required gains ---
@@ -99,14 +102,14 @@ void SafetyLimiter::process(double* x, int n) noexcept
         // --- apply to the signal delayed by L samples ---
         const double delayed = delay[(size_t) delayPos];
         delay[(size_t) delayPos] = in;
+        const double delayedR = delayR[(size_t) delayPos];
+        delayR[(size_t) delayPos] = inR;
         delayPos = (delayPos + 1) % lookahead;
 
-        double y = delayed * gain;
         // Mathematical backstop against floating-point rounding only (never audible: the
         // gain computation above already guarantees |y| <= ceiling up to ~1e-15).
-        if (y > ceiling) y = ceiling;
-        else if (y < -ceiling) y = -ceiling;
-        x[i] = y;
+        x[i] = std::clamp(delayed * gain, -ceiling, ceiling);
+        if (xr != nullptr) xr[i] = std::clamp(delayedR * gain, -ceiling, ceiling);
 
         if (gain < minGainSinceRead) minGainSinceRead = gain;
         ++sampleIndex;

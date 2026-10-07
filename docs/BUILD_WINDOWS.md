@@ -109,6 +109,10 @@ REAPER picks up the new version.
     Global EQ (it cannot be grabbed). Save a preset, change the Global EQ, reload the preset: is it
     back exactly? Switch EQ ON/OFF while playing: any click?
 
+14. PAN (row under each filename): load two different captures, pan one left and one right
+    (drag; double-click = centre). Does the sound get wide, and does the loudness stay about the
+    same? Centred, everything should sound exactly as before. Also try PAN with Frankenstein on.
+
 Expected latency shown by REAPER: 104 samples at 48 kHz, 123 at 44.1 kHz.
 
 Optional measurements (in Developer PowerShell):

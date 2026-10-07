@@ -108,6 +108,42 @@ int main()
                     ok ? "PASS" : "FAIL", 100 * t, 100 * tc);
     }
 
+    // 4. Stereo (per-amp PAN): both channels below the ceiling, one shared gain (image never shifts)
+    {
+        SafetyLimiter lim;
+        lim.prepare(48000.0);
+        const int L = lim.getLatencySamples();
+        const double ceil = lim.getCeiling();
+        std::normal_distribution<double> noise(0.0, 1.0);
+        std::vector<double> l(48000 * 20), r(l.size());
+        for (size_t i = 0; i < l.size(); ++i)
+        {
+            const double loud = (i / 9600) % 2 ? 6.0 : 0.3;
+            l[i] = loud * noise(rng);                                   // loud left channel
+            r[i] = 0.25 * loud * noise(rng) * ((i / 24000) % 3 ? 1 : 0); // quieter right, sometimes silent
+        }
+        auto yl = l, yr = r;
+        std::uniform_int_distribution<int> blk(1, 512);
+        for (size_t p = 0; p < yl.size();)
+        {
+            const int n = (int) std::min<size_t>((size_t) blk(rng), yl.size() - p);
+            lim.process(yl.data() + p, yr.data() + p, n);
+            p += (size_t) n;
+        }
+        double maxOut = 0, worstRatio = 0;
+        for (size_t i = (size_t) L; i < yl.size(); ++i)
+        {
+            maxOut = std::max({ maxOut, std::abs(yl[i]), std::abs(yr[i]) });
+            const double xl = l[i - (size_t) L], xr = r[i - (size_t) L];
+            if (std::abs(xl) > 1e-3 && std::abs(xr) > 1e-3 && std::abs(yl[i]) < ceil * 0.999 && std::abs(yr[i]) < ceil * 0.999)
+                worstRatio = std::max(worstRatio, std::abs(yl[i] / xl - yr[i] / xr)); // gain left vs gain right
+        }
+        const bool ok = maxOut <= ceil && worstRatio < 1e-12;
+        failures += ok ? 0 : 1;
+        std::printf("[%s] stereo-linked: max output %.4f dBFS on either channel, left/right gain difference %.1e\n",
+                    ok ? "PASS" : "FAIL", 20 * std::log10(maxOut), worstRatio);
+    }
+
     std::printf(failures == 0 ? "\nALL PASS\n" : "\n%d FAILURE(S)\n", failures);
     return failures == 0 ? 0 : 1;
 }

@@ -71,7 +71,15 @@ public:
     // amps[s] = processed output of slot s (n samples, may be nullptr if not loaded).
     // gains[s] = level-match gain per slot. Writes the blended signal to out.
     void process(const std::array<const double*, kFrankMaxSlots>& amps, const std::array<double, kFrankMaxSlots>& gains,
-                 double* out, int n) noexcept;
+                 double* out, int n) noexcept
+    {
+        process(amps, gains, gains, out, nullptr, n);
+    }
+    // Stereo (per-amp PAN): gainsL/gainsR include the pan gains; outR may be nullptr (mono).
+    // The band split is shared; each channel has its own phase compensation, so both channels
+    // reconstruct perfectly.
+    void process(const std::array<const double*, kFrankMaxSlots>& amps, const std::array<double, kFrankMaxSlots>& gainsL,
+                 const std::array<double, kFrankMaxSlots>& gainsR, double* outL, double* outR, int n) noexcept;
 
 private:
     struct Svf
@@ -92,7 +100,7 @@ private:
 
     // per slot, per crossover: stage-1 SVF (gives LP2 and HP2), stage-2 LP2, stage-2 HP2
     std::array<std::array<std::array<Svf, 3>, C>, kFrankMaxSlots> split {};
-    std::array<Svf, C> allpass {};
+    std::array<Svf, C> allpass {}, allpassR {};
 };
 
 } // namespace ampsurd

@@ -77,6 +77,10 @@ int main(int argc, char** argv)
                 p->setAttribute("value", 1.0);
             for (int i = 0; i < 5; ++i)
                 if (id == "s" + juce::String(i + 1) + "_mix") p->setAttribute("value", i < numCaps ? 100.0 / numCaps : 0.0);
+            // AMPSURD_TEST_PAN="-100,100,..." sets the PAN of slots 1, 2, ...
+            const auto pans = juce::StringArray::fromTokens(juce::SystemStats::getEnvironmentVariable("AMPSURD_TEST_PAN", ""), ",", "");
+            for (int i = 0; i < pans.size() && i < 5; ++i)
+                if (pans[i].isNotEmpty() && id == "s" + juce::String(i + 1) + "_pan") p->setAttribute("value", pans[i].getDoubleValue());
         }
     juce::MemoryBlock newInner;
     juce::AudioProcessor::copyXmlToBinary(*xml, newInner);
@@ -101,7 +105,7 @@ int main(int argc, char** argv)
     std::cout << "Latency reported to host: " << plugin->getLatencySamples() << " samples ("
               << juce::String(plugin->getLatencySamples() * 1000.0 / sr, 2) << " ms)\n";
 
-    juce::AudioBuffer<float> output(1, input.getNumSamples());
+    juce::AudioBuffer<float> output(2, input.getNumSamples()); // stereo out (per-amp PAN)
     const auto t0 = juce::Time::getMillisecondCounterHiRes();
     for (int pos = 0; pos < input.getNumSamples(); pos += block)
     {
@@ -111,11 +115,12 @@ int main(int argc, char** argv)
         chunk.copyFrom(1, 0, input, 0, pos, n);
         plugin->processBlock(chunk, midi);
         output.copyFrom(0, pos, chunk, 0, 0, n);
+        output.copyFrom(1, pos, chunk, 1, 0, n);
     }
     const auto ms = juce::Time::getMillisecondCounterHiRes() - t0;
     std::cout << "Rendered " << input.getNumSamples() / sr << " s in " << ms << " ms ("
               << juce::String(100.0 * ms / 1000.0 / (input.getNumSamples() / sr), 1) << " % of real time)\n";
-    std::cout << "Output peak: " << juce::Decibels::gainToDecibels(output.getMagnitude(0, 0, output.getNumSamples()), -200.0f) << " dBFS\n";
+    std::cout << "Output peak: " << juce::Decibels::gainToDecibels(output.getMagnitude(0, output.getNumSamples()), -200.0f) << " dBFS\n";
 
     // Saved state must reference the captures.
     plugin->getStateInformation(state);
@@ -135,7 +140,7 @@ int main(int argc, char** argv)
     outFile.deleteFile();
     juce::WavAudioFormat wav;
     std::unique_ptr<juce::OutputStream> os(outFile.createOutputStream().release());
-    auto writer = wav.createWriterFor(os, juce::AudioFormatWriterOptions {}.withSampleRate(sr).withNumChannels(1).withBitsPerSample(32)
+    auto writer = wav.createWriterFor(os, juce::AudioFormatWriterOptions {}.withSampleRate(sr).withNumChannels(2).withBitsPerSample(32)
                                               .withSampleFormat(juce::AudioFormatWriterOptions::SampleFormat::floatingPoint));
     if (!writer) { std::cerr << "cannot create writer\n"; return 5; }
     writer->writeFromAudioSampleBuffer(output, 0, output.getNumSamples());

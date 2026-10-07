@@ -6,6 +6,27 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-08 — Session 2f: per-amp PAN (stereo output) — Claude (Opus 5.5)
+
+- Engine: stereo output. PAN per amp, constant power with the centre at exactly 0 dB on both sides
+  (L = √2·cos θ, R = √2·sin θ; centre forced to exactly 1/1). Separate smoothed L/R gains (25 ms).
+- Mix law with PAN: G uses the loudness of both channels together (BS.1770: sum of channel powers),
+  i.e. C_ij weighted by (L_i·L_j + R_i·R_j)/2; all centred = the previous formula exactly.
+- Frankenstein: shared band split, per-channel phase compensation (both channels reconstruct).
+- Global EQ on both channels; gate applies the same gain to both; SafetyLimiter stereo-linked
+  (gain from the louder channel, applied to both, so the image never shifts while limiting).
+- plugin: `s1..5_pan` (−100..+100, shown C / L35 / R20; 241 parameters); stereo out bus written
+  L/R; mono out bus = (L+R)/2. UI: PAN row under each filename (double-click = centre).
+- Tested: `engine_test` — pan law constant power (4e-16); centred L and R bit-identical to the mono
+  output; stereo loudness on target for 5 pan settings (worst 0.06 dB); hard L/R: left = amp A only,
+  right = amp B only (rest −280 dB); Frankenstein + pan OK. `limiter_test` stereo: never above
+  −1 dBFS, L/R gain identical (2e-16). VST3 in host: centred → L == R and bit-identical to the NAM
+  reference; one capture hard left → L exactly +3.01 dB (×1.414214), R = 0; five panned captures at
+  +12 dB → −1.00 dBFS. Preset round trip 241/241.
+- Next: release package (signing, installer, standalone app with update check).
+
+---
+
 ## 2026-10-08 — Session 2e: Global EQ — Claude (Opus 5.5)
 
 - Owner's spec (2026-10-07): a Global EQ on the complete sound, reusing the amp EQ, opened from a

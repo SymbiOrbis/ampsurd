@@ -139,6 +139,7 @@ private:
         std::atomic<float>* alignMode = nullptr; // 0 AUTO, 1 FREE
         std::atomic<float>* timeMs = nullptr;
         std::atomic<float>* phaseDeg = nullptr;
+        std::atomic<float>* pan = nullptr;      // -100 (L) .. 0 .. +100 (R)
         std::array<std::atomic<float>*, kNumBands> freq {}, gain {}, q {};
     };
     std::array<SlotParams, kNumSlots> slotParams;
@@ -221,7 +222,7 @@ private:
     std::array<float, kNumSlots> mixGestureSnapshot {};
 
     // audio-thread state
-    std::vector<ampsurd::Sample> inBuffer, outBuffer, dryBuffer;
+    std::vector<ampsurd::Sample> inBuffer, outBuffer, outBufferR, dryBuffer;
     std::vector<float> dryDelay;
     int dryDelayPos = 0;
     double bypassMix = 0.0, bypassCoef = 0.0;

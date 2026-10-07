@@ -37,7 +37,7 @@ void NoiseGate::setParameters(bool on, float thresholdDb, float decayMs) noexcep
     decayCoef = std::pow(10.0, -3.0 / samples);
 }
 
-void NoiseGate::process(const double* key, double* target, int n) noexcept
+void NoiseGate::process(const double* key, double* target, int n, double* target2) noexcept
 {
     for (int i = 0; i < n; ++i)
     {
@@ -84,7 +84,10 @@ void NoiseGate::process(const double* key, double* target, int n) noexcept
         }
 
         if (gain != 1.0)
+        {
             target[i] *= gain;
+            if (target2 != nullptr) target2[i] *= gain;
+        }
     }
 }
 

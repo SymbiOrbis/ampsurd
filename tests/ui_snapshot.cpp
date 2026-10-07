@@ -114,6 +114,8 @@ int main(int argc, char** argv)
     {
         std::unique_ptr<juce::AudioProcessorEditor> ed(proc->createEditor());
         auto* e = dynamic_cast<AmpsurdEditor*>(ed.get());
+        setP(*proc, AmpsurdProcessor::slotParamId(0, "pan"), -40.0f);
+        setP(*proc, AmpsurdProcessor::slotParamId(2, "pan"), 35.0f);
         e->refreshAll();
         save(*ed, out.getChildFile("02_loaded.png"));
         e->selectSlot(1);

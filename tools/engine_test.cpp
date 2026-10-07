@@ -3,6 +3,7 @@
 // Usage: engine_test <captureA.nam> <captureB.nam>
 // Exit code 0 = all pass.
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -341,6 +342,107 @@ int main(int argc, char** argv)
             s.slots[0].eqEnabled = false;
         });
         check(ampOff == plain, "EQ OFF on an amp: bells AND low/high cut bypassed -> bit-identical to a flat EQ");
+    }
+
+    // ---------------- 6d. Per-amp PAN (stereo output) ----------------
+    {
+        // pan law
+        double worstPower = 0;
+        for (float pan = -1.0f; pan <= 1.0001f; pan += 0.05f)
+        {
+            const auto g = Engine::panGains(pan);
+            worstPower = std::max(worstPower, std::abs(g[0] * g[0] + g[1] * g[1] - 2.0));
+        }
+        const auto c = Engine::panGains(0.0f), hl = Engine::panGains(-1.0f), hr = Engine::panGains(1.0f);
+        check(c[0] == 1.0 && c[1] == 1.0 && hl[1] == 0.0 && hr[0] < 1e-15 && worstPower < 1e-12,
+              "PAN law: centre exactly 0 dB on both sides, hard left/right silent on the other side, constant power (error %.1e)", worstPower);
+
+        std::array<std::shared_ptr<const CaptureAnalyzer::Measurement>, kNumSlots> meas {};
+        meas[0] = CaptureAnalyzer::measure(CaptureAnalyzer::render(*loadAt(argv[1]), test, false), sr);
+        meas[1] = CaptureAnalyzer::measure(CaptureAnalyzer::render(*loadAt(argv[2]), test, false), sr);
+        const auto rig = CaptureAnalyzer::analyseRig(meas);
+        std::array<double, kNumSlots> delays = rig->autoDelay, pol { 1, 1, 1, 1, 1 }, rot {}, lg { 1, 1, 1, 1, 1 };
+        for (int i = 0; i < 2; ++i)
+        {
+            pol[(size_t) i] = rig->align[(size_t) i].polarity;
+            lg[(size_t) i] = CaptureAnalyzer::levelMatchGain(rig->loudnessDb[(size_t) i]);
+        }
+        const auto cov = CaptureAnalyzer::covariance(*rig, delays, pol, rot, lg);
+
+        struct Out { std::vector<double> mono, L, R; };
+        auto render = [&](float panA, float panB, bool frank, bool refMuteA = false, bool refMuteB = false) {
+            Engine eng, engMono;
+            for (auto* e : { &eng, &engMono })
+            {
+                e->getSlot(0).submit(loadAt(argv[1]));
+                e->getSlot(1).submit(loadAt(argv[2]));
+                e->prepare(sr, 256, 10.0);
+                e->setCovariance(cov.C, cov.valid);
+            }
+            EngineSettings s;
+            s.slots[0].mix = 60; s.slots[1].mix = 40;
+            for (int i = 0; i < 2; ++i)
+            {
+                s.slots[(size_t) i].delaySamples = delays[(size_t) i];
+                s.slots[(size_t) i].polarity = pol[(size_t) i];
+                s.slots[(size_t) i].levelGain = lg[(size_t) i];
+            }
+            s.frankenstein.enabled = frank;
+            s.frankenstein.amp = { 0, 1, 0, 0, 0 };
+            s.frankenstein.dividerHz[0] = 700.0f;
+            EngineSettings sMono = s;               // reference: no pan, mono engine call
+            sMono.slots[0].mute = refMuteA;
+            sMono.slots[1].mute = refMuteB;
+            s.slots[0].pan = panA; s.slots[1].pan = panB;
+            Out o { std::vector<double>(test.size()), std::vector<double>(test.size()), std::vector<double>(test.size()) };
+            for (size_t pos = 0; pos < test.size(); pos += 256)
+            {
+                const int n = (int) std::min<size_t>(256, test.size() - pos);
+                engMono.process(test.data() + pos, o.mono.data() + pos, n, sMono);
+                eng.process(test.data() + pos, o.L.data() + pos, o.R.data() + pos, n, s);
+            }
+            return o;
+        };
+        auto stereoLoudnessErr = [&](Out o) {
+            CaptureAnalyzer::kWeightInPlace(o.L, sr);
+            CaptureAnalyzer::kWeightInPlace(o.R, sr);
+            return 10 * std::log10(0.5 * (power(o.L, 4800) + power(o.R, 4800))) - CaptureAnalyzer::kTargetLoudnessDb;
+        };
+
+        const auto centred = render(0.0f, 0.0f, false);
+        check(centred.L == centred.mono && centred.R == centred.mono,
+              "PAN centred: left and right bit-identical to the mono engine output (nothing changes until you pan)");
+
+        double worst = 0;
+        for (auto pr : { std::pair<float, float> { 0.0f, 0.0f }, { -1.0f, 1.0f }, { -0.5f, 0.5f }, { -1.0f, -1.0f }, { 0.7f, -0.2f } })
+        {
+            const double e = stereoLoudnessErr(render(pr.first, pr.second, false));
+            std::printf("[INFO] pan %+.1f / %+.1f: stereo loudness vs target %+5.2f dB\n", pr.first, pr.second, e);
+            worst = std::max(worst, std::abs(e));
+        }
+        check(worst < 0.5, "PAN: loudness (both channels, BS.1770) stays on target whatever the panning (worst %.2f dB)", worst);
+
+        // hard left / hard right: left = only amp A, right = only amp B (each a scaled copy of that amp alone)
+        auto residual = [](const std::vector<double>& y, const std::vector<double>& x) {
+            double xy = 0, xx = 0, yy = 0;
+            for (size_t i = 48000; i < y.size(); ++i) { xy += x[i] * y[i]; xx += x[i] * x[i]; yy += y[i] * y[i]; }
+            const double k = xy / xx;
+            double r = 0;
+            for (size_t i = 48000; i < y.size(); ++i) r += (y[i] - k * x[i]) * (y[i] - k * x[i]);
+            return 10 * std::log10(r / yy + 1e-300);
+        };
+        const auto onlyA = render(-1.0f, 1.0f, false, false, true), onlyB = render(-1.0f, 1.0f, false, true, false);
+        const double resL = residual(onlyA.L, onlyA.mono), resR = residual(onlyB.R, onlyB.mono);
+        check(resL < -100 && resR < -100,
+              "PAN hard left / hard right: left = amp A only, right = amp B only (anything else %.0f / %.0f dB)", resL, resR);
+
+        const auto fr = render(-0.6f, 0.6f, true);
+        const double fe = stereoLoudnessErr(fr);
+        double frankCentDiff = 0;
+        const auto frc = render(0.0f, 0.0f, true);
+        for (size_t i = 0; i < frc.L.size(); ++i) frankCentDiff = std::max(frankCentDiff, std::abs(frc.L[i] - frc.mono[i]) + std::abs(frc.R[i] - frc.mono[i]));
+        check(frankCentDiff == 0.0 && std::abs(fe) < 2.0,
+              "PAN + Frankenstein: centred = mono exactly; panned -60/+60 stereo loudness %+.2f dB vs single-capture level", fe);
     }
 
     // ---------------- 7. Percentages with mute / solo ----------------

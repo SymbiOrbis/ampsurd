@@ -30,12 +30,16 @@ tests/   plugin_host_test (hosts the built .vst3), ui_snapshot (renders the edit
 ## Signal flow
 
 ```
-DAW input ch 1 → INPUT gain ─┬→ slot 1: capture → align (time/polarity/phase) → EQ → p1·G·level1 ─┐
+DAW input ch 1 → INPUT gain ─┬→ slot 1: capture → align (time/polarity/phase) → EQ → p1·G·level1·PAN1 ─┐
                              ├→ slot 2 … slot 5 (same)                                            ├→ Σ
                              ├→ DI → gate detector, tuner                                         │
                              └→ dry delay line (for BYPASS)                                       │
-Σ (fader blend, or Frankenstein frequency split) → GLOBAL EQ → gate (opens/closes from the DI)
-  → OUTPUT gain → safety limiter (≤ -1 dBFS) → (crossfade with dry when BYPASS) → all outputs
+Σ left / Σ right (fader blend, or Frankenstein frequency split) → GLOBAL EQ (L, R)
+  → gate (opens/closes from the DI, same gain on L and R) → OUTPUT gain
+  → safety limiter (≤ -1 dBFS, stereo-linked) → (crossfade with dry when BYPASS) → output L / R
+PAN: constant power, centre = 0 dB on both sides (centred amps: L and R identical to the former mono
+output), hard left/right = +3 dB on one side. Mix law G counts the power of both channels (BS.1770).
+Mono output bus: (L + R) / 2.
 ```
 
 Latency (reported to the DAW, constant while playing) = resampler latency (only when host rate

@@ -28,7 +28,7 @@ public:
     void setParameters(bool enabled, float thresholdDb, float decayMs) noexcept;
 
     // key: detection signal (n samples). target: processed in place.
-    void process(const double* key, double* target, int n) noexcept;
+    void process(const double* key, double* target, int n, double* target2 = nullptr) noexcept; // target2: other channel (same gain)
 
     double getCurrentGain() const noexcept { return gain; }
     bool isOpen() const noexcept { return open; }

@@ -233,13 +233,28 @@ SlotComponent::SlotComponent(AmpsurdProcessor& p, int s) : proc(p), slot(s), fad
     soloButton.setTooltip("Hear only the soloed amps");
     muteButton.setTooltip("Silence this amp (its mix share is kept)");
     editButton.setTooltip("Open EQ and alignment for this amp");
+
+    panSlider.setSliderStyle(juce::Slider::LinearHorizontal);
+    panSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+    panSlider.setDoubleClickReturnValue(true, 0.0);
+    panSlider.setTooltip("PAN: place this amp in the stereo field (double-click = centre)");
+    panSlider.setMouseDragSensitivity(220);
+    addAndMakeVisible(panSlider);
+    panAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.params, AmpsurdProcessor::slotParamId(s, "pan"), panSlider);
+    panSlider.onValueChange = [this] { repaint(panArea()); };
+}
+
+juce::Rectangle<int> SlotComponent::panArea() const
+{
+    // one row under the filename, left of the fader
+    return { 14, getHeight() - 92 - 26, getWidth() - 14 - 14 - 44, 22 };
 }
 
 SlotComponent::~SlotComponent() = default;
 
 juce::Rectangle<int> SlotComponent::nameArea() const
 {
-    return { 14, 40, getWidth() - 14 - 14 - 44, getHeight() - 40 - 92 };
+    return { 14, 40, getWidth() - 14 - 14 - 44, getHeight() - 40 - 92 - 30 };
 }
 
 void SlotComponent::resized()
@@ -254,6 +269,10 @@ void SlotComponent::resized()
     muteButton.setBounds(row2.removeFromRight(bw));
     r.removeFromBottom(12);
     fader.setBounds(r.removeFromRight(40).withTrimmedTop(26));
+    auto pa = panArea();
+    pa.removeFromLeft(34);  // "PAN" label
+    pa.removeFromRight(34); // value
+    panSlider.setBounds(pa);
 }
 
 void SlotComponent::paint(juce::Graphics& g)
@@ -292,6 +311,21 @@ void SlotComponent::paint(juce::Graphics& g)
     }
 
     // the filename - large, fixed size, wrapped, centred
+    {
+        // PAN row: label, centre tick behind the slider, value (C / L35 / R20)
+        const bool loaded = isLoadedState(status.state);
+        const auto pr = panArea();
+        drawLabel(g, "PAN", pr.withWidth(32), loaded ? textDim : textFaint, juce::Justification::centredLeft);
+        const auto sb = panSlider.getBounds();
+        g.setColour(line);
+        g.fillRect(sb.getCentreX(), sb.getY() + 3, 1, sb.getHeight() - 6);
+        const int v = juce::roundToInt(panSlider.getValue());
+        const juce::String t = v == 0 ? juce::String("C") : (v < 0 ? "L" : "R") + juce::String(std::abs(v));
+        g.setColour(loaded ? (v == 0 ? textDim : text) : textFaint);
+        g.setFont(Fonts::get().medium(12.0f));
+        g.drawText(t, pr.withTrimmedLeft(pr.getWidth() - 32), juce::Justification::centredRight, false);
+    }
+
     const auto area = nameArea().toFloat();
     if (status.state == AmpsurdProcessor::SlotState::empty)
     {
@@ -324,6 +358,7 @@ void SlotComponent::refresh(bool isSelected)
     soloButton.setEnabled(loaded);
     muteButton.setEnabled(loaded);
     fader.setEnabled(loaded && !proc.isFrankensteinOn()); // Frankenstein replaces the fader blend
+    panSlider.setEnabled(loaded);
     editButton.setToggleState(selected, juce::dontSendNotification);
 
     juce::String tip = st.state == AmpsurdProcessor::SlotState::empty ? juce::String("Empty slot") : st.info;

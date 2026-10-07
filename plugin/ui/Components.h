@@ -79,7 +79,11 @@ private:
     const int slot;
     juce::TextButton loadButton { "LOAD NAM" }, editButton { "EDIT" }, soloButton { "SOLO" }, muteButton { "MUTE" };
     MixFader fader;
+    juce::Slider panSlider;   // per-amp PAN (stereo width)
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> soloAtt, muteAtt;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> panAtt;
+    juce::Rectangle<int> panArea() const;
+    juce::String panText;
     std::unique_ptr<juce::FileChooser> chooser;
 
     AmpsurdProcessor::SlotStatus status;

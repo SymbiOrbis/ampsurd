@@ -30,7 +30,9 @@ public:
     void reset() noexcept;
 
     // In place. Any block length.
-    void process(double* x, int n) noexcept;
+    void process(double* x, int n) noexcept { process(x, nullptr, n); }
+    // Stereo-linked: one gain from the louder channel, applied to both (the image never shifts).
+    void process(double* left, double* right, int n) noexcept;
 
     int getLatencySamples() const noexcept { return lookahead; }
     double getCeiling() const noexcept { return ceiling; }
@@ -44,7 +46,7 @@ private:
     double releaseCoef = 0.0;
 
     // Delay line for the audio (L samples).
-    std::vector<double> delay;
+    std::vector<double> delay, delayR;
     int delayPos = 0;
 
     // Sliding-window minimum of required gains over the last L+1 samples (monotonic deque in a ring).

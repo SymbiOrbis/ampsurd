@@ -158,6 +158,7 @@ void FrankensteinMixer::reset() noexcept
         for (auto& cr : slot)
             for (auto& f : cr) f.reset();
     for (auto& a : allpass) a.reset();
+    for (auto& a : allpassR) a.reset();
 }
 
 void FrankensteinMixer::setTarget(const FrankensteinLayout& L) noexcept
@@ -175,7 +176,8 @@ void FrankensteinMixer::snapToTarget() noexcept
 }
 
 void FrankensteinMixer::process(const std::array<const double*, kFrankMaxSlots>& amps,
-                                const std::array<double, kFrankMaxSlots>& gains, double* out, int n) noexcept
+                                const std::array<double, kFrankMaxSlots>& gains, const std::array<double, kFrankMaxSlots>& gainsR,
+                                double* out, double* outR, int n) noexcept
 {
     auto tick = [](Svf& s, const Coef& c, double v0, double& v1, double& v2) {
         const double v3 = v0 - s.ic2;
@@ -214,12 +216,13 @@ void FrankensteinMixer::process(const std::array<const double*, kFrankMaxSlots>&
 
         for (int i = start; i < start + len; ++i)
         {
-            // per-band weighted sums of all amps
-            std::array<double, B> bandSum {};
+            // per-band weighted sums of all amps (left, right)
+            std::array<double, B> bandSum {}, bandSumR {};
             for (int s = 0; s < kFrankMaxSlots; ++s)
             {
                 if (amps[(size_t) s] == nullptr) continue;
-                double rest = amps[(size_t) s][i] * gains[(size_t) s];
+                double rest = amps[(size_t) s][i];
+                const double gl = gains[(size_t) s], gr = gainsR[(size_t) s];
                 auto& st = split[(size_t) s];
                 const auto& ws = w[(size_t) s];
                 for (int c = 0; c < C; ++c)
@@ -233,21 +236,27 @@ void FrankensteinMixer::process(const std::array<const double*, kFrankMaxSlots>&
                     const double low = u2;
                     tick(st[(size_t) c][2], k, hp1, u1, u2);
                     rest = hp1 - k.k * u1 - u2;
-                    bandSum[(size_t) c] += ws[(size_t) c] * low;
+                    bandSum[(size_t) c] += ws[(size_t) c] * low * gl;
+                    bandSumR[(size_t) c] += ws[(size_t) c] * low * gr;
                 }
-                bandSum[(size_t) C] += ws[(size_t) C] * rest;
+                bandSum[(size_t) C] += ws[(size_t) C] * rest * gl;
+                bandSumR[(size_t) C] += ws[(size_t) C] * rest * gr;
             }
 
             // Horner-style phase compensation: t = AP_c(t) + band_c, so every band passes the
             // all-passes of all crossovers above it and the bands sum to an all-pass.
-            double t = bandSum[0];
-            for (int c = 1; c < C; ++c)
-            {
-                double v1, v2;
-                tick(allpass[(size_t) c], coefs[(size_t) c], t, v1, v2);
-                t = (t - 2.0 * coefs[(size_t) c].k * v1) + bandSum[(size_t) c];
-            }
-            out[i] = t + bandSum[(size_t) C];
+            auto compensate = [&](std::array<Svf, C>& ap, const std::array<double, B>& bs) {
+                double t = bs[0];
+                for (int c = 1; c < C; ++c)
+                {
+                    double v1, v2;
+                    tick(ap[(size_t) c], coefs[(size_t) c], t, v1, v2);
+                    t = (t - 2.0 * coefs[(size_t) c].k * v1) + bs[(size_t) c];
+                }
+                return t + bs[(size_t) C];
+            };
+            out[i] = compensate(allpass, bandSum);
+            if (outR != nullptr) outR[i] = compensate(allpassR, bandSumR);
         }
     }
 }
