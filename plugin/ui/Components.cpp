@@ -2,6 +2,8 @@
 
 #include "BinaryData.h"
 
+#include <limits>
+
 namespace ampsurd::ui
 {
 using namespace colours;
@@ -27,7 +29,7 @@ bool isLoadedState(AmpsurdProcessor::SlotState s)
 }
 
 void drawLabel(juce::Graphics& g, const juce::String& t, juce::Rectangle<int> r, juce::Colour c,
-               juce::Justification j = juce::Justification::centredLeft, float size = 10.5f)
+               juce::Justification j = juce::Justification::centredLeft, float size = 11.0f)
 {
     g.setColour(c);
     g.setFont(Fonts::get().label(size));
@@ -422,14 +424,21 @@ float EqGraph::gainForY(float y) const
     return (r.getCentreY() - y) / (r.getHeight() * 0.5f) * kGraphRangeDb;
 }
 
-int EqGraph::bandAt(juce::Point<float> p) const
+juce::Point<float> EqGraph::nodePos(int i, const std::array<ampsurd::EqBand, ampsurd::ParametricEq::kNumBands>& b) const
+{
+    // cut bands have no gain: their point sits on the 0 dB line at the corner frequency
+    const bool bell = ampsurd::ParametricEq::bandType(i) == ampsurd::ParametricEq::BandType::bell;
+    return { xForFreq(b[(size_t) i].freqHz), yForGain(bell ? b[(size_t) i].gainDb : 0.0f) };
+}
+
+int EqGraph::bandAt(juce::Point<float> p, float maxDistance) const
 {
     const auto b = bands();
     int best = -1;
-    float bestD = 12.0f;
+    float bestD = maxDistance < 0.0f ? std::numeric_limits<float>::max() : maxDistance;
     for (int i = 0; i < ampsurd::ParametricEq::kNumBands; ++i)
     {
-        const float d = p.getDistanceFrom({ xForFreq(b[(size_t) i].freqHz), yForGain(b[(size_t) i].gainDb) });
+        const float d = p.getDistanceFrom(nodePos(i, b));
         if (d < bestD) { bestD = d; best = i; }
     }
     return best;
@@ -442,13 +451,13 @@ void EqGraph::paint(juce::Graphics& g)
     g.drawRect(r, 1.0f);
 
     // grid
-    g.setFont(Fonts::get().regular(10.0f));
+    g.setFont(Fonts::get().regular(11.5f));
     for (float f : { 50.0f, 100.0f, 200.0f, 500.0f, 1000.0f, 2000.0f, 5000.0f, 10000.0f })
     {
         const float x = xForFreq(f);
         g.setColour(grid);
         g.fillRect(x - 0.5f, r.getY() + 1.0f, 1.0f, r.getHeight() - 2.0f);
-        g.setColour(textFaint);
+        g.setColour(textDim);
         const juce::String lbl = f >= 1000.0f ? juce::String((int) (f / 1000.0f)) + "k" : juce::String((int) f);
         g.drawText(lbl, juce::Rectangle<float>(x - 20.0f, r.getBottom() + 2.0f, 40.0f, 13.0f), juce::Justification::centred, false);
     }
@@ -456,13 +465,13 @@ void EqGraph::paint(juce::Graphics& g)
     {
         g.setColour(grid);
         g.fillRect(r.getX() + 1.0f, yForGain(db) - 0.5f, r.getWidth() - 2.0f, 1.0f);
-        g.setColour(textFaint);
+        g.setColour(textDim);
         g.drawText((db > 0 ? "+" : "") + juce::String((int) db), juce::Rectangle<float>(r.getX() + 4.0f, yForGain(db) - 7.0f, 30.0f, 14.0f),
                    juce::Justification::centredLeft, false);
     }
     g.setColour(line);
     g.fillRect(r.getX() + 1.0f, yForGain(0.0f) - 0.5f, r.getWidth() - 2.0f, 1.0f);
-    g.setColour(textFaint);
+    g.setColour(textDim);
     g.drawText("0", juce::Rectangle<float>(r.getX() + 4.0f, yForGain(0.0f) - 7.0f, 30.0f, 14.0f), juce::Justification::centredLeft, false);
 
     if (slot < 0) return;
@@ -487,9 +496,11 @@ void EqGraph::paint(juce::Graphics& g)
     // nodes
     for (int i = 0; i < ampsurd::ParametricEq::kNumBands; ++i)
     {
-        const float x = xForFreq(b[(size_t) i].freqHz), y = yForGain(b[(size_t) i].gainDb);
+        const auto pos = nodePos(i, b);
+        const float x = pos.x, y = pos.y;
         const bool hot = i == hoverBand || i == activeBand;
-        const bool used = b[(size_t) i].gainDb != 0.0f;
+        const bool bell = ampsurd::ParametricEq::bandType(i) == ampsurd::ParametricEq::BandType::bell;
+        const bool used = bell ? b[(size_t) i].gainDb != 0.0f : ampsurd::ParametricEq::isCutActive(i, b[(size_t) i].freqHz);
         const float rad = hot ? 6.5f : 5.0f;
         g.setColour(background);
         g.fillEllipse(x - rad, y - rad, rad * 2, rad * 2);
@@ -499,7 +510,7 @@ void EqGraph::paint(juce::Graphics& g)
         g.drawEllipse(x - rad, y - rad, rad * 2, rad * 2, 1.2f);
         if (hot)
         {
-            g.setFont(Fonts::get().semibold(10.0f));
+            g.setFont(Fonts::get().semibold(11.0f));
             g.drawText(juce::String(i + 1), juce::Rectangle<float>(x - 10.0f, y - rad - 15.0f, 20.0f, 12.0f), juce::Justification::centred, false);
         }
     }
@@ -509,18 +520,29 @@ void EqGraph::paint(juce::Graphics& g)
     if (shown >= 0)
     {
         const auto& bb = b[(size_t) shown];
+        const auto type = ampsurd::ParametricEq::bandType(shown);
         const juce::String f = bb.freqHz >= 1000.0f ? juce::String(bb.freqHz / 1000.0f, 2) + " kHz" : juce::String(juce::roundToInt(bb.freqHz)) + " Hz";
-        const juce::String t = "BAND " + juce::String(shown + 1) + "     " + f + "     " + (bb.gainDb >= 0 ? "+" : "")
-                               + juce::String(bb.gainDb, 1) + " dB     Q " + juce::String(bb.q, 2);
+        juce::String t;
+        if (type == ampsurd::ParametricEq::BandType::bell)
+            t = "BAND " + juce::String(shown + 1) + "     " + f + "     " + (bb.gainDb >= 0 ? "+" : "")
+                + juce::String(bb.gainDb, 1) + " dB     Q " + juce::String(bb.q, 2);
+        else
+        {
+            const juce::String name = type == ampsurd::ParametricEq::BandType::lowCut ? "LOW CUT" : "HIGH CUT";
+            const float q = juce::jlimit(ampsurd::ParametricEq::kMinCutQ, ampsurd::ParametricEq::kMaxCutQ, bb.q);
+            t = ampsurd::ParametricEq::isCutActive(shown, bb.freqHz)
+                    ? name + "     " + f + "     12 dB/oct     Q " + juce::String(q, 2)
+                    : name + "     off  (drag " + juce::String(type == ampsurd::ParametricEq::BandType::lowCut ? "right" : "left") + " to use)";
+        }
         g.setColour(text);
         g.setFont(Fonts::get().medium(12.0f));
         g.drawText(t, r.reduced(10.0f, 6.0f).removeFromTop(16.0f).withTrimmedLeft(30.0f), juce::Justification::centredLeft, false);
     }
     else
     {
-        g.setColour(textFaint);
-        g.setFont(Fonts::get().regular(11.5f));
-        g.drawText("Drag a point: left/right = frequency, up/down = gain.  Wheel = width (Q).  Double-click = reset.",
+        g.setColour(textDim);
+        g.setFont(Fonts::get().regular(12.0f));
+        g.drawText("Drag a point: left/right = frequency, up/down = gain.  Wheel = width (Q) of the nearest point.  Double-click = reset.",
                    r.reduced(10.0f, 6.0f).removeFromTop(16.0f).withTrimmedLeft(30.0f), juce::Justification::centredLeft, false);
     }
     if (!eqOn)
@@ -544,9 +566,10 @@ void EqGraph::refreshIfChanged()
 
 void EqGraph::mouseMove(const juce::MouseEvent& e)
 {
-    const int b = bandAt(e.position);
+    // the nearest point is highlighted: it is the one the mouse wheel changes
+    const int b = slot >= 0 ? bandAt(e.position, -1.0f) : -1;
     if (b != hoverBand) { hoverBand = b; repaint(); }
-    setMouseCursor(b >= 0 ? juce::MouseCursor::DraggingHandCursor : juce::MouseCursor::NormalCursor);
+    setMouseCursor(bandAt(e.position, kGrabRadius) >= 0 ? juce::MouseCursor::DraggingHandCursor : juce::MouseCursor::NormalCursor);
 }
 
 void EqGraph::mouseExit(const juce::MouseEvent&)
@@ -557,10 +580,11 @@ void EqGraph::mouseExit(const juce::MouseEvent&)
 void EqGraph::mouseDown(const juce::MouseEvent& e)
 {
     if (slot < 0) return;
-    activeBand = bandAt(e.position);
+    activeBand = bandAt(e.position, kGrabRadius);
     if (activeBand < 0) return;
     if (auto* f = bandParam(activeBand, "freq")) f->beginChangeGesture();
-    if (auto* gp = bandParam(activeBand, "gain")) gp->beginChangeGesture();
+    if (ampsurd::ParametricEq::bandType(activeBand) == ampsurd::ParametricEq::BandType::bell)
+        if (auto* gp = bandParam(activeBand, "gain")) gp->beginChangeGesture();
     repaint();
 }
 
@@ -571,6 +595,11 @@ void EqGraph::mouseDrag(const juce::MouseEvent& e)
     const float x = juce::jlimit(r.getX(), r.getRight(), (float) e.position.x);
     const float y = juce::jlimit(r.getY(), r.getBottom(), (float) e.position.y);
     if (auto* f = bandParam(activeBand, "freq")) f->setValueNotifyingHost(f->convertTo0to1(freqForX(x)));
+    if (ampsurd::ParametricEq::bandType(activeBand) != ampsurd::ParametricEq::BandType::bell)
+    {
+        repaint(); // cut bands: frequency only
+        return;
+    }
     if (auto* gp = bandParam(activeBand, "gain"))
     {
         float gdb = juce::jlimit(-18.0f, 18.0f, gainForY(y));
@@ -585,7 +614,8 @@ void EqGraph::mouseUp(const juce::MouseEvent&)
     if (activeBand >= 0)
     {
         if (auto* f = bandParam(activeBand, "freq")) f->endChangeGesture();
-        if (auto* gp = bandParam(activeBand, "gain")) gp->endChangeGesture();
+        if (ampsurd::ParametricEq::bandType(activeBand) == ampsurd::ParametricEq::BandType::bell)
+            if (auto* gp = bandParam(activeBand, "gain")) gp->endChangeGesture();
     }
     activeBand = -1;
     repaint();
@@ -594,10 +624,10 @@ void EqGraph::mouseUp(const juce::MouseEvent&)
 void EqGraph::mouseDoubleClick(const juce::MouseEvent& e)
 {
     if (slot < 0) return;
-    const int b = bandAt(e.position);
+    const int b = bandAt(e.position, kGrabRadius);
     if (b < 0) return;
     const auto d = ampsurd::ParametricEq::defaultBands();
-    for (auto [name, v] : { std::pair<const char*, float> { "freq", d[(size_t) b].freqHz }, { "gain", 0.0f }, { "q", 1.0f } })
+    for (auto [name, v] : { std::pair<const char*, float> { "freq", d[(size_t) b].freqHz }, { "gain", 0.0f }, { "q", d[(size_t) b].q } })
         if (auto* p = bandParam(b, name))
         {
             p->beginChangeGesture();
@@ -610,12 +640,15 @@ void EqGraph::mouseDoubleClick(const juce::MouseEvent& e)
 void EqGraph::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
 {
     if (slot < 0) return;
-    const int b = activeBand >= 0 ? activeBand : bandAt(e.position);
+    const int b = activeBand >= 0 ? activeBand : bandAt(e.position, -1.0f); // nearest point
     if (b < 0) return;
     if (auto* q = bandParam(b, "q"))
     {
-        const float cur = q->convertFrom0to1(q->getValue());
-        const float nv = juce::jlimit(0.3f, 10.0f, cur * (w.deltaY > 0 ? 1.12f : 1.0f / 1.12f));
+        const bool bell = ampsurd::ParametricEq::bandType(b) == ampsurd::ParametricEq::BandType::bell;
+        const float lo = bell ? ampsurd::ParametricEq::kMinQ : ampsurd::ParametricEq::kMinCutQ;
+        const float hi = bell ? ampsurd::ParametricEq::kMaxQ : ampsurd::ParametricEq::kMaxCutQ;
+        const float cur = juce::jlimit(lo, hi, q->convertFrom0to1(q->getValue()));
+        const float nv = juce::jlimit(lo, hi, cur * (w.deltaY > 0 ? 1.12f : 1.0f / 1.12f));
         q->beginChangeGesture();
         q->setValueNotifyingHost(q->convertTo0to1(nv));
         q->endChangeGesture();
@@ -750,7 +783,7 @@ EditPanel::EditPanel(AmpsurdProcessor& p) : proc(p), graph(p), align(p)
         {
             setParamValue(proc, AmpsurdProcessor::bandParamId(slot, b, "gain"), 0.0f);
             setParamValue(proc, AmpsurdProcessor::bandParamId(slot, b, "freq"), d[(size_t) b].freqHz);
-            setParamValue(proc, AmpsurdProcessor::bandParamId(slot, b, "q"), 1.0f);
+            setParamValue(proc, AmpsurdProcessor::bandParamId(slot, b, "q"), d[(size_t) b].q);
         }
     };
     removeButton.onClick = [this] { if (slot >= 0) proc.unloadCapture(slot); };
@@ -907,13 +940,13 @@ void MasterPanel::paint(juce::Graphics& g)
     {
         g.setColour(onFill);
         g.fillRoundedRectangle(lim.toFloat(), 2.0f);
-        drawLabel(g, "LIMIT " + juce::String(-limitDb, 1), lim, onText, juce::Justification::centred, 9.5f);
+        drawLabel(g, "LIMIT " + juce::String(-limitDb, 1), lim, onText, juce::Justification::centred, 10.5f);
     }
     else
-        drawLabel(g, "LIMIT", lim, textFaint, juce::Justification::centred, 9.5f);
+        drawLabel(g, "LIMIT", lim, textFaint, juce::Justification::centred, 10.5f);
 
-    g.setColour(textFaint);
-    g.setFont(Fonts::get().regular(11.0f));
+    g.setColour(textDim);
+    g.setFont(Fonts::get().regular(12.5f));
     g.drawText(cpuText, getLocalBounds().reduced(16, 0), juce::Justification::centredRight, false);
 }
 
@@ -1084,7 +1117,7 @@ void BrandingFooter::paint(juce::Graphics& g)
     const int total = labelW + 3 * boxW + 2 * gap;
     int x = (getWidth() - total) / 2;
     const int y = (getHeight() - boxH) / 2 + 1;
-    drawLabel(g, "BROUGHT TO YOU BY", { x, y, labelW - 12, boxH }, textFaint, juce::Justification::centredRight, 9.5f);
+    drawLabel(g, "BROUGHT TO YOU BY", { x, y, labelW - 12, boxH }, textDim, juce::Justification::centredRight, 10.5f);
     x += labelW;
     for (int i = 0; i < 3; ++i)
     {
@@ -1095,7 +1128,7 @@ void BrandingFooter::paint(juce::Graphics& g)
         {
             g.setColour(line);
             g.drawRect(box, 1);
-            drawLabel(g, names[i], box, textFaint, juce::Justification::centred, 9.0f);
+            drawLabel(g, names[i], box, textDim, juce::Justification::centred, 10.0f);
         }
         x += boxW + gap;
     }

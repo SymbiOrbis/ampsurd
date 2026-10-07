@@ -70,9 +70,11 @@ int main(int argc, char** argv)
         auto bands = ParametricEq::defaultBands();
         bands[2] = { 250.0f, 9.0f, 2.0f };
         bands[6] = { 2000.0f, -12.0f, 0.7f };
-        bands[9] = { 12000.0f, 6.0f, 1.0f };
+        bands[8] = { 8000.0f, 6.0f, 1.0f };
+        bands[0] = { 100.0f, 0.0f, 0.707f };  // LOW CUT at 100 Hz
+        bands[9] = { 6000.0f, 0.0f, 1.2f };   // HIGH CUT at 6 kHz
         double worst = 0;
-        for (double f : { 50.0, 250.0, 700.0, 2000.0, 5000.0, 12000.0 })
+        for (double f : { 40.0, 100.0, 250.0, 700.0, 2000.0, 5000.0, 8000.0, 12000.0 })
         {
             ParametricEq eq; eq.prepare(sr); eq.setBands(bands); eq.reset();
             auto x = sine(f, sr, 24000);
@@ -81,12 +83,21 @@ int main(int argc, char** argv)
             const double meas = 20 * std::log10(a / 0.5), expect = ParametricEq::magnitudeDb(bands, f, sr);
             worst = std::max(worst, std::abs(meas - expect));
         }
-        check(worst < 0.05, "EQ: measured response matches the drawn curve (worst error %.3f dB)", worst);
+        check(worst < 0.05, "EQ: bells + low cut + high cut: measured response matches the drawn curve (worst error %.3f dB)", worst);
 
         ParametricEq eq; eq.prepare(sr);
         auto x = sine(440, sr, 4800), y = x;
         eq.process(y.data(), (int) y.size());
-        check(x == y, "EQ: all bands flat -> output bit-identical to input");
+        check(x == y, "EQ: default settings (cuts at their end stops, bells flat) -> output bit-identical to input");
+        {
+            auto b2 = ParametricEq::defaultBands();
+            b2[0].freqHz = 100.0f;
+            const double at50 = ParametricEq::magnitudeDb(b2, 50.0, sr), at25 = ParametricEq::magnitudeDb(b2, 25.0, sr);
+            const double up = ParametricEq::magnitudeDb(b2, 2000.0, sr);
+            check(at50 < -11.0 && at25 - at50 < -10.0 && std::abs(up) < 0.05,
+                  "EQ: low cut never boosts above its corner and falls 12 dB/octave (-%.1f dB at 50 Hz, %.1f dB/oct, %.2f dB at 2 kHz)",
+                  -at50, at25 - at50, up);
+        }
     }
 
     // ---------------- 2. Fractional delay ----------------

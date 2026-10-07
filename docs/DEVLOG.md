@@ -6,6 +6,19 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-07 — Session 2b: first REAPER feedback — Claude (Opus 5.5)
+
+- Windows CI build green; plugin loads in REAPER once Smart App Control is off (0xc0e90002 = unsigned).
+- CI artifact now contains the `AMPSURD.vst3` folder itself.
+- EQ: band 1 = low cut, band 10 = high cut (12 dB/oct SVF, resonance Q 0.5–2, off at 20 Hz / 20 kHz);
+  defaults bit-transparent; graph shows cut bands on the 0 dB line, frequency-only drag.
+- Mouse wheel changes the Q of the nearest point (highlighted while hovering).
+- Contrast: secondary text #b9bbbe, faint text #8f9195; small labels 1 px larger (EQ scale, CPU, footer).
+- Tested: engine_test ALL PASS incl. new cut-band tests; UI re-rendered.
+- Note: presets saved before this change keep their band-1/band-10 frequencies; those bands are now cuts.
+
+---
+
 ## 2026-10-07 — Session 2: AMPSURD UI/UX spec, five-slot engine, mix law, EQ, alignment, presets — Claude (Opus 5.5)
 
 ### Implemented

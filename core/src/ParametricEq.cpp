@@ -16,11 +16,11 @@ T clampT(T v, T lo, T hi) { return std::min(hi, std::max(lo, v)); }
 
 std::array<EqBand, ParametricEq::kNumBands> ParametricEq::defaultBands()
 {
-    static constexpr float f[kNumBands] = { 31.5f, 63.0f, 125.0f, 250.0f, 500.0f,
-                                            1000.0f, 2000.0f, 4000.0f, 8000.0f, 16000.0f };
+    static constexpr float f[kNumBands] = { 20.0f, 63.0f, 125.0f, 250.0f, 500.0f,
+                                            1000.0f, 2000.0f, 4000.0f, 8000.0f, 20000.0f };
     std::array<EqBand, kNumBands> b {};
     for (int i = 0; i < kNumBands; ++i)
-        b[(size_t) i] = { f[i], 0.0f, 1.0f };
+        b[(size_t) i] = { f[i], 0.0f, bandType(i) == BandType::bell ? 1.0f : 0.707f };
     return b;
 }
 
@@ -33,9 +33,11 @@ void ParametricEq::prepare(double sampleRate)
     for (int i = 0; i < kNumBands; ++i)
     {
         auto& s = bands[(size_t) i];
+        s.index = i;
+        s.type = bandType(i);
         s.logF = s.tLogF = std::log(d[(size_t) i].freqHz);
         s.gain = s.tGain = 0.0;
-        s.logQ = s.tLogQ = 0.0;
+        s.logQ = s.tLogQ = std::log(d[(size_t) i].q);
     }
     reset();
 }
@@ -59,25 +61,35 @@ void ParametricEq::setBands(const std::array<EqBand, kNumBands>& t) noexcept
         auto& s = bands[(size_t) i];
         const auto& b = t[(size_t) i];
         s.tLogF = std::log((double) clampT(b.freqHz, kMinFreq, kMaxFreq));
-        s.tGain = (double) clampT(b.gainDb, kMinGain, kMaxGain);
-        s.tLogQ = std::log((double) clampT(b.q, kMinQ, kMaxQ));
+        s.tGain = s.type == BandType::bell ? (double) clampT(b.gainDb, kMinGain, kMaxGain) : 0.0;
+        s.tLogQ = s.type == BandType::bell ? std::log((double) clampT(b.q, kMinQ, kMaxQ))
+                                           : std::log((double) clampT(b.q, kMinCutQ, kMaxCutQ));
     }
 }
 
 void ParametricEq::updateCoefficients(State& s) noexcept
 {
-    s.active = s.gain != 0.0;
+    const double f = std::exp(s.logF);
+    s.active = s.type == BandType::bell ? s.gain != 0.0 : isCutActive(s.index, (float) f);
     if (!s.active)
         return;
-    const double fc = std::min(std::exp(s.logF), 0.45 * fs);
+    const double fc = std::min(f, 0.45 * fs);
     const double q = std::exp(s.logQ);
-    const double A = std::pow(10.0, s.gain / 40.0);
     const double g = std::tan(kPi * fc / fs);
-    const double k = 1.0 / (q * A);
-    s.a1 = 1.0 / (1.0 + g * (g + k));
+    if (s.type == BandType::bell)
+    {
+        const double A = std::pow(10.0, s.gain / 40.0);
+        s.k = 1.0 / (q * A);
+        s.m1 = s.k * (A * A - 1.0);
+    }
+    else
+    {
+        s.k = 1.0 / q;
+        s.m1 = 0.0;
+    }
+    s.a1 = 1.0 / (1.0 + g * (g + s.k));
     s.a2 = g * s.a1;
     s.a3 = g * s.a2;
-    s.m1 = k * (A * A - 1.0);
 }
 
 void ParametricEq::process(double* x, int n) noexcept
@@ -108,7 +120,7 @@ void ParametricEq::process(double* x, int n) noexcept
                 continue;
             }
 
-            const double a1 = s.a1, a2 = s.a2, a3 = s.a3, m1 = s.m1;
+            const double a1 = s.a1, a2 = s.a2, a3 = s.a3, m1 = s.m1, k = s.k;
             double ic1 = s.ic1, ic2 = s.ic2;
             for (int i = 0; i < len; ++i)
             {
@@ -118,7 +130,12 @@ void ParametricEq::process(double* x, int n) noexcept
                 const double v2 = ic2 + a2 * ic1 + a3 * v3;
                 ic1 = 2.0 * v1 - ic1;
                 ic2 = 2.0 * v2 - ic2;
-                p[i] = v0 + m1 * v1;
+                switch (s.type)
+                {
+                    case BandType::bell:    p[i] = v0 + m1 * v1; break;
+                    case BandType::lowCut:  p[i] = v0 - k * v1 - v2; break;
+                    case BandType::highCut: p[i] = v2; break;
+                }
             }
             // flush denormals
             s.ic1 = std::abs(ic1) < 1e-25 ? 0.0 : ic1;
@@ -131,19 +148,31 @@ double ParametricEq::magnitudeDb(const std::array<EqBand, kNumBands>& bands, dou
 {
     double totalDb = 0.0;
     const double tw = std::tan(kPi * std::min(freqHz, 0.4999 * sampleRate) / sampleRate);
-    for (const auto& b : bands)
+    for (int i = 0; i < kNumBands; ++i)
     {
-        if (b.gainDb == 0.0f)
-            continue;
+        const auto& b = bands[(size_t) i];
+        const auto type = bandType(i);
+        if (type == BandType::bell && b.gainDb == 0.0f) continue;
+        if (type != BandType::bell && !isCutActive(i, b.freqHz)) continue;
+
         const double fc = std::min((double) clampT(b.freqHz, kMinFreq, kMaxFreq), 0.45 * sampleRate);
-        const double q = clampT(b.q, kMinQ, kMaxQ);
-        const double A = std::pow(10.0, b.gainDb / 40.0);
-        // bilinear transform maps exactly: analog bell at prewarped frequency ratio
+        // bilinear transform maps exactly: analog prototype at the prewarped frequency ratio
         const double w = tw / std::tan(kPi * fc / sampleRate);
         const double re = 1.0 - w * w;
-        const double numIm = w * A / q, denIm = w / (A * q);
-        const double mag2 = (re * re + numIm * numIm) / (re * re + denIm * denIm);
-        totalDb += 10.0 * std::log10(mag2);
+        if (type == BandType::bell)
+        {
+            const double q = clampT(b.q, kMinQ, kMaxQ);
+            const double A = std::pow(10.0, b.gainDb / 40.0);
+            const double numIm = w * A / q, denIm = w / (A * q);
+            totalDb += 10.0 * std::log10((re * re + numIm * numIm) / (re * re + denIm * denIm));
+        }
+        else
+        {
+            const double q = clampT(b.q, kMinCutQ, kMaxCutQ);
+            const double den = re * re + (w / q) * (w / q);
+            const double num = type == BandType::lowCut ? w * w * w * w : 1.0;
+            totalDb += 10.0 * std::log10(std::max(1e-30, num / den));
+        }
     }
     return totalDb;
 }

@@ -91,6 +91,8 @@ int main(int argc, char** argv)
     setP(*proc, AmpsurdProcessor::bandParamId(1, 4, "q"), 2.0f);
     setP(*proc, AmpsurdProcessor::bandParamId(1, 7, "gain"), -6.0f);
     setP(*proc, AmpsurdProcessor::bandParamId(1, 7, "freq"), 3500.0f);
+    setP(*proc, AmpsurdProcessor::bandParamId(1, 0, "freq"), 90.0f);    // low cut
+    setP(*proc, AmpsurdProcessor::bandParamId(1, 9, "freq"), 7500.0f);  // high cut
     if (n >= 4) setP(*proc, AmpsurdProcessor::slotParamId(3, "mute"), 1.0f);
     for (int b = 0; b < 4; ++b) { buf.clear(); proc->processBlock(buf, midi); }
 

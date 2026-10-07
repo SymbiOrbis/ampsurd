@@ -18,8 +18,8 @@ inline const juce::Colour line       { 0xff3a3c40 }; // thin borders
 inline const juce::Colour lineStrong { 0xff8d8f93 }; // selected border
 inline const juce::Colour grid       { 0xff2b2d30 };
 inline const juce::Colour text       { 0xffe8e8e6 };
-inline const juce::Colour textDim    { 0xff9a9c9f };
-inline const juce::Colour textFaint  { 0xff606266 };
+inline const juce::Colour textDim    { 0xffb9bbbe }; // secondary text, labels, scales (contrast ~9:1)
+inline const juce::Colour textFaint  { 0xff8f9195 }; // least important text, still readable (contrast ~5.5:1)
 inline const juce::Colour onFill     { 0xffe8e8e6 }; // "on" buttons: light fill, dark text
 inline const juce::Colour onText     { 0xff1d1e20 };
 inline const juce::Colour warning    { 0xffe8e8e6 }; // warnings are shown with text, not colour

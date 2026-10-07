@@ -91,7 +91,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout AmpsurdProcessor::createLayo
                                                               AudioParameterFloatAttributes().withLabel("deg")));
         for (int b = 0; b < kNumBands; ++b)
         {
-            const String bn = n + "EQ" + String(b + 1) + " ";
+            const auto type = ampsurd::ParametricEq::bandType(b);
+            const String bn = n + (type == ampsurd::ParametricEq::BandType::lowCut ? String("Low Cut ")
+                                 : type == ampsurd::ParametricEq::BandType::highCut ? String("High Cut ")
+                                                                                       : "EQ" + String(b + 1) + " ");
             NormalisableRange<float> fr(20.0f, 20000.0f, 0.1f);
             fr.setSkewForCentre(632.0f);
             NormalisableRange<float> qr(0.3f, 10.0f, 0.001f);
@@ -102,7 +105,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout AmpsurdProcessor::createLayo
             group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { bandParamId(s, b, "gain"), 1 }, bn + "Gain",
                                                                   NormalisableRange<float>(-18.0f, 18.0f, 0.01f), 0.0f, db));
             group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { bandParamId(s, b, "q"), 1 }, bn + "Q",
-                                                                  qr, 1.0f));
+                                                                  qr, defaults[(size_t) b].q));
         }
         layout.add(std::move(group));
     }

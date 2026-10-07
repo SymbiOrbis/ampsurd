@@ -114,7 +114,10 @@ private:
     float freqForX(float x) const;
     float yForGain(float g) const;
     float gainForY(float y) const;
-    int bandAt(juce::Point<float>) const;
+    static constexpr float kGrabRadius = 14.0f;
+    // nearest point within maxDistance (pixels); maxDistance < 0 = nearest point anywhere
+    int bandAt(juce::Point<float>, float maxDistance) const;
+    juce::Point<float> nodePos(int band, const std::array<ampsurd::EqBand, ampsurd::ParametricEq::kNumBands>&) const;
     std::array<ampsurd::EqBand, ampsurd::ParametricEq::kNumBands> bands() const;
     juce::RangedAudioParameter* bandParam(int band, const char* name) const;
 

@@ -13,6 +13,14 @@ Amp Modeler captures in parallel → blended into one sound. Windows VST3 first.
 > `limiter_test`, `engine_test` and a capture load/hot-swap stress test there — first run passed.
 > **Not yet tried in REAPER by a person.**
 
+## First REAPER test by the owner (2026-10-07, Windows 11, 48 kHz)
+
+Loads and runs after switching off Windows Smart App Control (unsigned plugin; code signing via
+SignPath Foundation planned for public release). Fader linking, mixing, capture switching, SOLO/MUTE
+(mute overrides solo — intended), FREE alignment, limiter, presets, project recall and missing-file
+handling all OK. CPU ≈ 20 % with five captures. Changes requested and made: brighter small text,
+EQ bands 1/10 as low/high cut, mouse wheel adjusts the nearest EQ point.
+
 ## Implemented and tested
 
 | Area | Status | How it was tested |
@@ -24,7 +32,7 @@ Amp Modeler captures in parallel → blended into one sound. Windows VST3 first.
 | Mix law (constant perceived loudness) | done, measured | `mix_experiment`: within ±0.02 dB of target over 331 mixes (vs. −4.6 dB for plain percentages) — `docs/REVIEW.md` §5 |
 | Level match (measured by AMPSURD, K-weighted) | done | 5 captures 14 dB apart via file metadata → all at −18.0 dB |
 | SOLO / MUTE (stored mix kept) | done | `engine_test` |
-| EDIT selection, 10-band parametric EQ per path (monochrome graph, drag/wheel/double-click) | done | measured response = drawn curve (0.000 dB error); flat EQ bit-transparent |
+| EDIT selection, 10-band EQ per path: band 1 low cut, bands 2–9 bells, band 10 high cut (12 dB/oct); wheel changes the nearest point | done | measured response = drawn curve (0.000 dB error); default EQ bit-transparent; low cut never boosts |
 | AUTO alignment (offset + polarity) | done | finds a planted 37.3-sample offset + inverted polarity exactly |
 | FREE: TIME (fractional delay ±1 ms), PHASE (rotation ±180°), RESET | done | delay accurate to 0.2°, rotation flat ±0.7° from 30 Hz–18 kHz; mix law holds with rotation |
 | Master: INPUT, OUTPUT, meters, BYPASS (time-aligned dry) | done | bypass output = dry input delayed by latency, sample-identical |
@@ -43,8 +51,7 @@ core at 64–128 samples; the full plugin with 5 mixed captures ran at 30 % of r
 - **Windows build + REAPER listening test** — next step, needs the owner (see below).
 - Real footer logos (official artwork only).
 - Mix-law and alignment validation with real amp captures (only NAM test models so far).
-- Product decisions pending: EQ band types (all 10 are bells now — a low-cut/high-cut on bands
-  1/10 would help corrective use), default window size on small screens.
+- Product decision pending: default window size on small screens.
 - Later: installer, ECO (A2 Lite) mode, macOS/AU, About/Easter egg.
 
 ## Files changed in session 2
