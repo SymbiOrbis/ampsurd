@@ -1,4 +1,21 @@
-# Building AMPSURD on Windows 11 (step by step)
+# Getting AMPSURD onto Windows 11
+
+## Easiest: download the ready-made plugin (no tools needed)
+
+GitHub builds the Windows VST3 automatically after every change.
+
+1. Open https://github.com/SymbiOrbis/ampsurd/actions and click the newest run with a green tick.
+2. Scroll to **Artifacts** at the bottom and click **AMPSURD-VST3-windows-x64** (you must be signed
+   in to GitHub). A zip file downloads.
+3. Unzip it. Inside is a folder called `AMPSURD.vst3`.
+4. Copy that whole `AMPSURD.vst3` folder into `C:\Program Files\Common Files\VST3`
+   (Windows asks for administrator permission — click **Continue**).
+5. In REAPER: **Options → Preferences → Plug-ins → VST → Re-scan**, then continue with Part C
+   step 4 below. (When a newer build arrives, close REAPER, replace the folder, reopen.)
+
+The rest of this page is only needed if you want to build it yourself.
+
+# Building AMPSURD yourself (step by step)
 
 You need to do the one-time setup (Part A) only once. After that, building is two commands.
 

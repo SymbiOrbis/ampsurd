@@ -7,9 +7,11 @@ _Last updated: 2026-10-07 (Claude, session 2)_
 Amp Modeler captures in parallel → blended into one sound. Windows VST3 first.
 **Current UI/UX specification:** `docs/UI_SPEC.md` (verbatim, 2026-10-07).
 
-> Everything below marked **tested** was run here on a Linux build of the same code (unit tests,
-> the real VST3 binary loaded by a test host, rendered UI screenshots). **Nothing has yet been
-> built or tried on Windows or in REAPER.**
+> Everything below marked **tested** was run on a Linux build of the same code (unit tests,
+> the real VST3 binary loaded by a test host, rendered UI screenshots). **Windows:** since
+> 2026-10-07 GitHub Actions builds the Windows x64 VST3 with MSVC on every push and runs
+> `limiter_test`, `engine_test` and a capture load/hot-swap stress test there — first run passed.
+> **Not yet tried in REAPER by a person.**
 
 ## Implemented and tested
 
@@ -40,7 +42,6 @@ core at 64–128 samples; the full plugin with 5 mixed captures ran at 30 % of r
 
 - **Windows build + REAPER listening test** — next step, needs the owner (see below).
 - Real footer logos (official artwork only).
-- GitHub repository (owner to create; CI workflow is ready in `.github/workflows/`).
 - Mix-law and alignment validation with real amp captures (only NAM test models so far).
 - Product decisions pending: EQ band types (all 10 are bells now — a low-cut/high-cut on bands
   1/10 would help corrective use), default window size on small screens.
@@ -63,7 +64,7 @@ Renamed everything to AMPSURD. New: `core/{Engine,PathAligner,ParametricEq,Captu
 - AudioDSPTools resampler under-reports latency by ~2–3 samples at 44.1/96 kHz; AUTO alignment
   absorbs it between captures, the DAW-reported latency is off by those samples.
 - Default window 1200x800 does not fit 768-pixel-high laptop screens (it can be resized smaller).
-- Linux-only verification so far; Windows-specific issues (fonts, file dialogs, DPI) not yet seen.
+- Windows build and tests pass in CI, but the UI (fonts, file dialogs, high-DPI scaling) has not been seen on a Windows screen yet.
 
 ## Build & test
 
@@ -73,7 +74,7 @@ Renamed everything to AMPSURD. New: `core/{Engine,PathAligner,ParametricEq,Captu
 
 ## Next concrete step
 
-1. Owner: create the empty GitHub repository → Claude pushes, CI produces the Windows VST3.
-2. Owner: REAPER checklist in `docs/BUILD_WINDOWS.md` Part D with real captures; send notes.
+1. Done: repository https://github.com/SymbiOrbis/ampsurd, Windows CI build green.
+2. Owner: download the VST3 from GitHub Actions (BUILD_WINDOWS.md, top), then the REAPER checklist in `docs/BUILD_WINDOWS.md` Part D with real captures; send notes.
 3. Owner: provide the three logo files; decide on EQ band types.
 4. Claude: fix whatever the REAPER test finds; then installer + polish.
