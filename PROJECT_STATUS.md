@@ -41,6 +41,9 @@ EQ bands 1/10 as low/high cut, mouse wheel adjusts the nearest EQ point.
 | Fixed five-slot layout, fixed-size filename typography with wrapping | done | screenshots in `docs/screenshots/` (filenames shown character-exact, e.g. "4x12") |
 | Branding footer with three equal logo areas | placeholders | real logos: drop files into `plugin/assets/logos/` (see README there) |
 | Resizable window (scales whole UI, fixed aspect) | done | rendered at 1200x800 and 1800x1200 |
+| Noise gate, NS-2 style (detects on DI, gates after the amps), on by default at -70 dB RMS / 120 ms; GATE button in master row | done, awaiting REAPER test | `gate_tuner_test`: bit-transparent while playing, closed on -80 dB hiss, fully open 0.98 ms after a note starts (before the amp signal, 1.17 ms); off = bit-identical |
+| Chromatic tuner on the clean DI (works when BYPASS is on), MUTE OUTPUT while shown | done, awaiting REAPER test | correct note F#1..E6 (46 Hz-1.3 kHz), worst error 0.14 cents; no false notes on hiss |
+| Centre area: gate + tuner; EDIT replaces them, CLOSE returns | done | screenshots |
 
 Latency: 104 samples (2.17 ms) at 48 kHz, 123 at 44.1 kHz (constant; includes 1 ms limiter
 look-ahead and 1 ms alignment reserve). CPU: five A2 Full captures ≈ 40–48 % of one 2.8 GHz cloud
@@ -78,6 +81,10 @@ Renamed everything to AMPSURD. New: `core/{Engine,PathAligner,ParametricEq,Captu
 - Windows: `docs/BUILD_WINDOWS.md` (or download the CI build once GitHub is set up).
 - Tests (any platform): `limiter_test`, `engine_test <a.nam> <b.nam>`, `mix_experiment <2-5 .nam>`,
   `compat_test.py`, `plugin_host_test`, `ui_snapshot` — see `docs/DEVLOG.md`.
+
+## Roadmap
+
+See `docs/ROADMAP.md`: gate + tuner (done) → Create Frankenstein → per-amp pan → release package.
 
 ## Next concrete step
 

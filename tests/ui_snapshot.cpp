@@ -96,6 +96,21 @@ int main(int argc, char** argv)
     if (n >= 4) setP(*proc, AmpsurdProcessor::slotParamId(3, "mute"), 1.0f);
     for (int b = 0; b < 4; ++b) { buf.clear(); proc->processBlock(buf, midi); }
 
+    // play an A string 4 cents flat into the plugin so the tuner and gate meter have something to show
+    {
+        double t = 0;
+        for (int b = 0; b < 80; ++b)
+        {
+            for (int i = 0; i < 256; ++i, t += 1.0 / 48000.0)
+            {
+                double v = 0;
+                for (int h = 1; h <= 6; ++h) v += std::sin(2 * juce::MathConstants<double>::pi * 110.0 * std::pow(2.0, -4.0 / 1200.0) * h * t) / h;
+                buf.setSample(0, i, (float) (0.15 * v));
+                buf.setSample(1, i, (float) (0.15 * v));
+            }
+            proc->processBlock(buf, midi);
+        }
+    }
     {
         std::unique_ptr<juce::AudioProcessorEditor> ed(proc->createEditor());
         auto* e = dynamic_cast<AmpsurdEditor*>(ed.get());

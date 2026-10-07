@@ -90,6 +90,11 @@ REAPER picks up the new version.
    everything back? Save the REAPER project, close and reopen: is everything back?
 10. Rename one capture file and reopen the project: that slot should say FILE MISSING, no crash.
 
+11. Gate + tuner (centre area when no amp is in EDIT): play an open string — the tuner shows
+    note and cents. Stop playing on a high-gain rig — the hiss between notes should disappear,
+    while notes keep their attack and sustain. Drag the white marker on the GUITAR LEVEL meter
+    to set the threshold just above the level shown when you are not playing.
+
 Expected latency shown by REAPER: 104 samples at 48 kHz, 123 at 44.1 kHz.
 
 Optional measurements (in Developer PowerShell):

@@ -11,6 +11,8 @@
 #include "ampsurd/CaptureAnalyzer.h"
 #include "ampsurd/CaptureModel.h"
 #include "ampsurd/Engine.h"
+#include "ampsurd/NoiseGate.h"
+#include "ampsurd/PitchDetector.h"
 #include "ampsurd/SafetyLimiter.h"
 
 // AMPSURD: one guitar DI -> five fixed NAM capture slots in parallel -> blended into one tone.
@@ -102,6 +104,12 @@ public:
     float getAndResetInputPeak() { return inputPeak.exchange(0.0f); }
     float getAndResetLimiterReductionDb() { return limiterReductionDb.exchange(0.0f); }
     float getCompensationDb() const { return engine.getCompensationDb(); }
+
+    // --- gate + tuner ---
+    ampsurd::PitchDetector::Result analyseTuner() { return tuner.analyse(); } // message thread
+    void setTunerVisible(bool v) { tunerVisible.store(v); }                    // "mute while tuning" only while shown
+    float getAndResetGateKeyPeak() { return gateKeyPeak.exchange(0.0f); }
+    float getGateGain() const { return gateGain.load(); }
     double getSampleRateForUi() const { return currentSampleRate.load(); }
 
     juce::AudioProcessorValueTreeState params;
@@ -149,6 +157,16 @@ private:
 
     ampsurd::Engine engine;
     ampsurd::SafetyLimiter limiter;
+    ampsurd::NoiseGate gate;
+    ampsurd::PitchDetector tuner;
+    std::vector<float> rawBuffer;
+    std::atomic<bool> tunerVisible { false };
+    double muteMix = 0.0;
+    std::atomic<float> gateKeyPeak { 0.0f }, gateGain { 1.0f };
+    std::atomic<float>* gateOnParam = nullptr;
+    std::atomic<float>* gateThresholdParam = nullptr;
+    std::atomic<float>* gateDecayParam = nullptr;
+    std::atomic<float>* tunerMuteParam = nullptr;
 
     std::mutex configMutex; // sample rate / block size; never taken by the audio thread
     std::atomic<double> currentSampleRate { 48000.0 };

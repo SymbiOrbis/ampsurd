@@ -6,6 +6,27 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-07 — Session 2c: noise gate + tuner — Claude (Opus 5.5)
+
+- core: `NoiseGate` (key = DI after INPUT gain, applied after the mix; 4 ms RMS detector, 4 dB
+  hysteresis, 15 ms hold, 0.2 ms opening, exponential decay to -60 dB in DECAY), `PitchDetector`
+  (YIN on a lock-free ring buffer filled by the audio thread, analysed on the UI timer; decimated by
+  2 with full-rate refinement for high notes).
+- plugin: params gateOn / gateThreshold (-70 dB) / gateDecay (120 ms) / tunerMute (193 total);
+  mute only applies while the tuner is visible; tuner fed before BYPASS.
+- UI: centre area = NOISE GATE (level meter with draggable threshold marker, OPEN/CLOSING/CLOSED
+  text) + TUNER (note, octave, cents scale, IN TUNE, Hz); EDIT replaces it, CLOSE button added;
+  GATE button in master row.
+- Found and fixed during testing: peak detector opened on -80 dB hiss at the -70 dB threshold
+  (now RMS); first RMS version held the gate open 420 ms (now symmetric 4 ms); opening sped up so
+  the gate is fully open before the amp signal arrives; a duplicate gate update had been inserted
+  into the covariance code (message thread) - removed.
+- Tested: gate_tuner_test ALL PASS; VST3: gate off → bit-identical to NAM reference; 5 captures
+  +12 dB → -1 dBFS; bypass sample-identical; engine/limiter/compat ALL PASS; preset round trip 193/193.
+- Roadmap order changed by owner: Frankenstein before pan, release package last.
+
+---
+
 ## 2026-10-07 — Session 2b: first REAPER feedback — Claude (Opus 5.5)
 
 - Windows CI build green; plugin loads in REAPER once Smart App Control is off (0xc0e90002 = unsigned).

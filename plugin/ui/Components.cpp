@@ -773,8 +773,10 @@ EditPanel::EditPanel(AmpsurdProcessor& p) : proc(p), graph(p), align(p)
 {
     addAndMakeVisible(graph);
     addAndMakeVisible(align);
-    for (auto* b : { &eqOnButton, &flatButton, &removeButton })
+    for (auto* b : { &eqOnButton, &flatButton, &removeButton, &closeButton })
         addAndMakeVisible(*b);
+    closeButton.onClick = [this] { if (onClose) onClose(); };
+    closeButton.setTooltip("Close EDIT and return to the gate and tuner");
     eqOnButton.setClickingTogglesState(true);
     flatButton.onClick = [this] {
         if (slot < 0) return;
@@ -800,7 +802,8 @@ void EditPanel::setSlot(int s)
     if (s >= 0)
         eqOnAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(proc.params, AmpsurdProcessor::slotParamId(s, "eqOn"), eqOnButton);
     for (juce::Component* c : { (juce::Component*) &graph, (juce::Component*) &align, (juce::Component*) &eqOnButton,
-                                (juce::Component*) &flatButton, (juce::Component*) &removeButton })
+                                (juce::Component*) &flatButton, (juce::Component*) &removeButton,
+                                (juce::Component*) &closeButton })
         c->setVisible(s >= 0);
     refresh();
     repaint();
@@ -810,6 +813,8 @@ void EditPanel::resized()
 {
     auto r = getLocalBounds().reduced(16, 12);
     auto header = r.removeFromTop(26);
+    closeButton.setBounds(header.removeFromRight(72));
+    header.removeFromRight(8);
     removeButton.setBounds(header.removeFromRight(100));
     header.removeFromRight(8);
     flatButton.setBounds(header.removeFromRight(64));
@@ -838,7 +843,7 @@ void EditPanel::paint(juce::Graphics& g)
     drawLabel(g, "EDIT  /  AMP " + juce::String(slot + 1), header.removeFromLeft(130), text, juce::Justification::centredLeft, 11.0f);
     g.setColour(textDim);
     g.setFont(Fonts::get().regular(12.5f));
-    g.drawText(title, header.withTrimmedRight(260), juce::Justification::centredLeft, true);
+    g.drawText(title, header.withTrimmedRight(340), juce::Justification::centredLeft, true);
 }
 
 void EditPanel::refresh()
@@ -855,6 +860,278 @@ void EditPanel::refresh()
         graph.refreshIfChanged();
         align.refresh();
     }
+}
+
+// =============================================================================================
+// Gate
+// =============================================================================================
+namespace
+{
+constexpr float kGateMinDb = -96.0f, kGateMaxDb = 0.0f;
+}
+
+GatePanel::GatePanel(AmpsurdProcessor& p) : proc(p)
+{
+    onButton.setClickingTogglesState(true);
+    addAndMakeVisible(onButton);
+    onAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.params, "gateOn", onButton);
+    for (auto* s : { &thresholdSlider, &decaySlider })
+    {
+        s->setSliderStyle(juce::Slider::LinearHorizontal);
+        s->setTextBoxStyle(juce::Slider::TextBoxRight, false, 74, 20);
+        addAndMakeVisible(*s);
+    }
+    thrAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.params, "gateThreshold", thresholdSlider);
+    decAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.params, "gateDecay", decaySlider);
+    thresholdSlider.textFromValueFunction = [](double v) { return juce::String(v, 1) + " dB"; };
+    decaySlider.textFromValueFunction = [](double v) { return juce::String(juce::roundToInt(v)) + " ms"; };
+    thresholdSlider.setDoubleClickReturnValue(true, ampsurd::NoiseGate::kDefaultThresholdDb);
+    decaySlider.setDoubleClickReturnValue(true, ampsurd::NoiseGate::kDefaultDecayMs);
+    thresholdSlider.updateText();
+    decaySlider.updateText();
+    thresholdSlider.setTooltip("Below this guitar level the gate closes. Set it just above the noise you hear between notes");
+    decaySlider.setTooltip("How quickly the sound fades out when the gate closes");
+    onButton.setTooltip("Gate on/off");
+}
+
+juce::Rectangle<float> GatePanel::meterArea() const { return { 16.0f, 64.0f, (float) getWidth() - 32.0f, 22.0f }; }
+
+float GatePanel::xForDb(float db) const
+{
+    const auto m = meterArea();
+    return m.getX() + m.getWidth() * (juce::jlimit(kGateMinDb, kGateMaxDb, db) - kGateMinDb) / (kGateMaxDb - kGateMinDb);
+}
+
+float GatePanel::dbForX(float x) const
+{
+    const auto m = meterArea();
+    return kGateMinDb + (kGateMaxDb - kGateMinDb) * juce::jlimit(0.0f, 1.0f, (x - m.getX()) / m.getWidth());
+}
+
+void GatePanel::resized()
+{
+    onButton.setBounds(getWidth() - 16 - 56, 12, 56, 24);
+    auto r = getLocalBounds().reduced(16, 0);
+    r.removeFromTop(116);
+    auto t = r.removeFromTop(26);
+    t.removeFromLeft(86);
+    thresholdSlider.setBounds(t);
+    r.removeFromTop(10);
+    auto d = r.removeFromTop(26);
+    d.removeFromLeft(86);
+    decaySlider.setBounds(d);
+}
+
+void GatePanel::paint(juce::Graphics& g)
+{
+    drawLabel(g, "NOISE GATE", { 16, 12, 200, 24 }, text, juce::Justification::centredLeft, 11.5f);
+    const bool on = paramValue(proc, "gateOn") > 0.5f;
+
+    // input level vs threshold (drag the marker to set the threshold)
+    const auto m = meterArea();
+    g.setColour(line);
+    g.drawRect(m, 1.0f);
+    const float lvlDb = juce::Decibels::gainToDecibels(level, -120.0f);
+    g.setColour(textDim);
+    g.fillRect(juce::Rectangle<float>(m.getX() + 1.0f, m.getY() + 1.0f, juce::jmax(0.0f, xForDb(lvlDb) - m.getX() - 1.0f), m.getHeight() - 2.0f));
+    const float thr = paramValue(proc, "gateThreshold");
+    const float tx = xForDb(thr);
+    g.setColour(on ? text : textFaint);
+    g.fillRect(tx - 1.0f, m.getY() - 6.0f, 2.0f, m.getHeight() + 12.0f);
+    juce::Path tri;
+    tri.addTriangle(tx - 5.0f, m.getY() - 10.0f, tx + 5.0f, m.getY() - 10.0f, tx, m.getY() - 4.0f);
+    g.fillPath(tri);
+    g.setFont(Fonts::get().regular(11.0f));
+    g.setColour(textDim);
+    for (float db : { -96.0f, -72.0f, -48.0f, -24.0f, 0.0f })
+        g.drawText(juce::String((int) db), juce::Rectangle<float>(xForDb(db) - 20.0f, m.getBottom() + 3.0f, 40.0f, 14.0f),
+                   juce::Justification::centred, false);
+    drawLabel(g, "GUITAR LEVEL", { 16, 40, 200, 16 }, textDim, juce::Justification::centredLeft, 10.0f);
+
+    // state: shown as text, never only by colour
+    const juce::String state = !on ? "OFF" : gain > 0.98f ? "OPEN" : gain < 0.02f ? "CLOSED" : "CLOSING";
+    const auto st = juce::Rectangle<int>(getWidth() - 16 - 90, 40, 90, 16);
+    drawLabel(g, state, st, on ? text : textFaint, juce::Justification::centredRight, 10.5f);
+
+    drawLabel(g, "THRESHOLD", { 16, thresholdSlider.getY(), 84, thresholdSlider.getHeight() }, on ? text : textFaint);
+    drawLabel(g, "DECAY", { 16, decaySlider.getY(), 84, decaySlider.getHeight() }, on ? text : textFaint);
+    g.setColour(textDim);
+    g.setFont(Fonts::get().regular(12.0f));
+    g.drawText("Listens to your clean guitar, silences the noise after the amps.",
+               juce::Rectangle<int>(16, decaySlider.getBottom() + 16, getWidth() - 32, 18), juce::Justification::centredLeft, true);
+}
+
+void GatePanel::mouseDown(const juce::MouseEvent& e)
+{
+    const auto m = meterArea().expanded(0.0f, 12.0f);
+    if (!m.contains(e.position)) return;
+    draggingThreshold = true;
+    if (auto* p = proc.params.getParameter("gateThreshold"))
+    {
+        p->beginChangeGesture();
+        p->setValueNotifyingHost(p->convertTo0to1(juce::jlimit(-96.0f, -20.0f, dbForX(e.position.x))));
+    }
+}
+
+void GatePanel::mouseDrag(const juce::MouseEvent& e)
+{
+    if (!draggingThreshold) return;
+    if (auto* p = proc.params.getParameter("gateThreshold"))
+        p->setValueNotifyingHost(p->convertTo0to1(juce::jlimit(-96.0f, -20.0f, dbForX(e.position.x))));
+    repaint();
+}
+
+void GatePanel::mouseUp(const juce::MouseEvent&)
+{
+    if (!draggingThreshold) return;
+    draggingThreshold = false;
+    if (auto* p = proc.params.getParameter("gateThreshold")) p->endChangeGesture();
+}
+
+void GatePanel::refresh()
+{
+    const float pk = proc.getAndResetGateKeyPeak();
+    level = pk > level ? pk : level * 0.8f;
+    gain = proc.getGateGain();
+    repaint();
+}
+
+// =============================================================================================
+// Tuner
+// =============================================================================================
+TunerPanel::TunerPanel(AmpsurdProcessor& p) : proc(p)
+{
+    muteButton.setClickingTogglesState(true);
+    addAndMakeVisible(muteButton);
+    muteAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.params, "tunerMute", muteButton);
+    muteButton.setTooltip("Silence AMPSURD's output while the tuner is shown");
+}
+
+void TunerPanel::resized()
+{
+    muteButton.setBounds(getWidth() - 16 - 116, 12, 116, 24);
+}
+
+void TunerPanel::refresh()
+{
+    const auto r = proc.analyseTuner();
+    const double now = juce::Time::getMillisecondCounterHiRes();
+    if (r.valid)
+    {
+        if (r.midiNote != lastNote) { recentCount = 0; lastNote = r.midiNote; }
+        recentCents[(size_t) (recentCount++ % (int) recentCents.size())] = r.cents;
+        // median of the last readings: steady needle without lag
+        const int n = juce::jmin(recentCount, (int) recentCents.size());
+        std::array<double, 5> tmp = recentCents;
+        std::sort(tmp.begin(), tmp.begin() + n);
+        shown = r;
+        shown.cents = tmp[(size_t) (n / 2)];
+        lastValidMs = now;
+    }
+    else if (now - lastValidMs > 600.0)
+    {
+        shown.valid = false;
+        lastNote = -1;
+        recentCount = 0;
+    }
+    repaint();
+}
+
+void TunerPanel::paint(juce::Graphics& g)
+{
+    drawLabel(g, "TUNER", { 16, 12, 200, 24 }, text, juce::Justification::centredLeft, 11.5f);
+    const auto area = getLocalBounds().reduced(16, 0).withTrimmedTop(44);
+
+    // note name
+    const auto noteArea = area.withHeight(88);
+    if (!shown.valid)
+    {
+        g.setColour(textFaint);
+        g.setFont(Fonts::get().semibold(64.0f));
+        g.drawText("-", noteArea, juce::Justification::centred, false);
+    }
+    else
+    {
+        const juce::String name(shown.noteName());
+        g.setColour(text);
+        g.setFont(Fonts::get().semibold(64.0f));
+        const int w = juce::GlyphArrangement::getStringWidthInt(g.getCurrentFont(), name);
+        g.drawText(name, noteArea, juce::Justification::centred, false);
+        g.setFont(Fonts::get().medium(18.0f));
+        g.setColour(textDim);
+        g.drawText(juce::String(shown.octave()), juce::Rectangle<int>(noteArea.getCentreX() + w / 2 + 4, noteArea.getY() + 52, 30, 24),
+                   juce::Justification::centredLeft, false);
+    }
+
+    // cents scale -50..+50
+    const auto scale = juce::Rectangle<float>((float) area.getX() + 20.0f, (float) noteArea.getBottom() + 18.0f,
+                                              (float) area.getWidth() - 40.0f, 26.0f);
+    auto xFor = [&](double c) { return scale.getX() + scale.getWidth() * (float) ((juce::jlimit(-50.0, 50.0, c) + 50.0) / 100.0); };
+    for (int c = -50; c <= 50; c += 10)
+    {
+        const float x = xFor(c);
+        const float h = c == 0 ? scale.getHeight() : 10.0f;
+        g.setColour(c == 0 ? textDim : line);
+        g.fillRect(x - 0.5f, scale.getCentreY() - h / 2.0f, 1.0f, h);
+    }
+    g.setFont(Fonts::get().medium(14.0f));
+    g.setColour(textDim);
+    g.drawText("b", juce::Rectangle<float>(scale.getX() - 20.0f, scale.getY(), 16.0f, scale.getHeight()),
+               juce::Justification::centred, false);
+    g.drawText("#", juce::Rectangle<float>(scale.getRight() + 4.0f, scale.getY(), 16.0f, scale.getHeight()),
+               juce::Justification::centred, false);
+
+    if (shown.valid)
+    {
+        const bool inTune = std::abs(shown.cents) <= 2.0;
+        const float x = xFor(shown.cents);
+        g.setColour(text);
+        if (inTune)
+            g.fillRoundedRectangle(x - 9.0f, scale.getY() - 2.0f, 18.0f, scale.getHeight() + 4.0f, 2.0f);
+        else
+            g.fillRoundedRectangle(x - 2.0f, scale.getY() - 2.0f, 4.0f, scale.getHeight() + 4.0f, 1.5f);
+
+        const auto info = juce::Rectangle<int>(area.getX(), (int) scale.getBottom() + 12, area.getWidth(), 18);
+        g.setFont(Fonts::get().medium(13.0f));
+        g.setColour(inTune ? text : textDim);
+        const juce::String cents = inTune ? juce::String("IN TUNE")
+                                          : (shown.cents > 0 ? "+" : "") + juce::String(shown.cents, 1) + " cents";
+        g.drawText(cents + "     " + juce::String(shown.frequencyHz, 1) + " Hz", info, juce::Justification::centred, false);
+    }
+    else
+    {
+        g.setColour(textDim);
+        g.setFont(Fonts::get().regular(12.5f));
+        g.drawText("Play a single open string", juce::Rectangle<int>(area.getX(), (int) scale.getBottom() + 12, area.getWidth(), 18),
+                   juce::Justification::centred, false);
+    }
+}
+
+// =============================================================================================
+CentrePanel::CentrePanel(AmpsurdProcessor& p) : gatePanel(p), tunerPanel(p)
+{
+    addAndMakeVisible(gatePanel);
+    addAndMakeVisible(tunerPanel);
+}
+
+void CentrePanel::resized()
+{
+    auto r = getLocalBounds().reduced(1);
+    gatePanel.setBounds(r.removeFromLeft(r.getWidth() / 2));
+    tunerPanel.setBounds(r);
+}
+
+void CentrePanel::paint(juce::Graphics& g)
+{
+    g.setColour(line);
+    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), 3.0f, 1.0f);
+    g.fillRect((float) getWidth() / 2.0f, 12.0f, 1.0f, (float) getHeight() - 24.0f);
+}
+
+void CentrePanel::refresh()
+{
+    gatePanel.refresh();
+    tunerPanel.refresh();
 }
 
 // =============================================================================================
@@ -905,6 +1182,10 @@ MasterPanel::MasterPanel(AmpsurdProcessor& p) : proc(p)
     bypassButton.setClickingTogglesState(true);
     addAndMakeVisible(bypassButton);
     bypassAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.params, "bypass", bypassButton);
+    gateButton.setClickingTogglesState(true);
+    addAndMakeVisible(gateButton);
+    gateAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.params, "gateOn", gateButton);
+    gateButton.setTooltip("Noise gate on/off (settings in the centre area when no amp is in EDIT)");
     inputSlider.setTooltip("Input level into all five amps (how hard they are driven)");
     outputSlider.setTooltip("Output level. AMPSURD never outputs above -1 dBFS");
 }
@@ -913,9 +1194,9 @@ void MasterPanel::resized()
 {
     auto r = getLocalBounds().reduced(16, 0);
     auto block = [&](juce::Slider& s, LevelMeter& m) {
-        auto b = r.removeFromLeft(400);
+        auto b = r.removeFromLeft(380);
         b.removeFromLeft(64);
-        auto sl = b.removeFromLeft(220);
+        auto sl = b.removeFromLeft(200);
         s.setBounds(sl.withSizeKeepingCentre(sl.getWidth(), 24));
         b.removeFromLeft(14);
         m.setBounds(b.withSizeKeepingCentre(b.getWidth(), 6));
@@ -923,7 +1204,9 @@ void MasterPanel::resized()
     };
     block(inputSlider, inMeter);
     block(outputSlider, outMeter);
-    r.removeFromLeft(80); // room for the LIMIT indicator next to the output meter
+    r.removeFromLeft(84); // room for the LIMIT indicator next to the output meter
+    gateButton.setBounds(r.removeFromLeft(72).withSizeKeepingCentre(72, 28));
+    r.removeFromLeft(8);
     bypassButton.setBounds(r.removeFromLeft(86).withSizeKeepingCentre(86, 28));
 }
 
@@ -932,7 +1215,7 @@ void MasterPanel::paint(juce::Graphics& g)
     g.setColour(line);
     g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), 3.0f, 1.0f);
     drawLabel(g, "INPUT", { 16, 0, 60, getHeight() }, textDim);
-    drawLabel(g, "OUTPUT", { 16 + 424, 0, 60, getHeight() }, textDim);
+    drawLabel(g, "OUTPUT", { 16 + 404, 0, 60, getHeight() }, textDim);
 
     // safety limiter: shown as text, never only by colour
     const auto lim = juce::Rectangle<int>(outMeter.getRight() + 12, getHeight() / 2 - 8, 70, 16);

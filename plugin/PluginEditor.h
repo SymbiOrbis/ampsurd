@@ -38,6 +38,7 @@ private:
         ampsurd::ui::HeaderBar header;
         std::array<std::unique_ptr<ampsurd::ui::SlotComponent>, AmpsurdProcessor::kNumSlots> slots;
         ampsurd::ui::EditPanel edit;
+        ampsurd::ui::CentrePanel centre;
         ampsurd::ui::MasterPanel master;
         ampsurd::ui::BrandingFooter footer;
     };

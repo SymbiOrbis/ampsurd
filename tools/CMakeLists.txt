@@ -18,3 +18,6 @@ target_link_libraries(engine_test PRIVATE ampsurd_core)
 
 add_executable(mix_experiment mix_experiment.cpp)
 target_link_libraries(mix_experiment PRIVATE ampsurd_core)
+
+add_executable(gate_tuner_test gate_tuner_test.cpp)
+target_link_libraries(gate_tuner_test PRIVATE ampsurd_core)

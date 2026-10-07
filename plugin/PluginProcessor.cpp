@@ -69,6 +69,18 @@ juce::AudioProcessorValueTreeState::ParameterLayout AmpsurdProcessor::createLayo
                                                      NormalisableRange<float>(-40.0f, 12.0f, 0.1f), 0.0f, db));
     layout.add(std::make_unique<AudioParameterBool>(ParameterID { "bypass", 1 }, "Bypass", false));
     layout.add(std::make_unique<AudioParameterBool>(ParameterID { "levelMatch", 1 }, "Level match", true));
+    layout.add(std::make_unique<AudioParameterBool>(ParameterID { "gateOn", 1 }, "Gate", true));
+    layout.add(std::make_unique<AudioParameterFloat>(ParameterID { "gateThreshold", 1 }, "Gate Threshold",
+                                                     NormalisableRange<float>(-96.0f, -20.0f, 0.1f),
+                                                     ampsurd::NoiseGate::kDefaultThresholdDb, db));
+    {
+        NormalisableRange<float> dr(5.0f, 2000.0f, 1.0f);
+        dr.setSkewForCentre(150.0f);
+        layout.add(std::make_unique<AudioParameterFloat>(ParameterID { "gateDecay", 1 }, "Gate Decay", dr,
+                                                         ampsurd::NoiseGate::kDefaultDecayMs,
+                                                         AudioParameterFloatAttributes().withLabel("ms")));
+    }
+    layout.add(std::make_unique<AudioParameterBool>(ParameterID { "tunerMute", 1 }, "Mute While Tuning", false));
 
     const auto defaults = ampsurd::ParametricEq::defaultBands();
     for (int s = 0; s < kNumSlots; ++s)
@@ -124,6 +136,10 @@ AmpsurdProcessor::AmpsurdProcessor()
     bypassParam = params.getRawParameterValue("bypass");
     levelMatchParam = params.getRawParameterValue("levelMatch");
     bypassParamObj = params.getParameter("bypass");
+    gateOnParam = params.getRawParameterValue("gateOn");
+    gateThresholdParam = params.getRawParameterValue("gateThreshold");
+    gateDecayParam = params.getRawParameterValue("gateDecay");
+    tunerMuteParam = params.getRawParameterValue("tunerMute");
 
     for (int s = 0; s < kNumSlots; ++s)
     {
@@ -177,6 +193,9 @@ void AmpsurdProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     inBuffer.assign((size_t) maxBlock, 0.0);
     outBuffer.assign((size_t) maxBlock, 0.0);
     dryBuffer.assign((size_t) maxBlock, 0.0);
+    rawBuffer.assign((size_t) maxBlock, 0.0f);
+    gate.prepare(sampleRate);
+    tuner.prepare(sampleRate);
     dryDelay.assign((size_t) (sampleRate * 0.1) + 1, 0.0f); // up to 100 ms of latency
     dryDelayPos = 0;
     inputGain.reset(sampleRate, 0.02);
@@ -229,6 +248,9 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
     outputGain.setTargetValue(juce::Decibels::decibelsToGain(outputParam->load()));
     const double bypassTarget = bypassParam->load() > 0.5f ? 1.0 : 0.0;
     const bool levelMatch = levelMatchParam->load() > 0.5f;
+    gate.setParameters(gateOnParam->load() > 0.5f, gateThresholdParam->load(), gateDecayParam->load());
+    const double muteTarget = (tunerMuteParam->load() > 0.5f && tunerVisible.load(std::memory_order_relaxed)) ? 1.0 : 0.0;
+    float keyPeak = 0.0f;
 
     // Engine settings from parameters (lock-free reads) + measured values.
     bool rotation = false;
@@ -263,6 +285,7 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         for (int i = 0; i < n; ++i)
         {
             const float raw = in != nullptr ? in[start + i] : 0.0f;
+            rawBuffer[(size_t) i] = raw;
             // dry signal delayed by the plugin latency, for click-free, time-aligned bypass
             dryDelay[(size_t) dryDelayPos] = raw;
             int rp = dryDelayPos - latency;
@@ -274,8 +297,11 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
             inPeak = juce::jmax(inPeak, std::abs(x));
             inBuffer[(size_t) i] = x;
         }
+        tuner.push(rawBuffer.data(), n); // tuner works on the clean DI, also when bypassed
+        keyPeak = juce::jmax(keyPeak, inPeak);
 
         engine.process(inBuffer.data(), outBuffer.data(), n, settings);
+        gate.process(inBuffer.data(), outBuffer.data(), n); // NS-2 style: listen to the DI, silence after the amps
 
         for (int i = 0; i < n; ++i)
             outBuffer[(size_t) i] *= outputGain.getNextValue();
@@ -285,7 +311,9 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         {
             bypassMix += (bypassTarget - bypassMix) * bypassCoef;
             if (std::abs(bypassTarget - bypassMix) < 1e-6) bypassMix = bypassTarget;
-            const double y = (1.0 - bypassMix) * outBuffer[(size_t) i] + bypassMix * dryBuffer[(size_t) i];
+            muteMix += (muteTarget - muteMix) * bypassCoef;
+            if (std::abs(muteTarget - muteMix) < 1e-6) muteMix = muteTarget;
+            const double y = ((1.0 - bypassMix) * outBuffer[(size_t) i] + bypassMix * dryBuffer[(size_t) i]) * (1.0 - muteMix);
             out[start + i] = (float) y;
             outPeak = juce::jmax(outPeak, (float) std::abs(y));
         }
@@ -295,6 +323,8 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         buffer.copyFrom(ch, 0, buffer, 0, 0, numSamples);
 
     if (inPeak > inputPeak.load(std::memory_order_relaxed)) inputPeak.store(inPeak, std::memory_order_relaxed);
+    if (keyPeak > gateKeyPeak.load(std::memory_order_relaxed)) gateKeyPeak.store(keyPeak, std::memory_order_relaxed);
+    gateGain.store((float) gate.getCurrentGain(), std::memory_order_relaxed);
     if (outPeak > outputPeak.load(std::memory_order_relaxed)) outputPeak.store(outPeak, std::memory_order_relaxed);
     const float gr = (float) limiter.getAndResetMaxReductionDb();
     if (gr > limiterReductionDb.load(std::memory_order_relaxed)) limiterReductionDb.store(gr, std::memory_order_relaxed);

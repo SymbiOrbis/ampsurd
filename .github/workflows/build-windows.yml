@@ -21,12 +21,14 @@ jobs:
         run: cmake -S . -B build -A x64
 
       - name: Build plugin and tools
-        run: cmake --build build --config Release --target Ampsurd_VST3 ampsurd_render ampsurd_bench limiter_test engine_test mix_experiment --parallel
+        run: cmake --build build --config Release --target Ampsurd_VST3 ampsurd_render ampsurd_bench limiter_test engine_test gate_tuner_test mix_experiment --parallel
 
       - name: Smoke test (load NAM Core example A2 model, hot-swap stress)
         shell: pwsh
         run: |
           ./build/tools/Release/limiter_test.exe
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          ./build/tools/Release/gate_tuner_test.exe
           if ($LASTEXITCODE -ne 0) { exit 1 }
           ./build/tools/Release/engine_test.exe build/_deps/namcore-src/example_models/A2.nam build/_deps/namcore-src/example_models/wavenet_a1_standard.nam
           if ($LASTEXITCODE -ne 0) { exit 1 }

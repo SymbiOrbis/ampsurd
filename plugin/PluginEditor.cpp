@@ -2,7 +2,7 @@
 
 using namespace ampsurd::ui;
 
-AmpsurdEditor::Content::Content(AmpsurdProcessor& p) : header(p), edit(p), master(p)
+AmpsurdEditor::Content::Content(AmpsurdProcessor& p) : header(p), edit(p), centre(p), master(p)
 {
     addAndMakeVisible(header);
     for (int s = 0; s < AmpsurdProcessor::kNumSlots; ++s)
@@ -10,7 +10,8 @@ AmpsurdEditor::Content::Content(AmpsurdProcessor& p) : header(p), edit(p), maste
         slots[(size_t) s] = std::make_unique<SlotComponent>(p, s);
         addAndMakeVisible(*slots[(size_t) s]);
     }
-    addAndMakeVisible(edit);
+    addChildComponent(edit);   // EDIT replaces the gate + tuner in the centre area
+    addAndMakeVisible(centre);
     addAndMakeVisible(master);
     addAndMakeVisible(footer);
 }
@@ -40,6 +41,7 @@ void AmpsurdEditor::Content::resized()
     master.setBounds(r.removeFromBottom(52));
     r.removeFromBottom(14);
     edit.setBounds(r);
+    centre.setBounds(r);
 }
 
 AmpsurdEditor::AmpsurdEditor(AmpsurdProcessor& p) : AudioProcessorEditor(&p), proc(p), content(p)
@@ -49,6 +51,7 @@ AmpsurdEditor::AmpsurdEditor(AmpsurdProcessor& p) : AudioProcessorEditor(&p), pr
     addAndMakeVisible(content);
     for (int s = 0; s < AmpsurdProcessor::kNumSlots; ++s)
         content.slots[(size_t) s]->onEditClicked = [this](int slot) { selectSlot(selected == slot ? -1 : slot); };
+    content.edit.onClose = [this] { selectSlot(-1); };
 
     setResizable(true, true);
     setResizeLimits(kWidth * 2 / 3, kHeight * 2 / 3, kWidth * 2, kHeight * 2);
@@ -63,6 +66,7 @@ AmpsurdEditor::AmpsurdEditor(AmpsurdProcessor& p) : AudioProcessorEditor(&p), pr
 AmpsurdEditor::~AmpsurdEditor()
 {
     stopTimer();
+    proc.setTunerVisible(false);
     content.setLookAndFeel(nullptr);
     setLookAndFeel(nullptr);
 }
@@ -93,6 +97,12 @@ void AmpsurdEditor::timerCallback()
     for (int s = 0; s < AmpsurdProcessor::kNumSlots; ++s)
         content.slots[(size_t) s]->refresh(s == selected);
     content.edit.refresh();
+    const bool editing = content.edit.getSlot() >= 0;
+    content.edit.setVisible(editing);
+    content.centre.setVisible(!editing);
+    proc.setTunerVisible(!editing);
+    if (!editing)
+        content.centre.refresh();
     content.master.refresh();
     content.header.refresh();
 }

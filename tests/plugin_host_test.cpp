@@ -71,6 +71,8 @@ int main(int argc, char** argv)
             const auto id = p->getStringAttribute("id");
             if (id == "levelMatch") p->setAttribute("value", levelMatch ? 1.0 : 0.0);
             if (id == "output") p->setAttribute("value", outDb);
+            if (id == "gateOn" && juce::SystemStats::getEnvironmentVariable("AMPSURD_TEST_GATE_OFF", "0") == "1")
+                p->setAttribute("value", 0.0);
             if (id == "bypass" && juce::SystemStats::getEnvironmentVariable("AMPSURD_TEST_BYPASS", "0") == "1")
                 p->setAttribute("value", 1.0);
             for (int i = 0; i < 5; ++i)

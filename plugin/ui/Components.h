@@ -156,15 +156,76 @@ public:
     void paint(juce::Graphics&) override;
     void resized() override;
     void refresh();
+    std::function<void()> onClose;
 
 private:
     AmpsurdProcessor& proc;
     int slot = -1;
     EqGraph graph;
     AlignPanel align;
-    juce::TextButton eqOnButton { "EQ ON" }, flatButton { "FLAT" }, removeButton { "REMOVE NAM" };
+    juce::TextButton eqOnButton { "EQ ON" }, flatButton { "FLAT" }, removeButton { "REMOVE NAM" }, closeButton { "CLOSE" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> eqOnAtt;
     juce::String title;
+};
+
+// ---------------------------------------------------------------------------------------------
+// Noise gate (NS-2 style) - shown in the centre area while no amp is being edited.
+class GatePanel final : public juce::Component
+{
+public:
+    explicit GatePanel(AmpsurdProcessor&);
+    void paint(juce::Graphics&) override;
+    void resized() override;
+    void mouseDown(const juce::MouseEvent&) override;
+    void mouseDrag(const juce::MouseEvent&) override;
+    void mouseUp(const juce::MouseEvent&) override;
+    void refresh();
+
+private:
+    juce::Rectangle<float> meterArea() const;
+    float xForDb(float db) const;
+    float dbForX(float x) const;
+
+    AmpsurdProcessor& proc;
+    juce::TextButton onButton { "ON" };
+    juce::Slider thresholdSlider, decaySlider;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> onAtt;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> thrAtt, decAtt;
+    float level = 0.0f;
+    float gain = 1.0f;
+    bool draggingThreshold = false;
+};
+
+// Chromatic tuner on the clean DI - shown in the centre area while no amp is being edited.
+class TunerPanel final : public juce::Component
+{
+public:
+    explicit TunerPanel(AmpsurdProcessor&);
+    void paint(juce::Graphics&) override;
+    void resized() override;
+    void refresh();
+
+private:
+    AmpsurdProcessor& proc;
+    juce::TextButton muteButton { "MUTE OUTPUT" };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> muteAtt;
+    ampsurd::PitchDetector::Result shown;
+    std::array<double, 5> recentCents {};
+    int recentCount = 0, lastNote = -1;
+    double lastValidMs = 0.0;
+};
+
+class CentrePanel final : public juce::Component
+{
+public:
+    explicit CentrePanel(AmpsurdProcessor&);
+    void paint(juce::Graphics&) override;
+    void resized() override;
+    void refresh();
+
+private:
+    GatePanel gatePanel;
+    TunerPanel tunerPanel;
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -190,7 +251,8 @@ public:
 private:
     AmpsurdProcessor& proc;
     juce::Slider inputSlider, outputSlider;
-    juce::TextButton bypassButton { "BYPASS" };
+    juce::TextButton bypassButton { "BYPASS" }, gateButton { "GATE" };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> gateAtt;
     LevelMeter inMeter, outMeter;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> inAtt, outAtt;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAtt;
