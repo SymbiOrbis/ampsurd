@@ -1,6 +1,6 @@
 # AMPSURD — Project Status
 
-_Last updated: 2026-10-07 (Claude, session 2)_
+_Last updated: 2026-10-08 (Claude, session 2)_
 
 **Product name:** AMPSURD (formerly MONSTROSITY / QUINQUEPLEX).
 **What it is:** free, open-source (GNU AGPLv3) guitar plugin: one DI signal → up to five Neural
@@ -32,12 +32,12 @@ EQ bands 1/10 as low/high cut, mouse wheel adjusts the nearest EQ point.
 | Mix law (constant perceived loudness) | done, measured | `mix_experiment`: within ±0.02 dB of target over 331 mixes (vs. −4.6 dB for plain percentages) — `docs/REVIEW.md` §5 |
 | Level match (measured by AMPSURD, K-weighted) | done | 5 captures 14 dB apart via file metadata → all at −18.0 dB |
 | SOLO / MUTE (stored mix kept) | done | `engine_test` |
-| EDIT selection, 10-band EQ per path: band 1 low cut, bands 2–9 bells, band 10 high cut (12 dB/oct); wheel changes the nearest point | done | measured response = drawn curve (0.000 dB error); default EQ bit-transparent; low cut never boosts |
+| EDIT selection, 10-band EQ per path: band 1 low cut, bands 2–9 bells, band 10 high cut (12 dB/oct); wheel changes the nearest point; EQ OFF bypasses all bands | done | measured response = drawn curve (0.000 dB error); default EQ bit-transparent; low cut never boosts |
 | AUTO alignment (offset + polarity) | done | finds a planted 37.3-sample offset + inverted polarity exactly |
 | FREE: TIME (fractional delay ±1 ms), PHASE (rotation ±180°), RESET | done | delay accurate to 0.2°, rotation flat ±0.7° from 30 Hz–18 kHz; mix law holds with rotation |
 | Master: INPUT, OUTPUT, meters, BYPASS (time-aligned dry) | done | bypass output = dry input delayed by latency, sample-identical |
 | No digital clipping (−1 dBFS safety limiter) | done | 5 captures, OUTPUT +12 dB, 44.1/48 kHz → peak −1.00 / −1.28 dBFS |
-| Complete-rig presets: PRESET menu, SAVE, SAVE AS, DAW project state | done | round trip 205/205 parameters + 5/5 slots; missing capture → FILE MISSING, no crash |
+| Complete-rig presets: PRESET menu, SAVE, SAVE AS, DAW project state | done | round trip 236/236 parameters (older presets: new parameters at defaults) + 5/5 slots; missing capture → FILE MISSING, no crash |
 | Fixed five-slot layout, fixed-size filename typography with wrapping | done | screenshots in `docs/screenshots/` (filenames shown character-exact, e.g. "4x12") |
 | Branding footer with three equal logo areas | placeholders | real logos: drop files into `plugin/assets/logos/` (see README there) |
 | Resizable window (scales whole UI, fixed aspect) | done | rendered at 1200x800 and 1800x1200 |
@@ -45,6 +45,7 @@ EQ bands 1/10 as low/high cut, mouse wheel adjusts the nearest EQ point.
 | Chromatic tuner on the clean DI (works when BYPASS is on), MUTE OUTPUT while shown | done, awaiting REAPER test | correct note F#1..E6 (46 Hz-1.3 kHz), worst error 0.14 cents; no false notes on hiss |
 | Centre area: gate + tuner; EDIT replaces them, CLOSE returns | done | screenshots |
 | Create Frankenstein: 2–5 frequency sections, amp per section, draggable dividers, WIDTH 0–90 %, muted amp's section closes (neighbours meet in the middle), solo = full spectrum | done, awaiting REAPER test | `frankenstein_test`: same amp in all sections → flat 0.0000 dB; split −6.0/−6.0 dB at the divider, −49 dB out of band; random dragging bounded; real captures on/off clean, loudness −0.08 dB; no added latency |
+| Global EQ on the complete sound (same 10 bands as the amps), GLOBAL EQ button with ON/OFF state, grey Global EQ curve behind an amp's EQ | done, awaiting REAPER test | `engine_test`: OFF bit-identical, ON = verified EQ curve exactly, on/off click-free; presets 236/236; older presets load with it off |
 
 Latency: 104 samples (2.17 ms) at 48 kHz, 123 at 44.1 kHz (constant; includes 1 ms limiter
 look-ahead and 1 ms alignment reserve). CPU: five A2 Full captures ≈ 40–48 % of one 2.8 GHz cloud
@@ -85,7 +86,7 @@ Renamed everything to AMPSURD. New: `core/{Engine,PathAligner,ParametricEq,Captu
 
 ## Roadmap
 
-See `docs/ROADMAP.md`: gate + tuner (done) → Create Frankenstein (done) → per-amp pan → release package.
+See `docs/ROADMAP.md`: gate + tuner (done) → Create Frankenstein (done) → Global EQ (done) → per-amp pan → release package.
 
 ## Next concrete step
 

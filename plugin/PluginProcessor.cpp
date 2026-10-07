@@ -47,14 +47,56 @@ void setParam(juce::AudioProcessorValueTreeState& apvts, const juce::String& id,
 // ---------------------------------------------------------------------------------------------
 // Parameters
 // ---------------------------------------------------------------------------------------------
+static juce::String eqPrefix(int target)
+{
+    return target == AmpsurdProcessor::kGlobalEq ? juce::String("geq") : "s" + juce::String(target + 1);
+}
+
 juce::String AmpsurdProcessor::slotParamId(int slot, const char* name)
 {
-    return "s" + juce::String(slot + 1) + "_" + name;
+    return eqPrefix(slot) + "_" + name;
 }
 
 juce::String AmpsurdProcessor::bandParamId(int slot, int band, const char* name)
 {
-    return "s" + juce::String(slot + 1) + "_b" + juce::String(band + 1) + "_" + name;
+    return eqPrefix(slot) + "_b" + juce::String(band + 1) + "_" + name;
+}
+
+std::array<ampsurd::EqBand, ampsurd::ParametricEq::kNumBands> AmpsurdProcessor::getEqBands(int target) const
+{
+    std::array<ampsurd::EqBand, kNumBands> b {};
+    const auto& freq = target == kGlobalEq ? globalEqParams.freq : slotParams[(size_t) target].freq;
+    const auto& gain = target == kGlobalEq ? globalEqParams.gain : slotParams[(size_t) target].gain;
+    const auto& q = target == kGlobalEq ? globalEqParams.q : slotParams[(size_t) target].q;
+    for (int i = 0; i < kNumBands; ++i)
+        b[(size_t) i] = { freq[(size_t) i]->load(), gain[(size_t) i]->load(), q[(size_t) i]->load() };
+    return b;
+}
+
+// The ten EQ bands (same ranges for every amp and for the Global EQ).
+static void addEqBandParams(juce::AudioProcessorParameterGroup& group, int target, const juce::String& namePrefix)
+{
+    using namespace juce;
+    const auto defaults = ampsurd::ParametricEq::defaultBands();
+    for (int b = 0; b < ampsurd::ParametricEq::kNumBands; ++b)
+    {
+        const auto type = ampsurd::ParametricEq::bandType(b);
+        const String bn = namePrefix + (type == ampsurd::ParametricEq::BandType::lowCut ? String("Low Cut ")
+                                        : type == ampsurd::ParametricEq::BandType::highCut ? String("High Cut ")
+                                                                                              : "EQ" + String(b + 1) + " ");
+        NormalisableRange<float> fr(20.0f, 20000.0f, 0.1f);
+        fr.setSkewForCentre(632.0f);
+        NormalisableRange<float> qr(0.3f, 10.0f, 0.001f);
+        qr.setSkewForCentre(1.7f);
+        group.addChild(std::make_unique<AudioParameterFloat>(ParameterID { AmpsurdProcessor::bandParamId(target, b, "freq"), 1 }, bn + "Freq",
+                                                             fr, defaults[(size_t) b].freqHz,
+                                                             AudioParameterFloatAttributes().withLabel("Hz")));
+        group.addChild(std::make_unique<AudioParameterFloat>(ParameterID { AmpsurdProcessor::bandParamId(target, b, "gain"), 1 }, bn + "Gain",
+                                                             NormalisableRange<float>(-18.0f, 18.0f, 0.01f), 0.0f,
+                                                             AudioParameterFloatAttributes().withLabel("dB")));
+        group.addChild(std::make_unique<AudioParameterFloat>(ParameterID { AmpsurdProcessor::bandParamId(target, b, "q"), 1 }, bn + "Q",
+                                                             qr, defaults[(size_t) b].q));
+    }
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout AmpsurdProcessor::createLayout()
@@ -102,7 +144,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout AmpsurdProcessor::createLayo
                                                          AudioParameterFloatAttributes().withLabel("Hz")));
     }
 
-    const auto defaults = ampsurd::ParametricEq::defaultBands();
     for (int s = 0; s < kNumSlots; ++s)
     {
         const String n = "Amp " + String(s + 1) + " ";
@@ -121,24 +162,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout AmpsurdProcessor::createLayo
         group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { slotParamId(s, "phase"), 1 }, n + "Phase",
                                                               NormalisableRange<float>(-180.0f, 180.0f, 0.1f), 0.0f,
                                                               AudioParameterFloatAttributes().withLabel("deg")));
-        for (int b = 0; b < kNumBands; ++b)
-        {
-            const auto type = ampsurd::ParametricEq::bandType(b);
-            const String bn = n + (type == ampsurd::ParametricEq::BandType::lowCut ? String("Low Cut ")
-                                 : type == ampsurd::ParametricEq::BandType::highCut ? String("High Cut ")
-                                                                                       : "EQ" + String(b + 1) + " ");
-            NormalisableRange<float> fr(20.0f, 20000.0f, 0.1f);
-            fr.setSkewForCentre(632.0f);
-            NormalisableRange<float> qr(0.3f, 10.0f, 0.001f);
-            qr.setSkewForCentre(1.7f);
-            group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { bandParamId(s, b, "freq"), 1 }, bn + "Freq",
-                                                                  fr, defaults[(size_t) b].freqHz,
-                                                                  AudioParameterFloatAttributes().withLabel("Hz")));
-            group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { bandParamId(s, b, "gain"), 1 }, bn + "Gain",
-                                                                  NormalisableRange<float>(-18.0f, 18.0f, 0.01f), 0.0f, db));
-            group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { bandParamId(s, b, "q"), 1 }, bn + "Q",
-                                                                  qr, defaults[(size_t) b].q));
-        }
+        addEqBandParams(*group, s, n);
+        layout.add(std::move(group));
+    }
+
+    // Global EQ: same ten bands, on the complete blend (after Frankenstein, before the limiter)
+    {
+        auto group = std::make_unique<AudioProcessorParameterGroup>("globalEq", "Global EQ", " | ");
+        group->addChild(std::make_unique<AudioParameterBool>(ParameterID { slotParamId(kGlobalEq, "eqOn"), 1 }, "Global EQ On", false));
+        addEqBandParams(*group, kGlobalEq, "Global ");
         layout.add(std::move(group));
     }
     return layout;
@@ -182,6 +214,14 @@ AmpsurdProcessor::AmpsurdProcessor()
             sp.gain[(size_t) b] = params.getRawParameterValue(bandParamId(s, b, "gain"));
             sp.q[(size_t) b] = params.getRawParameterValue(bandParamId(s, b, "q"));
         }
+    }
+
+    globalEqParams.eqOn = params.getRawParameterValue(slotParamId(kGlobalEq, "eqOn"));
+    for (int b = 0; b < kNumBands; ++b)
+    {
+        globalEqParams.freq[(size_t) b] = params.getRawParameterValue(bandParamId(kGlobalEq, b, "freq"));
+        globalEqParams.gain[(size_t) b] = params.getRawParameterValue(bandParamId(kGlobalEq, b, "gain"));
+        globalEqParams.q[(size_t) b] = params.getRawParameterValue(bandParamId(kGlobalEq, b, "q"));
     }
 
     prepareToPlay(48000.0, 512); // valid state before the host calls prepareToPlay
@@ -287,8 +327,7 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         ss.mute = sp.mute->load() > 0.5f;
         ss.solo = sp.solo->load() > 0.5f;
         ss.eqEnabled = sp.eqOn->load() > 0.5f;
-        for (int b = 0; b < kNumBands; ++b)
-            ss.eq[(size_t) b] = { sp.freq[(size_t) b]->load(), sp.gain[(size_t) b]->load(), sp.q[(size_t) b]->load() };
+        ss.eq = getEqBands(s);
         const auto a = effectiveAlign(s, sr);
         ss.delaySamples = a.delaySamples;
         ss.polarity = a.polarity;
@@ -298,6 +337,8 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
     }
     settings.rotationActive = rotation;
     settings.frankenstein = readFrankenstein();
+    settings.globalEqEnabled = isGlobalEqOn();
+    settings.globalEq = getEqBands(kGlobalEq);
 
     const float* in = numIn > 0 ? buffer.getReadPointer(0) : nullptr;
     float* out = buffer.getWritePointer(0);
@@ -413,6 +454,9 @@ void AmpsurdProcessor::loadJob(int slot, juce::File file, int gen, bool /*adjust
     for (double& v : test) v *= g;
     const auto meas = CaptureAnalyzer::measure(CaptureAnalyzer::render(*result.model, test, false), sr);
     result.model->prepare(sr, currentMaxBlock); // clear the state left by the measurement
+
+    if (gen != slotGeneration[(size_t) slot].load())
+        return; // a newer load / preset replaced this slot while we were measuring
 
     std::array<std::shared_ptr<const CaptureAnalyzer::Measurement>, kNumSlots> snapshot;
     {
@@ -830,6 +874,17 @@ void AmpsurdProcessor::restoreState(const juce::ValueTree& tree, const juce::Fil
     auto paramsOnly = tree.createCopy();
     if (auto old = paramsOnly.getChildWithName(kSlotsId); old.isValid())
         paramsOnly.removeChild(old, nullptr);
+    // Parameters that did not exist when the preset was saved (e.g. Global EQ in older presets)
+    // are set to their defaults, so a preset always sounds the same, whatever was loaded before.
+    for (auto* p : getParameters())
+        if (auto* rp = dynamic_cast<juce::RangedAudioParameter*>(p))
+            if (!paramsOnly.getChildWithProperty("id", rp->paramID).isValid())
+            {
+                juce::ValueTree child("PARAM");
+                child.setProperty("id", rp->paramID, nullptr);
+                child.setProperty("value", rp->convertFrom0to1(rp->getDefaultValue()), nullptr);
+                paramsOnly.appendChild(child, nullptr);
+            }
     params.replaceState(paramsOnly);
 
     {

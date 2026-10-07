@@ -103,6 +103,12 @@ REAPER picks up the new version.
     middle. Listen for clicks while dragging and switching; does the loudness stay about the same
     when you switch Frankenstein on/off? **EXIT** returns to the normal fader blend.
 
+13. Global EQ: click the vertical **GLOBAL EQ** button right of the tuner. Switch **EQ ON**, shape
+    the complete sound (e.g. low cut at 80 Hz, a little less 250 Hz). CLOSE: the button now stays
+    lit and reads **GLOBAL EQ ON**. Press EDIT on an amp: a thin grey line in its EQ graph shows the
+    Global EQ (it cannot be grabbed). Save a preset, change the Global EQ, reload the preset: is it
+    back exactly? Switch EQ ON/OFF while playing: any click?
+
 Expected latency shown by REAPER: 104 samples at 48 kHz, 123 at 44.1 kHz.
 
 Optional measurements (in Developer PowerShell):

@@ -24,6 +24,29 @@ std::array<EqBand, ParametricEq::kNumBands> ParametricEq::defaultBands()
     return b;
 }
 
+std::array<EqBand, ParametricEq::kNumBands> ParametricEq::neutralised(std::array<EqBand, kNumBands> b) noexcept
+{
+    for (int i = 0; i < kNumBands; ++i)
+    {
+        auto& band = b[(size_t) i];
+        band.gainDb = 0.0f;
+        if (bandType(i) == BandType::lowCut) band.freqHz = kMinFreq;
+        if (bandType(i) == BandType::highCut) band.freqHz = kMaxFreq;
+    }
+    return b;
+}
+
+bool ParametricEq::isFlat(const std::array<EqBand, kNumBands>& b) noexcept
+{
+    for (int i = 0; i < kNumBands; ++i)
+    {
+        const auto& band = b[(size_t) i];
+        if (bandType(i) == BandType::bell ? band.gainDb != 0.0f : isCutActive(i, band.freqHz))
+            return false;
+    }
+    return true;
+}
+
 void ParametricEq::prepare(double sampleRate)
 {
     fs = sampleRate;
@@ -111,7 +134,17 @@ void ParametricEq::process(double* x, int n) noexcept
                 if (std::abs(s.tLogF - s.logF) < 1e-5) s.logF = s.tLogF;
                 if (std::abs(s.tGain - s.gain) < 1e-4) s.gain = s.tGain;
                 if (std::abs(s.tLogQ - s.logQ) < 1e-5) s.logQ = s.tLogQ;
+                const bool wasActive = s.active;
                 updateCoefficients(s);
+                // A high cut leaving its 20 kHz end stop starts from the state it would have
+                // settled into with the current input (output = input), not from silence - an
+                // empty low-pass state would pull the output towards zero for a moment (a click).
+                // (An empty low-cut state already passes the input unchanged.)
+                if (s.active && !wasActive && s.type == BandType::highCut)
+                {
+                    s.ic1 = 0.0;
+                    s.ic2 = p[0];
+                }
             }
 
             if (!s.active)

@@ -1,6 +1,6 @@
 # AMPSURD — Roadmap (agreed with the owner, 2026-10-07)
 
-Order (owner, 2026-10-07): 1 gate + tuner → 2 Frankenstein → 3 per-amp pan → 4 release package.
+Order (owner, 2026-10-07/08): 1 gate + tuner → 2 Frankenstein → 2b Global EQ → 3 per-amp pan → 4 release package.
 Each step is tested in REAPER before the next starts.
 
 ## 1. Noise gate + chromatic tuner (centre area) — IMPLEMENTED 2026-10-07, awaiting REAPER test
@@ -25,6 +25,13 @@ EQ/tuner). The user chooses the number of sections (2–5) and assigns a loaded 
   over linear-phase FIR, which would add 10–40 ms of latency. CPU impact negligible.
 - Decided: Frankenstein mode replaces the fader blend while active (faders inactive, % = share of
   the spectrum). Linkwitz-Riley 24 dB/oct tree with shared all-pass compensation, no added latency.
+
+## 2b. Global EQ — IMPLEMENTED 2026-10-08, awaiting REAPER test
+Owner's spec 2026-10-07. Input → gate detector → 5 paths (EQ / alignment) → blend or Frankenstein →
+GLOBAL EQ → gate → OUTPUT → limiter. Same ten bands and graph as the amp EQ (low cut, 8 bells,
+high cut), no alignment; EQ ON / FLAT / CLOSE. Vertical GLOBAL EQ button next to the gate + tuner,
+lit and reading "ON" while active. Subdued, non-editable Global EQ curve behind an amp's EQ in EDIT
+(only when on and not flat). Complete state stored in presets.
 
 ## 3. Stereo width: per-amp PAN
 - One PAN control per slot (centre by default), constant-power pan law, stereo output.

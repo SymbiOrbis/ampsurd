@@ -124,7 +124,7 @@ private:
     AmpsurdProcessor& proc;
     int slot = -1;
     int hoverBand = -1, activeBand = -1;
-    std::array<float, 3 * ampsurd::ParametricEq::kNumBands + 1> lastSeen {};
+    std::array<float, 3 * ampsurd::ParametricEq::kNumBands + 1> lastSeen {}, lastGlobal {};
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -166,6 +166,41 @@ private:
     juce::TextButton eqOnButton { "EQ ON" }, flatButton { "FLAT" }, removeButton { "REMOVE NAM" }, closeButton { "CLOSE" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> eqOnAtt;
     juce::String title;
+};
+
+// ---------------------------------------------------------------------------------------------
+// Global EQ: same EQ as the amps, applied to the complete blend. Replaces the gate + tuner while open.
+class GlobalEqPanel final : public juce::Component
+{
+public:
+    explicit GlobalEqPanel(AmpsurdProcessor&);
+    void paint(juce::Graphics&) override;
+    void resized() override;
+    void refresh();
+    std::function<void()> onClose;
+
+private:
+    AmpsurdProcessor& proc;
+    EqGraph graph;
+    juce::TextButton eqOnButton { "EQ ON" }, flatButton { "FLAT" }, closeButton { "CLOSE" };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> eqOnAtt;
+};
+
+// Vertical GLOBAL EQ button at the right of the centre area; lit while the Global EQ is on.
+class GlobalEqButton final : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    explicit GlobalEqButton(AmpsurdProcessor&);
+    void paint(juce::Graphics&) override;
+    void mouseUp(const juce::MouseEvent&) override;
+    void mouseEnter(const juce::MouseEvent&) override { repaint(); }
+    void mouseExit(const juce::MouseEvent&) override { repaint(); }
+    void refresh();
+    std::function<void()> onClick;
+
+private:
+    AmpsurdProcessor& proc;
+    bool shownOn = false, shownFlat = true;
 };
 
 // ---------------------------------------------------------------------------------------------

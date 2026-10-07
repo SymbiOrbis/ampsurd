@@ -34,6 +34,7 @@ void Engine::prepare(double sr, int maxBlockSize, double maxDelayMs)
     gainCoef = 1.0 - std::exp(-1.0 / (0.025 * sr)); // 25 ms gain smoothing
     frankCoef = 1.0 - std::exp(-1.0 / (0.030 * sr)); // 30 ms crossfade blend <-> Frankenstein
     frankOut.assign((size_t) maxBlock, 0.0);
+    globalEq.prepare(sr);
     frankenstein.prepare(sr, maxBlock);
     frankMix = 0.0;
 }
@@ -167,10 +168,7 @@ void Engine::process(const double* in, double* out, int n, const EngineSettings&
         al.process(buf, n);
 
         auto& eq = eqs[(size_t) i];
-        auto bands = ss.eq;
-        if (!ss.eqEnabled)
-            for (auto& b : bands) b.gainDb = 0.0f;
-        eq.setBands(bands);
+        eq.setBands(ss.eqEnabled ? ss.eq : ParametricEq::neutralised(ss.eq)); // OFF also releases the cuts
         eq.process(buf, n);
 
         const double target = p[(size_t) i] * G * ss.levelGain;
@@ -219,6 +217,10 @@ void Engine::process(const double* in, double* out, int n, const EngineSettings&
             for (int i = 0; i < kNumSlots; ++i) // percentages = share of the spectrum each amp plays
                 effectivePercent[(size_t) i].store((float) (100.0 * layout.spectrumShare[(size_t) i]), std::memory_order_relaxed);
     }
+
+    // 5. Global EQ on the complete blend (same EQ as the paths; OFF glides to flat, then costs nothing).
+    globalEq.setBands(s.globalEqEnabled ? s.globalEq : ParametricEq::neutralised(s.globalEq));
+    globalEq.process(out, n);
 }
 
 } // namespace ampsurd

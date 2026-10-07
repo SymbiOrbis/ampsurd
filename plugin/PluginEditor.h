@@ -24,6 +24,7 @@ public:
 
     // for tests / screenshots
     void selectSlot(int slot);
+    void showGlobalEq(bool show);
     void refreshAll() { timerCallback(); }
 
 private:
@@ -40,6 +41,8 @@ private:
         ampsurd::ui::EditPanel edit;
         ampsurd::ui::CentrePanel centre;
         ampsurd::ui::FrankensteinPanel frankenstein;
+        ampsurd::ui::GlobalEqPanel globalEq;
+        ampsurd::ui::GlobalEqButton globalEqButton;
         ampsurd::ui::MasterPanel master;
         ampsurd::ui::BrandingFooter footer;
     };
@@ -49,6 +52,7 @@ private:
     Content content;
     juce::TooltipWindow tooltips { this, 600 };
     int selected = -1;
+    bool globalEqOpen = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AmpsurdEditor)
 };

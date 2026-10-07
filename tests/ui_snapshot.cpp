@@ -153,6 +153,33 @@ int main(int argc, char** argv)
         setP(*proc, AmpsurdProcessor::slotParamId(0, "mute"), 0.0f);
     }
 
+    // Global EQ
+    {
+        proc->setFrankenstein(false);
+        for (int b = 0; b < 8; ++b) { buf.clear(); proc->processBlock(buf, midi); }
+        const int G = AmpsurdProcessor::kGlobalEq;
+        std::unique_ptr<juce::AudioProcessorEditor> ed(proc->createEditor());
+        auto* e = dynamic_cast<AmpsurdEditor*>(ed.get());
+        e->refreshAll();
+        save(*ed, out.getChildFile("09_global_eq_off.png"));
+        setP(*proc, AmpsurdProcessor::slotParamId(G, "eqOn"), 1.0f);
+        setP(*proc, AmpsurdProcessor::bandParamId(G, 0, "freq"), 80.0f);   // low cut 80 Hz
+        setP(*proc, AmpsurdProcessor::bandParamId(G, 3, "gain"), -3.0f);   // 250 Hz -3 dB
+        setP(*proc, AmpsurdProcessor::bandParamId(G, 7, "gain"), 2.5f);    // 4 kHz +2.5 dB
+        setP(*proc, AmpsurdProcessor::bandParamId(G, 7, "q"), 0.8f);
+        setP(*proc, AmpsurdProcessor::bandParamId(G, 9, "freq"), 9000.0f); // high cut 9 kHz
+        e->refreshAll();
+        save(*ed, out.getChildFile("10_global_eq_on.png"));
+        e->showGlobalEq(true);
+        e->refreshAll();
+        save(*ed, out.getChildFile("11_global_eq_panel.png"));
+        setP(*proc, AmpsurdProcessor::bandParamId(1, 4, "gain"), 4.0f);    // amp 2: 500 Hz +4 dB
+        setP(*proc, AmpsurdProcessor::bandParamId(1, 6, "gain"), -5.0f);   // amp 2: 2 kHz -5 dB
+        e->selectSlot(1);
+        e->refreshAll();
+        save(*ed, out.getChildFile("12_edit_with_global_eq.png"));
+    }
+
     // 3. preset round trip
     const auto presetFile = out.getChildFile("Test rig.ampsurd");
     proc->savePreset(presetFile);
@@ -180,6 +207,21 @@ int main(int argc, char** argv)
                      && proc->getSlotStatus(i).state == proc2->getSlotStatus(i).state;
     std::cout << "preset round trip: " << same << "/" << checked << " parameters, " << slotsSame << "/5 slots restored, name '"
               << proc2->getCurrentPresetName() << "'\n";
+
+    // 3b. an older preset without Global EQ parameters must load with the Global EQ at its defaults
+    {
+        auto xml = juce::XmlDocument::parse(presetFile);
+        for (int i = xml->getNumChildElements() - 1; i >= 0; --i)
+            if (xml->getChildElement(i)->getStringAttribute("id").startsWith("geq_"))
+                xml->removeChildElement(xml->getChildElement(i), true);
+        const auto oldPreset = out.getChildFile("Old.ampsurd");
+        xml->writeTo(oldPreset);
+        proc2->loadPreset(oldPreset); // proc2 currently has the Global EQ ON from the round trip
+        const bool on = proc2->isGlobalEqOn();
+        const bool flat = ampsurd::ParametricEq::isFlat(proc2->getEqBands(AmpsurdProcessor::kGlobalEq));
+        std::cout << "older preset without Global EQ: " << (!on && flat ? "Global EQ off and flat (ok)" : "UNEXPECTED") << "\n";
+        oldPreset.deleteFile();
+    }
 
     // 4. preset with a missing capture
     {

@@ -3,8 +3,8 @@
 // Engine: AMPSURD's five fixed capture paths and the mixer.
 //
 //   in ─┬─ slot 1: capture → align (time/polarity/phase) → EQ → mix gain ─┐
-//       ├─ slot 2 ...                                                    ├─ Σ → out
-//       └─ slot 5 ...                                                    ┘
+//       ├─ slot 2 ...                                                    ├─ Σ (blend or
+//       └─ slot 5 ...                                                    ┘   Frankenstein) → GLOBAL EQ → out
 //
 // MIX LAW (see docs/REVIEW.md §5 and tools/mix_experiment):
 //   1. Percentages: p_i = w_i / Σ w_j over audible loaded slots (mute/solo aware), Σ p_i = 1.
@@ -52,6 +52,8 @@ struct EngineSettings
 {
     std::array<SlotSettings, kNumSlots> slots {};
     FrankensteinSettings frankenstein {};   // frequency-split blending replaces the fader blend when enabled
+    bool globalEqEnabled = false;           // final tone-shaping EQ on the blended signal
+    std::array<EqBand, ParametricEq::kNumBands> globalEq = ParametricEq::defaultBands();
     bool rotationActive = false; // true when any path uses phase rotation
 };
 
@@ -96,6 +98,7 @@ private:
     std::array<CaptureSlot, kNumSlots> slots;
     std::array<PathAligner, kNumSlots> aligners;
     std::array<ParametricEq, kNumSlots> eqs;
+    ParametricEq globalEq;
     std::array<double, kNumSlots> gains {};
 
     std::array<std::array<std::atomic<double>, kNumSlots>, kNumSlots> cov;

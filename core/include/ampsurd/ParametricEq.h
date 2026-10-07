@@ -48,6 +48,13 @@ public:
 
     static std::array<EqBand, kNumBands> defaultBands();
 
+    // The same bands with every band switched off (bells at 0 dB, cuts at their end stops).
+    // Used for "EQ OFF": the EQ glides to flat instead of jumping, so switching never clicks.
+    static std::array<EqBand, kNumBands> neutralised(std::array<EqBand, kNumBands> bands) noexcept;
+
+    // True if the bands have no effect at all (every bell at 0 dB, both cuts off).
+    static bool isFlat(const std::array<EqBand, kNumBands>& bands) noexcept;
+
     void prepare(double sampleRate);
     void reset() noexcept;
 

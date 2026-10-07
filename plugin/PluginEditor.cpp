@@ -2,7 +2,7 @@
 
 using namespace ampsurd::ui;
 
-AmpsurdEditor::Content::Content(AmpsurdProcessor& p) : header(p), edit(p), centre(p), frankenstein(p), master(p)
+AmpsurdEditor::Content::Content(AmpsurdProcessor& p) : header(p), edit(p), centre(p), frankenstein(p), globalEq(p), globalEqButton(p), master(p)
 {
     addAndMakeVisible(header);
     for (int s = 0; s < AmpsurdProcessor::kNumSlots; ++s)
@@ -13,6 +13,8 @@ AmpsurdEditor::Content::Content(AmpsurdProcessor& p) : header(p), edit(p), centr
     addChildComponent(edit);   // EDIT replaces the gate + tuner in the centre area
     addAndMakeVisible(centre);
     addChildComponent(frankenstein); // replaces the gate + tuner while Create Frankenstein is on
+    addChildComponent(globalEq);     // replaces them while the Global EQ is open
+    addAndMakeVisible(globalEqButton);
     addAndMakeVisible(master);
     addAndMakeVisible(footer);
 }
@@ -42,8 +44,12 @@ void AmpsurdEditor::Content::resized()
     master.setBounds(r.removeFromBottom(52));
     r.removeFromBottom(14);
     edit.setBounds(r);
-    centre.setBounds(r);
-    frankenstein.setBounds(r);
+    globalEq.setBounds(r);
+    auto withButton = r;
+    globalEqButton.setBounds(withButton.removeFromRight(40));
+    withButton.removeFromRight(10);
+    centre.setBounds(withButton);
+    frankenstein.setBounds(withButton);
 }
 
 AmpsurdEditor::AmpsurdEditor(AmpsurdProcessor& p) : AudioProcessorEditor(&p), proc(p), content(p)
@@ -54,6 +60,8 @@ AmpsurdEditor::AmpsurdEditor(AmpsurdProcessor& p) : AudioProcessorEditor(&p), pr
     for (int s = 0; s < AmpsurdProcessor::kNumSlots; ++s)
         content.slots[(size_t) s]->onEditClicked = [this](int slot) { selectSlot(selected == slot ? -1 : slot); };
     content.edit.onClose = [this] { selectSlot(-1); };
+    content.globalEq.onClose = [this] { showGlobalEq(false); };
+    content.globalEqButton.onClick = [this] { showGlobalEq(true); };
 
     setResizable(true, true);
     setResizeLimits(kWidth * 2 / 3, kHeight * 2 / 3, kWidth * 2, kHeight * 2);
@@ -85,9 +93,17 @@ void AmpsurdEditor::resized()
     content.setTransform(juce::AffineTransform::scale(scale));
 }
 
+void AmpsurdEditor::showGlobalEq(bool show)
+{
+    globalEqOpen = show;
+    if (show) { selected = -1; content.edit.setSlot(-1); }
+    timerCallback();
+}
+
 void AmpsurdEditor::selectSlot(int slot)
 {
     selected = slot;
+    if (slot >= 0) globalEqOpen = false;
     content.edit.setSlot(slot);
     timerCallback();
 }
@@ -100,15 +116,22 @@ void AmpsurdEditor::timerCallback()
         content.slots[(size_t) s]->refresh(s == selected);
     content.edit.refresh();
     const bool editing = content.edit.getSlot() >= 0;
-    const bool frank = !editing && proc.isFrankensteinOn();
+    const bool global = !editing && globalEqOpen;
+    const bool frank = !editing && !global && proc.isFrankensteinOn();
+    const bool centre = !editing && !global && !frank;
     content.edit.setVisible(editing);
+    content.globalEq.setVisible(global);
     content.frankenstein.setVisible(frank);
-    content.centre.setVisible(!editing && !frank);
-    proc.setTunerVisible(!editing && !frank);
-    if (frank)
+    content.centre.setVisible(centre);
+    content.globalEqButton.setVisible(frank || centre); // with the gate + tuner (and Frankenstein) view
+    proc.setTunerVisible(centre);
+    if (global)
+        content.globalEq.refresh();
+    else if (frank)
         content.frankenstein.refresh();
-    else if (!editing)
+    else if (centre)
         content.centre.refresh();
+    content.globalEqButton.refresh();
     content.footer.setCpuText("CPU " + juce::String(juce::roundToInt(proc.getCpuLoadPercent())) + "%");
     content.master.refresh();
     content.header.refresh();

@@ -6,6 +6,36 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-08 — Session 2e: Global EQ — Claude (Opus 5.5)
+
+- Owner's spec (2026-10-07): a Global EQ on the complete sound, reusing the amp EQ, opened from a
+  vertical GLOBAL EQ button next to the gate + tuner; status visible while closed; the Global EQ
+  curve shown subdued and non-editable behind an amp's EQ in EDIT; stored in presets.
+- core: Engine step 5 = Global EQ (same `ParametricEq`) after the blend / Frankenstein; then gate,
+  OUTPUT, limiter. `ParametricEq::neutralised()` (OFF glides to flat, cuts included) and `isFlat()`.
+- plugin: 31 parameters `geq_eqOn` (default OFF) + `geq_b1..10_freq/gain/q` (236 total), group
+  "Global EQ" for automation. EQ targets 0-4 = amps, 5 = Global EQ (same ID scheme, prefix `geq`).
+- UI: `GlobalEqPanel` (GLOBAL EQ heading, EQ ON / FLAT / CLOSE, same graph); `GlobalEqButton`
+  (vertical, right of the gate + tuner and of Frankenstein; lit background + filled dot + "ON",
+  "ON (FLAT)" when on but flat, neutral + "OFF" when off). In amp EDIT: thin grey Global EQ curve,
+  drawn only when on and not flat, no points, not clickable, with a one-line legend.
+- Fixed while testing:
+  - Amp EQ OFF switched off the bells but left the low/high cut active (since the cut bands were
+    introduced). Now OFF bypasses all ten bands, gliding (no click).
+  - A high cut leaving its 20 kHz end stop (EQ ON, or dragging it) started from an empty filter
+    state - a one-sample dip, i.e. a small click. It now starts from the settled state.
+  - Presets saved before a parameter existed left that parameter at whatever was loaded before;
+    missing parameters now load at their defaults (old presets: Global EQ off/flat, Frankenstein off).
+  - Race: a capture still being measured could finish after a newer preset replaced that slot and
+    overwrite it (seen as "missing file" not shown). The load now checks it is still current.
+- Tested: `engine_test` — Global EQ OFF (bands set) bit-identical; ON = blend through the verified
+  EQ (difference 0.0); on/off while playing click-free; amp EQ OFF incl. cuts bit-identical to flat.
+  ui_snapshot: preset round trip 236/236 + 5/5 slots, older preset → Global EQ off and flat,
+  missing file OK; screenshots 09-12. Regression: VST3 single capture bit-identical to NAM, 5
+  captures +12 dB → -1.00 dBFS, bypass identical; limiter/gate/tuner/Frankenstein ALL PASS.
+
+---
+
 ## 2026-10-07 — Session 2d: "Create Frankenstein" (frequency-split blending) — Claude (Opus 5.5)
 
 - core: `Frankenstein` — layout (2–5 sections, amp per section, dividers, WIDTH 0–90 %, muted /

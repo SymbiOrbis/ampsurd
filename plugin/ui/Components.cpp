@@ -480,6 +480,29 @@ void EqGraph::paint(juce::Graphics& g)
     const bool eqOn = paramValue(proc, AmpsurdProcessor::slotParamId(slot, "eqOn")) > 0.5f;
     const double sr = juce::jmax(44100.0, proc.getSampleRateForUi());
 
+    // Global EQ, shown behind an AMP's EQ for information only (never drawn with points, never
+    // hit-tested): what will additionally happen to the complete blend later in the chain.
+    if (slot != AmpsurdProcessor::kGlobalEq && proc.isGlobalEqOn())
+    {
+        const auto gb = proc.getEqBands(AmpsurdProcessor::kGlobalEq);
+        if (!ampsurd::ParametricEq::isFlat(gb))
+        {
+            juce::Path bg;
+            for (int i = 0; i <= (int) r.getWidth(); ++i)
+            {
+                const float x = r.getX() + (float) i;
+                const float db = (float) ampsurd::ParametricEq::magnitudeDb(gb, freqForX(x), sr);
+                const float y = juce::jlimit(r.getY(), r.getBottom(), yForGain(db));
+                if (i == 0) bg.startNewSubPath(x, y); else bg.lineTo(x, y);
+            }
+            g.setColour(textFaint.withAlpha(0.75f));
+            g.strokePath(bg, juce::PathStrokeType(1.0f));
+            g.setFont(Fonts::get().regular(11.5f));
+            g.drawText("grey line = GLOBAL EQ (applied after the blend, edit it with the GLOBAL EQ button)",
+                       r.reduced(10.0f, 6.0f).removeFromBottom(14.0f).withTrimmedLeft(30.0f), juce::Justification::centredRight, false);
+        }
+    }
+
     // curve
     juce::Path curve;
     const int steps = (int) r.getWidth();
@@ -561,7 +584,23 @@ void EqGraph::refreshIfChanged()
         now[(size_t) (3 * i + 2)] = b[(size_t) i].q;
     }
     now.back() = paramValue(proc, AmpsurdProcessor::slotParamId(slot, "eqOn"));
-    if (now != lastSeen) { lastSeen = now; repaint(); }
+    bool changed = now != lastSeen;
+    if (slot != AmpsurdProcessor::kGlobalEq)
+    {
+        // the background Global EQ curve can change too (automation, preset)
+        std::array<float, 3 * ampsurd::ParametricEq::kNumBands + 1> g {};
+        const auto gb = proc.getEqBands(AmpsurdProcessor::kGlobalEq);
+        for (int i = 0; i < ampsurd::ParametricEq::kNumBands; ++i)
+        {
+            g[(size_t) (3 * i)] = gb[(size_t) i].freqHz;
+            g[(size_t) (3 * i + 1)] = gb[(size_t) i].gainDb;
+            g[(size_t) (3 * i + 2)] = gb[(size_t) i].q;
+        }
+        g.back() = proc.isGlobalEqOn() ? 1.0f : 0.0f;
+        changed = changed || g != lastGlobal;
+        lastGlobal = g;
+    }
+    if (changed) { lastSeen = now; repaint(); }
 }
 
 void EqGraph::mouseMove(const juce::MouseEvent& e)
@@ -860,6 +899,119 @@ void EditPanel::refresh()
         graph.refreshIfChanged();
         align.refresh();
     }
+}
+
+// =============================================================================================
+// GlobalEqPanel: the same EQ as the amps, on the complete blend; no alignment.
+// =============================================================================================
+GlobalEqPanel::GlobalEqPanel(AmpsurdProcessor& p) : proc(p), graph(p)
+{
+    addAndMakeVisible(graph);
+    graph.setSlot(AmpsurdProcessor::kGlobalEq);
+    for (auto* b : { &eqOnButton, &flatButton, &closeButton })
+        addAndMakeVisible(*b);
+    eqOnButton.setClickingTogglesState(true);
+    eqOnAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
+        proc.params, AmpsurdProcessor::slotParamId(AmpsurdProcessor::kGlobalEq, "eqOn"), eqOnButton);
+    eqOnButton.setTooltip("Switch the Global EQ on or off (it shapes the complete sound, after the blend)");
+    flatButton.setTooltip("Reset all ten bands of the Global EQ");
+    closeButton.setTooltip("Close the Global EQ and return to the gate and tuner");
+    closeButton.onClick = [this] { if (onClose) onClose(); };
+    flatButton.onClick = [this] {
+        const auto d = ampsurd::ParametricEq::defaultBands();
+        for (int b = 0; b < ampsurd::ParametricEq::kNumBands; ++b)
+        {
+            setParamValue(proc, AmpsurdProcessor::bandParamId(AmpsurdProcessor::kGlobalEq, b, "gain"), 0.0f);
+            setParamValue(proc, AmpsurdProcessor::bandParamId(AmpsurdProcessor::kGlobalEq, b, "freq"), d[(size_t) b].freqHz);
+            setParamValue(proc, AmpsurdProcessor::bandParamId(AmpsurdProcessor::kGlobalEq, b, "q"), d[(size_t) b].q);
+        }
+    };
+}
+
+void GlobalEqPanel::resized()
+{
+    auto r = getLocalBounds().reduced(16, 12);
+    auto header = r.removeFromTop(26);
+    closeButton.setBounds(header.removeFromRight(72));
+    header.removeFromRight(8);
+    flatButton.setBounds(header.removeFromRight(64));
+    header.removeFromRight(8);
+    eqOnButton.setBounds(header.removeFromRight(64));
+    r.removeFromTop(10);
+    graph.setBounds(r);
+}
+
+void GlobalEqPanel::paint(juce::Graphics& g)
+{
+    g.setColour(line);
+    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), 3.0f, 1.0f);
+    auto header = getLocalBounds().reduced(16, 12).removeFromTop(26);
+    drawLabel(g, "GLOBAL EQ", header.removeFromLeft(110), text, juce::Justification::centredLeft, 11.0f);
+    g.setColour(textDim);
+    g.setFont(Fonts::get().regular(12.5f));
+    g.drawText("Shapes the complete sound: after the blend / Frankenstein, before OUTPUT and the limiter",
+               header.withTrimmedRight(240), juce::Justification::centredLeft, true);
+}
+
+void GlobalEqPanel::refresh()
+{
+    graph.refreshIfChanged();
+}
+
+// ---------------------------------------------------------------------------------------------
+GlobalEqButton::GlobalEqButton(AmpsurdProcessor& p) : proc(p)
+{
+    setMouseCursor(juce::MouseCursor::PointingHandCursor);
+    setTooltip("Open the Global EQ (final tone shaping of the complete sound)");
+}
+
+void GlobalEqButton::refresh()
+{
+    const bool on = proc.isGlobalEqOn();
+    const bool flat = ampsurd::ParametricEq::isFlat(proc.getEqBands(AmpsurdProcessor::kGlobalEq));
+    if (on != shownOn || flat != shownFlat) { shownOn = on; shownFlat = flat; repaint(); }
+}
+
+void GlobalEqButton::paint(juce::Graphics& g)
+{
+    auto r = getLocalBounds().toFloat().reduced(0.5f);
+    const bool hover = isMouseOver();
+    // ON: lit background and strong outline, so an active Global EQ can't be overlooked.
+    if (shownOn)
+    {
+        g.setColour(text.withAlpha(hover ? 0.20f : 0.14f));
+        g.fillRoundedRectangle(r, 3.0f);
+        g.setColour(lineStrong);
+        g.drawRoundedRectangle(r, 3.0f, 1.2f);
+    }
+    else
+    {
+        g.setColour(hover ? raised : background);
+        g.fillRoundedRectangle(r, 3.0f);
+        g.setColour(hover ? lineStrong : line);
+        g.drawRoundedRectangle(r, 3.0f, 1.0f);
+    }
+
+    // status dot at the top
+    const float cx = r.getCentreX();
+    g.setColour(shownOn ? text : textFaint);
+    if (shownOn) g.fillEllipse(cx - 4.0f, r.getY() + 12.0f, 8.0f, 8.0f);
+    else g.drawEllipse(cx - 4.0f, r.getY() + 12.0f, 8.0f, 8.0f, 1.2f);
+
+    // vertical text, reading bottom to top
+    const juce::String label = juce::String("GLOBAL EQ   ") + (shownOn ? (shownFlat ? "ON (FLAT)" : "ON") : "OFF");
+    const auto area = r.withTrimmedTop(28.0f).reduced(0.0f, 8.0f);
+    juce::Graphics::ScopedSaveState ss(g);
+    g.addTransform(juce::AffineTransform::rotation(-juce::MathConstants<float>::halfPi, area.getCentreX(), area.getCentreY()));
+    const auto rotated = juce::Rectangle<float>(area.getHeight(), area.getWidth()).withCentre(area.getCentre());
+    g.setColour(shownOn ? text : textDim);
+    g.setFont(Fonts::get().semibold(12.0f).withExtraKerningFactor(0.08f));
+    g.drawText(label, rotated, juce::Justification::centred, false);
+}
+
+void GlobalEqButton::mouseUp(const juce::MouseEvent& e)
+{
+    if (getLocalBounds().contains(e.getPosition()) && onClick) onClick();
 }
 
 // =============================================================================================

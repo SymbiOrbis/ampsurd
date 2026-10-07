@@ -5,6 +5,8 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
+#include <functional>
 #include <memory>
 #include <random>
 #include <string>
@@ -265,6 +267,80 @@ int main(int argc, char** argv)
         check(finite && std::abs(errDb) < 2.0 && std::abs(eng.getEffectivePercent(0) + eng.getEffectivePercent(1) - 100.0f) < 0.01,
               "FRANKENSTEIN: real captures split at 800 Hz, switched off/on while playing: clean, loudness %+.2f dB vs single-capture level, spectrum shares %.0f%% + %.0f%%",
               errDb, eng.getEffectivePercent(0), eng.getEffectivePercent(1));
+    }
+
+    // ---------------- 6c. Global EQ on the complete blend ----------------
+    {
+        auto render = [&](const std::function<void(EngineSettings&, size_t)>& configure) {
+            Engine eng;
+            eng.getSlot(0).submit(loadAt(argv[1]));
+            eng.prepare(sr, 256, 10.0);
+            EngineSettings s;
+            std::vector<double> out(test.size());
+            for (size_t pos = 0; pos < test.size(); pos += 256)
+            {
+                const int n = (int) std::min<size_t>(256, test.size() - pos);
+                configure(s, pos);
+                eng.process(test.data() + pos, out.data() + pos, n, s);
+            }
+            return out;
+        };
+        auto globalBands = ParametricEq::defaultBands();
+        globalBands[0].freqHz = 90.0f;                 // low cut
+        globalBands[3] = { 250.0f, -4.0f, 1.0f };
+        globalBands[7] = { 4000.0f, 3.0f, 0.8f };
+        globalBands[9].freqHz = 8000.0f;               // high cut
+
+        const auto plain = render([](EngineSettings&, size_t) {});
+        const auto off = render([&](EngineSettings& s, size_t) { s.globalEq = globalBands; s.globalEqEnabled = false; });
+        const auto on = render([&](EngineSettings& s, size_t) { s.globalEq = globalBands; s.globalEqEnabled = true; });
+        // reference: the blend without Global EQ, through the (separately verified) EQ in the same blocks
+        auto ref = plain;
+        {
+            ParametricEq eq; eq.prepare(sr);
+            for (size_t pos = 0; pos < ref.size(); pos += 256)
+            {
+                eq.setBands(globalBands);
+                eq.process(ref.data() + pos, (int) std::min<size_t>(256, ref.size() - pos));
+            }
+        }
+        double diffOn = 0;
+        for (size_t i = 0; i < on.size(); ++i) diffOn = std::max(diffOn, std::abs(on[i] - ref[i]));
+        check(off == plain, "GLOBAL EQ: OFF (with bands set) -> output bit-identical to AMPSURD without Global EQ");
+        check(diffOn < 1e-12, "GLOBAL EQ: ON -> output = blend through the verified EQ curve (max difference %.1e)", diffOn);
+
+        // switching on/off while playing: no clicks (no sample step larger than in the steady states)
+        const auto toggled = render([&](EngineSettings& s, size_t pos) {
+            s.globalEq = globalBands;
+            s.globalEqEnabled = (pos / (256 * 40)) % 2 == 1;
+        });
+        auto maxStep = [](const std::vector<double>& y) {
+            double m = 0;
+            for (size_t i = 2; i < y.size(); ++i) m = std::max(m, std::abs(y[i] - 2 * y[i - 1] + y[i - 2]));
+            return m;
+        };
+        const double steady = std::max(maxStep(plain), maxStep(on)), tog = maxStep(toggled);
+        if (std::getenv("AMPSURD_DEBUG"))
+        {
+            size_t at = 0; double m = 0;
+            for (size_t i = 2; i < toggled.size(); ++i)
+            {
+                const double c = std::abs(toggled[i] - 2 * toggled[i - 1] + toggled[i - 2]);
+                if (c > m) { m = c; at = i; }
+            }
+            std::printf("debug: worst curvature %.4f at sample %zu (block %zu, offset %zu); plain there %.4f, on there %.4f\n", m, at, at / 256, at % 256,
+                        std::abs(plain[at] - 2 * plain[at - 1] + plain[at - 2]), std::abs(on[at] - 2 * on[at - 1] + on[at - 2]));
+        }
+        check(tog <= steady * 1.05, "GLOBAL EQ: switching on/off while playing is click-free (largest curvature %.4f vs %.4f in steady state)", tog, steady);
+
+        // amp EQ OFF must also release that amp's low / high cut (fixed 2026-10-08)
+        const auto ampOff = render([](EngineSettings& s, size_t) {
+            s.slots[0].eq[0].freqHz = 200.0f;
+            s.slots[0].eq[9].freqHz = 3000.0f;
+            s.slots[0].eq[4].gainDb = 6.0f;
+            s.slots[0].eqEnabled = false;
+        });
+        check(ampOff == plain, "EQ OFF on an amp: bells AND low/high cut bypassed -> bit-identical to a flat EQ");
     }
 
     // ---------------- 7. Percentages with mute / solo ----------------

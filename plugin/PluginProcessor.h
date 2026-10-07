@@ -57,8 +57,14 @@ public:
     void setStateInformation(const void*, int) override;
 
     // --- parameter IDs ---
-    static juce::String slotParamId(int slot, const char* name);                  // e.g. "s1_mix"
-    static juce::String bandParamId(int slot, int band, const char* name);        // e.g. "s1_b3_gain"
+    // EQ "targets" 0..4 are the amps, kGlobalEq is the Global EQ on the complete blend.
+    static constexpr int kGlobalEq = kNumSlots;
+    static juce::String slotParamId(int slot, const char* name);                  // e.g. "s1_mix", "geq_eqOn"
+    static juce::String bandParamId(int slot, int band, const char* name);        // e.g. "s1_b3_gain", "geq_b3_gain"
+
+    // --- Global EQ ---
+    bool isGlobalEqOn() const { return globalEqParams.eqOn->load() > 0.5f; }
+    std::array<ampsurd::EqBand, ampsurd::ParametricEq::kNumBands> getEqBands(int target) const; // any EQ target
 
     // --- slots (message thread) ---
     enum class SlotState { empty, loading, loaded, missing, error };
@@ -136,6 +142,12 @@ private:
         std::array<std::atomic<float>*, kNumBands> freq {}, gain {}, q {};
     };
     std::array<SlotParams, kNumSlots> slotParams;
+    struct EqParams
+    {
+        std::atomic<float>* eqOn = nullptr;
+        std::array<std::atomic<float>*, kNumBands> freq {}, gain {}, q {};
+    };
+    EqParams globalEqParams;
 
     // values derived from the measurements (written by loader/message thread, read by audio thread)
     struct Derived
