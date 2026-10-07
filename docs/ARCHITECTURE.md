@@ -1,64 +1,82 @@
-# MONSTROSITY — Architecture (Milestones 1–3)
+# AMPSURD — Architecture
+
+(Formerly MONSTROSITY. UI/UX specification: `docs/UI_SPEC.md`.)
 
 ## Layers
 
 ```
-plugin/        JUCE VST3 shell: parameters, state save/restore, temporary UI, loader thread
-core/          monstrosity_core — plain C++20, no JUCE. Reusable (e.g. the future single-capture product)
-  CaptureModel   one loaded .nam capture: load (NAM Core get_dsp), resample, normalise, process
-  CaptureSlot    real-time home of one capture: lock-free hand-over, 20 ms crossfade, safe deletion
-  SafetyLimiter  always-on output protection: never above -1 dBFS (1 ms lookahead)
-external (CMake FetchContent, pinned commits)
-  NeuralAmpModelerCore v0.6.0, AudioDSPTools, Eigen, JUCE 9.0.3
-tools/         monstrosity_render, monstrosity_bench, compat_test.py   (correctness / CPU / stress)
-tests/         plugin_host_test — loads the built .vst3 like a DAW and renders audio
+plugin/                 JUCE VST3 shell
+  PluginProcessor       189 automatable parameters, loader thread, measurements, linked faders,
+                        complete-rig presets, bypass, latency
+  PluginEditor          fixed 1200x800 logical layout, scaled as a whole when resized
+  ui/Theme              colours, embedded Inter font (SIL OFL), flat LookAndFeel
+  ui/Components         header, 5 slots, mix faders, EQ graph, alignment panel, master, footer
+  assets/fonts, assets/logos   embedded with juce_add_binary_data
+core/  (ampsurd_core - plain C++20, no JUCE; reusable for the future single-capture product)
+  CaptureModel          one .nam capture (NeuralAmpModelerCore get_dsp, any architecture), resampling
+  CaptureSlot           lock-free hand-over, 20 ms crossfade, deferred deletion
+  Engine                5 fixed paths + mixer and mix law
+  PathAligner           fractional delay (TIME), polarity, phase rotation (PHASE)
+  ParametricEq          10 bell bands, Simper SVF, smoothed, bit-transparent when flat
+  CaptureAnalyzer       test signal, measurement, auto alignment, level match, covariance
+  SafetyLimiter         always-on, never above -1 dBFS
+tools/   ampsurd_render, ampsurd_bench, compat_test.py, limiter_test, engine_test, mix_experiment
+tests/   plugin_host_test (hosts the built .vst3), ui_snapshot (renders the editor to PNG)
 ```
 
-## Compatibility rule
-
-Captures are loaded with NeuralAmpModelerCore's own `nam::get_dsp()` on the unmodified file.
-Every architecture NAM Core supports loads: A2 Full, A2 Lite, slimmable A2 containers, A1
-WaveNet (standard/lite/feather/nano), LSTM, ConvNet, Linear. No wrapper format, no conversion.
-Slimmable files are run at full size. Only requirement: mono in / mono out (all guitar captures).
-
-NAM Core registers architectures through static initialisers; the build links it with
-`WHOLE_ARCHIVE`, otherwise the linker silently drops them (caught by `compat_test.py`).
-
-## Signal flow (Milestone 1)
+## Signal flow
 
 ```
-DAW input ch 1 → input gain → [CaptureSlot → CaptureModel: (resample to 48k) NAM (resample back)
-               → loudness normalise] → output gain → safety limiter (≤ -1 dBFS) → all output channels
+DAW input ch 1 → INPUT gain ─┬→ slot 1: capture → align (time/polarity/phase) → EQ → p1·G·level1 ─┐
+                             ├→ slot 2 … slot 5 (same)                                            ├→ Σ
+                             └→ dry delay line (for BYPASS)                                       │
+Σ → OUTPUT gain → safety limiter (≤ -1 dBFS) → (crossfade with dry when BYPASS) → all outputs
 ```
 
-Internal processing is double precision (NAM Core's default sample type).
+Latency (reported to the DAW, constant while playing) = resampler latency (only when host rate
+≠ capture rate) + 8 samples (fractional-delay centre) + 1 ms alignment reserve + 1 ms limiter.
+48 kHz: 104 samples (2.17 ms). 44.1 kHz: 123 samples.
+
+## Mix law
+
+`p_i` = stored fader value / sum over audible loaded slots (mute/solo aware). Faders are linked
+in the UI (moving one rescales the others, keeping their proportions; total stays 100 %), but the
+engine normalises anyway, so host automation of a single fader is safe. Loudness compensation G is
+computed from the measured K-weighted covariance (docs/REVIEW.md §5).
+
+## Measurement ("analysis") — never on the audio thread
+
+1. On load (loader thread): the capture is loaded, a 3 s guitar-like DI test signal (× INPUT gain)
+   is rendered through it, its spectrum is stored, the model state is reset, the whole rig is
+   re-analysed, alignment / level match / covariance are published — and only then the capture is
+   swapped in. So nothing jumps after a capture becomes audible.
+2. Rig analysis: reference = lowest-numbered loaded slot. Every other capture's offset and
+   polarity vs. the reference = maximum of the 70–1200 Hz band correlation (sub-sample by parabolic
+   interpolation, ±5 ms search; correlation < 0.3 → "too different", left unaligned).
+3. Re-measured when INPUT changes by > 0.5 dB (after 0.4 s of no change) or the sample rate changes.
+
+## Alignment controls (per slot)
+
+- **AUTO** (default): measured offset + polarity applied.
+- **FREE**: AUTO plus manual **TIME** (±1 ms, fractional delay — a real time shift, so its
+  phase effect grows with frequency) and **PHASE** (±180°, frequency-independent phase rotation
+  without delay, via a 90° all-pass pair; when any slot uses it, all slots pass through the same
+  all-pass network so they stay comparable). **RESET** returns to AUTO with zero offsets.
 
 ## Threads
 
 | Thread | Does | Never does |
 |---|---|---|
-| Audio | `CaptureSlot::process`: adopt pending capture, run NAM, crossfade | allocate, lock, file I/O, parse, delete |
-| Loader (1 background thread) | read & parse `.nam`, build model, allocate, prewarm, `submit()` | touch the active model |
-| Message | UI, `collectGarbage()` (deletes retired models), latency reporting | process audio |
+| Audio | build settings from parameter atomics, engine, gains, limiter, bypass | allocate, lock, file I/O, parse, FFT |
+| Loader (1) | load, render test signal, FFT, rig analysis, submit captures, re-measure | touch a capture that is playing |
+| Message | UI, presets, linked faders, covariance updates for TIME/PHASE, latency, garbage collection | process audio |
 
-Hand-over: `submit()` publishes a fully prepared model through an atomic pointer. The audio
-thread swaps it in at a block boundary and crossfades from the old capture for 20 ms (no clicks).
-The old capture goes into a lock-free single-producer/single-consumer queue and is deleted on
-the message thread. A config mutex (taken only by `prepareToPlay` and the loader, never by the
-audio thread) guarantees a capture is never prepared for a stale sample rate / block size.
+Lock order (non-audio threads only): configMutex → derivedMutex → analysisMutex; statusLock is
+never held while taking another lock.
 
-## Milestone 2 plan (two captures)
+## State / presets
 
-- `Engine` in core: fixed array of `kMaxSlots = 5` `CaptureSlot`s (only 2 exposed in M2), shared
-  input, per-slot gain smoothing, mute/solo, mixing law under test (see REVIEW §5).
-- Diagnostics: per-slot latency, per-slot peak/RMS, inter-capture correlation.
-
-## Milestone 3 plan (alignment)
-
-- Offline analysis on the loader thread when a capture is added: run a fixed guitar-like test
-  signal through each capture, estimate relative delay (GCC-PHAT / band-limited
-  cross-correlation, sub-sample by interpolation) and polarity.
-- Per-slot fractional delay line (Thiran all-pass or windowed-sinc, smooth modulation) +
-  polarity; latency of the plugin = max applied delay.
-- Manual "FREE" offset on top of AUTO, with reset. All-pass phase-rotation variant prototyped
-  in parallel for listening comparison.
+One preset = the complete rig: all 189 parameters + one capture **path** per slot (never the
+capture data). Same XML for DAW projects and `.ampsurd` preset files
+(`Documents/AMPSURD/Presets`). Missing captures: the path is kept and the slot shows FILE
+MISSING; a capture with the same file name next to the preset file is used automatically.

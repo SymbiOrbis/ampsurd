@@ -1,7 +1,7 @@
 #pragma once
 
 // SafetyLimiter: always-on output protection. Guarantees that no output sample exceeds
-// the ceiling (default -1 dBFS), so MONSTROSITY never produces digital clipping.
+// the ceiling (default -1 dBFS), so AMPSURD never produces digital clipping.
 //
 // How it works (lookahead brick-wall limiter):
 //   1. For every incoming sample compute the gain it would need: g = min(1, ceiling/|x|).
@@ -20,7 +20,7 @@
 
 #include <vector>
 
-namespace monstrosity
+namespace ampsurd
 {
 
 class SafetyLimiter
@@ -63,4 +63,4 @@ private:
     double minGainSinceRead = 1.0;
 };
 
-} // namespace monstrosity
+} // namespace ampsurd

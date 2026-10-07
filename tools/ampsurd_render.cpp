@@ -1,9 +1,9 @@
-// monstrosity_render: run a .nam capture over a WAV file through MONSTROSITY's own
+// ampsurd_render: run a .nam capture over a WAV file through AMPSURD's own
 // engine (CaptureModel + CaptureSlot), exactly as the plugin does on the audio thread.
 //
 // Used to prove correctness against NeuralAmpModelerCore's reference `render` tool.
 //
-// Usage: monstrosity_render <model.nam> <input.wav> <output.wav> [--block N] [--normalise]
+// Usage: ampsurd_render <model.nam> <input.wav> <output.wav> [--block N] [--normalise]
 
 #include <cstdio>
 #include <cstdlib>
@@ -13,14 +13,14 @@
 #include <vector>
 
 #include "ToolUtils.h"
-#include "monstrosity/CaptureModel.h"
-#include "monstrosity/CaptureSlot.h"
+#include "ampsurd/CaptureModel.h"
+#include "ampsurd/CaptureSlot.h"
 
 int main(int argc, char** argv)
 {
     if (argc < 4)
     {
-        std::cerr << "Usage: monstrosity_render <model.nam> <input.wav> <output.wav> [--block N] [--normalise]\n";
+        std::cerr << "Usage: ampsurd_render <model.nam> <input.wav> <output.wav> [--block N] [--normalise]\n";
         return 1;
     }
     int block = 64;
@@ -39,7 +39,7 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    auto res = monstrosity::CaptureModel::load(argv[1], sr, block);
+    auto res = ampsurd::CaptureModel::load(argv[1], sr, block);
     if (!res.model)
     {
         std::cerr << "LOAD FAILED: " << res.error << "\n";
@@ -50,7 +50,7 @@ int main(int argc, char** argv)
               << info.modelSampleRate << " | host rate " << sr << " | latency " << res.model->getLatencySamples()
               << " samples\n";
 
-    monstrosity::CaptureSlot slot;
+    ampsurd::CaptureSlot slot;
     slot.submit(std::move(res.model));
     slot.prepare(sr, block); // adopts the model directly (no fade-in) for a bit-exact comparison
 

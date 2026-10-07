@@ -1,4 +1,4 @@
-#include "monstrosity/CaptureModel.h"
+#include "ampsurd/CaptureModel.h"
 
 #include <algorithm>
 #include <cmath>
@@ -20,7 +20,7 @@ static constexpr double PI = 3.14159265358979323846;
 #endif
 #include "ResamplingContainer/ResamplingContainer.h"
 
-namespace monstrosity
+namespace ampsurd
 {
 
 // Lanczos resampler from AudioDSPTools - the same one the official NAM plugin uses.
@@ -240,4 +240,4 @@ void CaptureModel::process(const Sample* in, Sample* out, int numFrames, bool no
             out[i] *= normalisationGain;
 }
 
-} // namespace monstrosity
+} // namespace ampsurd

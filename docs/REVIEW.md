@@ -1,4 +1,4 @@
-# MONSTROSITY — Specification Review (2026-10-01)
+# AMPSURD — Specification Review (2026-10-01)
 
 Review of the ChatGPT handover against the current state of the technology, written before
 and during Milestone 1. Product concept is unchanged; items below are technical corrections,
@@ -29,7 +29,7 @@ switch would only replace the thin `plugin/` layer.
 
 2. **"A2 Full" is often not a separate file.** Current A2 `.nam` files (including TONE3000's
    retrained A2 files) are typically *slimmable containers* holding A2 Lite and A2 Full in one
-   file. MONSTROSITY runs them at Full. A possible later ECO mode needs no extra files: it is a
+   file. AMPSURD runs them at Full. A possible later ECO mode needs no extra files: it is a
    size switch on the same file. Measured: A2 Lite costs ~1/7 of A2 Full.
 
 3. **NAM itself adds no latency between captures.** NAM models are causal networks with no
@@ -74,29 +74,29 @@ switch would only replace the thin `plugin/` layer.
   annual revenue stays at or below USD 20,000. The EULA counts revenue *from all sources,
   including indirect revenue* for individuals. Capture-pack sales that are promoted through the
   free plugin may well count. Options when that threshold approaches: JUCE Indie
-  (USD 40/month or USD 800 perpetual, up to USD 300k), or release MONSTROSITY's source under
+  (USD 40/month or USD 800 perpetual, up to USD 300k), or release AMPSURD's source under
   AGPLv3 (then no fee), or switch the thin plugin layer to iPlug2. **Not blocking now.** Get
   your own legal advice before release.
 - **NeuralAmpModelerCore, AudioDSPTools, nlohmann/json, VST3 SDK**: MIT — keep their copyright
   notices in the installer/About box. **Eigen**: MPL-2.0 — notice + where to get the source.
 - **Third-party `.nam` files**: each creator sets their own licence; TONE3000 has its own
-  terms. MONSTROSITY never copies captures into presets or plugin state (it stores the file
+  terms. AMPSURD never copies captures into presets or plugin state (it stores the file
   path) and the repository never contains third-party captures.
 - **Name**: "Neural Amp Modeler"/"NAM" may be used descriptively ("loads NAM captures"), but
-  should not be used as if it were MONSTROSITY's own brand.
+  should not be used as if it were AMPSURD's own brand.
 
 ## 4. Decisions (answered by the owner 2026-10-01)
 
 1. **Loudness normalisation ON by default — accepted, with the condition "no digital clipping
    is acceptable".** Implemented as an always-on output **safety limiter** (see
-   `core/include/monstrosity/SafetyLimiter.h`):
+   `core/include/ampsurd/SafetyLimiter.h`):
    - Output can never exceed **-1 dBFS** (sample peak). Proven by `tools/limiter_test` and by
      the real VST3 with Input +24 dB and Output +12 dB on several captures.
    - It turns the level down smoothly instead of clipping (a sine 12 dB over the ceiling comes
      out with 0.03 % distortion vs 35 % if it were clipped). Below -1 dBFS it is bit-transparent.
    - Cost: 1 ms lookahead latency (48 samples at 48 kHz), reported to the DAW.
    - The -1 dB margin also covers inter-sample ("true") peaks for practically all guitar material.
-   - Limits of the guarantee: MONSTROSITY cannot undo clipping that already happened before it,
+   - Limits of the guarantee: AMPSURD cannot undo clipping that already happened before it,
      i.e. in the audio interface's converter (keep the Studio 26c input LED out of the red) or
      in later plugins/master bus in the DAW.
    - Mixing note for Milestone 2: percentages that total 100 % form a weighted average, so the
@@ -105,15 +105,35 @@ switch would only replace the thin `plugin/` layer.
    repository is its own isolated space. Pending: owner creates the empty repo and connects it.
 3. **Licence — owner is willing to go open source.** Open source is *not strictly required* while
    total annual revenue (incl. capture packs) stays ≤ USD 20,000 under the JUCE Starter licence.
-   Recommended: publish MONSTROSITY's own code under **AGPLv3** (the licence JUCE offers for open
+   Recommended: publish AMPSURD's own code under **AGPLv3** (the licence JUCE offers for open
    source use), which removes the revenue limit entirely at no cost. The name, logo, artwork and
    all capture packs stay the owner's property and are not covered by the code licence.
    Pending owner confirmation before a LICENSE file is added.
 
-## 5. Mixing law (to be tested in Milestone 2, not assumed)
+## 5. Mixing law (decided 2026-10-07 after measurement - see `tools/mix_experiment`)
 
-Working hypothesis: user sees percentages that always total 100 %, applied to
-loudness-normalised captures, followed by the master output level. For well-aligned captures
-the output level then stays roughly constant regardless of how many are active; for poorly
-correlated captures the level drops (up to ~7 dB with five equal captures). Milestone 2 will
-measure both cases with real captures and only then fix the law.
+Experiment: 5 captures (A2 slimmable, A2 Lite, A1 WaveNet x2, LSTM), auto-aligned, 331 mixes
+(every combination with equal faders + 300 random fader settings). Perceived loudness of each
+mix (ITU-R BS.1770 K-weighting) compared with the target "percentage-weighted average of the
+individual captures". Full output: `docs/mix_experiment_2026-10-07.txt`.
+
+| Law | mean error | worst louder | worst quieter | peak vs loudest capture |
+|---|---|---|---|---|
+| A  gains = percentages | 2.72 dB | +0.00 dB | -4.58 dB | +0.00 dB |
+| B  constant power | 1.18 dB | +3.06 dB | -0.26 dB | +0.17 dB |
+| C  measured covariance, raw power | 0.26 dB | +0.03 dB | -0.65 dB | +0.00 dB |
+| **D  measured covariance, K-weighted (chosen)** | **0.01 dB** | **+0.02 dB** | **-0.01 dB** | +0.24 dB |
+
+Chosen: **D**. Each capture is measured once (off the audio thread, before it is heard) with a
+guitar-like DI test signal; the K-weighted covariance between the aligned captures gives a single
+static make-up gain G = sqrt(sum p_i C_ii / sum p_i p_j C_ij), limited to -6..+7 dB. It only
+changes when the faders, captures or alignment change - never with the playing - so dynamics are
+untouched. The safety limiter still guarantees no clipping.
+
+**Level match changed:** the loudness value stored in .nam files left the five test captures
+14 dB apart and one file has none. AMPSURD now measures each capture's perceived loudness itself
+(same test signal, at the current INPUT level) and matches all captures to -18 dB. Re-measured
+automatically when INPUT changes (debounced) or the sample rate changes.
+
+Limitation: the experiment used NeuralAmpModelerCore's example/test models, not a real amp
+library. Run `ampsurd_mix_experiment` / `mix_experiment` on your own captures to confirm.

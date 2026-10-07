@@ -11,9 +11,9 @@
 #include <random>
 #include <vector>
 
-#include "monstrosity/SafetyLimiter.h"
+#include "ampsurd/SafetyLimiter.h"
 
-using monstrosity::SafetyLimiter;
+using ampsurd::SafetyLimiter;
 static const double kPi = 3.14159265358979323846;
 
 static double thd(const std::vector<double>& y, double f, double sr, size_t start)

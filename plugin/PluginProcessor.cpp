@@ -1,106 +1,216 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 
+using ampsurd::CaptureAnalyzer;
+using ampsurd::CaptureModel;
+
 namespace
 {
-const juce::Identifier kCapturePathId { "capturePath" };
+const juce::Identifier kSlotsId { "SLOTS" }, kSlotId { "SLOT" }, kIndexId { "index" }, kPathId { "path" },
+    kPresetNameId { "presetName" }, kFormatId { "ampsurdFormat" };
+constexpr int kFormatVersion = 1;
+constexpr double kPi = 3.14159265358979323846;
 
 std::filesystem::path toStdPath(const juce::File& f)
 {
 #if JUCE_WINDOWS
-    return std::filesystem::path(f.getFullPathName().toWideCharPointer()); // keeps non-ASCII file names intact
+    return std::filesystem::path(f.getFullPathName().toWideCharPointer()); // keeps non-ASCII names intact
 #else
     return std::filesystem::path(f.getFullPathName().toStdString());
 #endif
 }
 
-juce::String describe(const monstrosity::CaptureModel& m)
+juce::String describe(const CaptureModel& m, const juce::File& f)
 {
     const auto& i = m.getInfo();
     juce::String s;
-    s << juce::String::fromUTF8(i.displayName.c_str()) << "\n";
-    s << "Type: " << i.architectureHint << "   (file v" << i.fileVersion << ")\n";
-    s << "Model rate: " << juce::String(i.modelSampleRate, 0) << " Hz   host rate: "
-      << juce::String(m.getPreparedSampleRate(), 0) << " Hz   latency: " << m.getLatencySamples() << " samples\n";
-    s << "Loudness: " << (i.hasLoudness ? juce::String(i.loudnessDb, 1) + " dB" : juce::String("not in file"));
-    if (i.hasInputLevel)
-        s << "   Calibrated input: " << juce::String(i.inputLevelDbu, 1) << " dBu";
+    s << f.getFileName() << "\n";
+    s << i.architectureHint << " - file format " << i.fileVersion << "\n";
+    s << "Model " << juce::String(i.modelSampleRate, 0) << " Hz";
+    if (std::abs(i.modelSampleRate - m.getPreparedSampleRate()) > 0.5)
+        s << " (resampled from " << juce::String(m.getPreparedSampleRate(), 0) << " Hz)";
+    s << "\n" << f.getParentDirectory().getFullPathName();
     return s;
+}
+
+void setParam(juce::AudioProcessorValueTreeState& apvts, const juce::String& id, float value)
+{
+    if (auto* p = apvts.getParameter(id))
+        p->setValueNotifyingHost(p->convertTo0to1(value));
 }
 } // namespace
 
-juce::AudioProcessorValueTreeState::ParameterLayout MonstrosityProcessor::createLayout()
+// ---------------------------------------------------------------------------------------------
+// Parameters
+// ---------------------------------------------------------------------------------------------
+juce::String AmpsurdProcessor::slotParamId(int slot, const char* name)
+{
+    return "s" + juce::String(slot + 1) + "_" + name;
+}
+
+juce::String AmpsurdProcessor::bandParamId(int slot, int band, const char* name)
+{
+    return "s" + juce::String(slot + 1) + "_b" + juce::String(band + 1) + "_" + name;
+}
+
+juce::AudioProcessorValueTreeState::ParameterLayout AmpsurdProcessor::createLayout()
 {
     using namespace juce;
     AudioProcessorValueTreeState::ParameterLayout layout;
+    auto db = AudioParameterFloatAttributes().withLabel("dB");
+
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { "input", 1 }, "Input",
-                                                     NormalisableRange<float>(-24.0f, 24.0f, 0.1f), 0.0f,
-                                                     AudioParameterFloatAttributes().withLabel("dB")));
+                                                     NormalisableRange<float>(-24.0f, 24.0f, 0.1f), 0.0f, db));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { "output", 1 }, "Output",
-                                                     NormalisableRange<float>(-40.0f, 12.0f, 0.1f), 0.0f,
-                                                     AudioParameterFloatAttributes().withLabel("dB")));
-    layout.add(std::make_unique<AudioParameterBool>(ParameterID { "normalise", 1 }, "Normalise", true));
+                                                     NormalisableRange<float>(-40.0f, 12.0f, 0.1f), 0.0f, db));
+    layout.add(std::make_unique<AudioParameterBool>(ParameterID { "bypass", 1 }, "Bypass", false));
+    layout.add(std::make_unique<AudioParameterBool>(ParameterID { "levelMatch", 1 }, "Level match", true));
+
+    const auto defaults = ampsurd::ParametricEq::defaultBands();
+    for (int s = 0; s < kNumSlots; ++s)
+    {
+        const String n = "Amp " + String(s + 1) + " ";
+        auto group = std::make_unique<AudioProcessorParameterGroup>("slot" + String(s + 1), "Amp " + String(s + 1), " | ");
+        group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { slotParamId(s, "mix"), 1 }, n + "Mix",
+                                                              NormalisableRange<float>(0.0f, 100.0f, 0.1f), 20.0f,
+                                                              AudioParameterFloatAttributes().withLabel("%")));
+        group->addChild(std::make_unique<AudioParameterBool>(ParameterID { slotParamId(s, "mute"), 1 }, n + "Mute", false));
+        group->addChild(std::make_unique<AudioParameterBool>(ParameterID { slotParamId(s, "solo"), 1 }, n + "Solo", false));
+        group->addChild(std::make_unique<AudioParameterBool>(ParameterID { slotParamId(s, "eqOn"), 1 }, n + "EQ On", true));
+        group->addChild(std::make_unique<AudioParameterChoice>(ParameterID { slotParamId(s, "align"), 1 }, n + "Alignment",
+                                                               StringArray { "AUTO", "FREE" }, 0));
+        group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { slotParamId(s, "time"), 1 }, n + "Time",
+                                                              NormalisableRange<float>(-(float) kMaxManualMs, (float) kMaxManualMs, 0.001f), 0.0f,
+                                                              AudioParameterFloatAttributes().withLabel("ms")));
+        group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { slotParamId(s, "phase"), 1 }, n + "Phase",
+                                                              NormalisableRange<float>(-180.0f, 180.0f, 0.1f), 0.0f,
+                                                              AudioParameterFloatAttributes().withLabel("deg")));
+        for (int b = 0; b < kNumBands; ++b)
+        {
+            const String bn = n + "EQ" + String(b + 1) + " ";
+            NormalisableRange<float> fr(20.0f, 20000.0f, 0.1f);
+            fr.setSkewForCentre(632.0f);
+            NormalisableRange<float> qr(0.3f, 10.0f, 0.001f);
+            qr.setSkewForCentre(1.7f);
+            group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { bandParamId(s, b, "freq"), 1 }, bn + "Freq",
+                                                                  fr, defaults[(size_t) b].freqHz,
+                                                                  AudioParameterFloatAttributes().withLabel("Hz")));
+            group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { bandParamId(s, b, "gain"), 1 }, bn + "Gain",
+                                                                  NormalisableRange<float>(-18.0f, 18.0f, 0.01f), 0.0f, db));
+            group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { bandParamId(s, b, "q"), 1 }, bn + "Q",
+                                                                  qr, 1.0f));
+        }
+        layout.add(std::move(group));
+    }
     return layout;
 }
 
-MonstrosityProcessor::MonstrosityProcessor()
+// ---------------------------------------------------------------------------------------------
+AmpsurdProcessor::AmpsurdProcessor()
     : AudioProcessor(BusesProperties()
                          .withInput("Input", juce::AudioChannelSet::stereo(), true)
                          .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
-      params(*this, nullptr, "MONSTROSITY", createLayout())
+      params(*this, nullptr, "AMPSURD", createLayout())
 {
     inputParam = params.getRawParameterValue("input");
     outputParam = params.getRawParameterValue("output");
-    normaliseParam = params.getRawParameterValue("normalise");
-    limiter.prepare(48000.0); // valid state even before the host calls prepareToPlay
-    limiterLatency.store(limiter.getLatencySamples());
-    setStatus({}, "No capture loaded. Click LOAD and choose a .nam file.", false, false);
-    startTimerHz(5);
+    bypassParam = params.getRawParameterValue("bypass");
+    levelMatchParam = params.getRawParameterValue("levelMatch");
+    bypassParamObj = params.getParameter("bypass");
+
+    for (int s = 0; s < kNumSlots; ++s)
+    {
+        auto& sp = slotParams[(size_t) s];
+        sp.mix = params.getRawParameterValue(slotParamId(s, "mix"));
+        sp.mute = params.getRawParameterValue(slotParamId(s, "mute"));
+        sp.solo = params.getRawParameterValue(slotParamId(s, "solo"));
+        sp.eqOn = params.getRawParameterValue(slotParamId(s, "eqOn"));
+        sp.alignMode = params.getRawParameterValue(slotParamId(s, "align"));
+        sp.timeMs = params.getRawParameterValue(slotParamId(s, "time"));
+        sp.phaseDeg = params.getRawParameterValue(slotParamId(s, "phase"));
+        for (int b = 0; b < kNumBands; ++b)
+        {
+            sp.freq[(size_t) b] = params.getRawParameterValue(bandParamId(s, b, "freq"));
+            sp.gain[(size_t) b] = params.getRawParameterValue(bandParamId(s, b, "gain"));
+            sp.q[(size_t) b] = params.getRawParameterValue(bandParamId(s, b, "q"));
+        }
+    }
+
+    prepareToPlay(48000.0, 512); // valid state before the host calls prepareToPlay
+    startTimerHz(30);
 }
 
-MonstrosityProcessor::~MonstrosityProcessor()
+AmpsurdProcessor::~AmpsurdProcessor()
 {
     stopTimer();
     alive->store(false);
-    loaderPool.removeAllJobs(true, 10000);
-    slot.collectGarbage();
+    loaderPool.removeAllJobs(true, 20000);
+    for (int s = 0; s < kNumSlots; ++s)
+        engine.getSlot(s).collectGarbage();
 }
 
-bool MonstrosityProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
+bool AmpsurdProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 {
-    const auto in = layouts.getMainInputChannelSet();
-    const auto out = layouts.getMainOutputChannelSet();
     const auto ok = [](const juce::AudioChannelSet& s) {
         return s == juce::AudioChannelSet::mono() || s == juce::AudioChannelSet::stereo();
     };
-    return ok(in) && ok(out);
+    return ok(layouts.getMainInputChannelSet()) && ok(layouts.getMainOutputChannelSet());
 }
 
-void MonstrosityProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
+void AmpsurdProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     const int maxBlock = juce::jmax(1, samplesPerBlock);
+    const bool rateChanged = std::abs(sampleRate - currentSampleRate.load()) > 0.5;
     {
         std::lock_guard<std::mutex> lock(configMutex);
-        currentSampleRate = sampleRate;
+        currentSampleRate.store(sampleRate);
         currentMaxBlock = maxBlock;
-        slot.prepare(sampleRate, maxBlock);
+        engine.prepare(sampleRate, maxBlock, kReserveMs + CaptureAnalyzer::kMaxAutoLagMs + kMaxManualMs + 1.0);
     }
     inBuffer.assign((size_t) maxBlock, 0.0);
     outBuffer.assign((size_t) maxBlock, 0.0);
+    dryBuffer.assign((size_t) maxBlock, 0.0);
+    dryDelay.assign((size_t) (sampleRate * 0.1) + 1, 0.0f); // up to 100 ms of latency
+    dryDelayPos = 0;
     inputGain.reset(sampleRate, 0.02);
     outputGain.reset(sampleRate, 0.02);
     inputGain.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(inputParam->load()));
     outputGain.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(outputParam->load()));
-    loadMeasurer.reset(sampleRate, maxBlock);
+    bypassCoef = 1.0 - std::exp(-1.0 / (0.015 * sampleRate));
+    bypassMix = bypassParam->load() > 0.5f ? 1.0 : 0.0;
     limiter.prepare(sampleRate);
-    limiterLatency.store(limiter.getLatencySamples());
-    setLatencySamples(slot.getLatencySamples() + limiter.getLatencySamples());
+    loadMeasurer.reset(sampleRate, maxBlock);
+
+    bool anyMeasured = false;
+    {
+        std::lock_guard<std::mutex> lock(analysisMutex);
+        for (auto& m : measurements) anyMeasured = anyMeasured || m != nullptr;
+    }
+    if (rateChanged && anyMeasured)
+        needsRemeasure.store(true); // alignment is measured in samples at the old rate
+
+    totalLatency.store(-1);
+    updateLatency();
 }
 
-void MonstrosityProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+// ---------------------------------------------------------------------------------------------
+// Audio
+// ---------------------------------------------------------------------------------------------
+AmpsurdProcessor::EffectiveAlign AmpsurdProcessor::effectiveAlign(int s, double sampleRate) const noexcept
+{
+    const auto& sp = slotParams[(size_t) s];
+    const auto& d = derived[(size_t) s];
+    const bool free = sp.alignMode->load() > 0.5f;
+    const double ms = kReserveMs + d.autoDelayMs.load(std::memory_order_relaxed) + (free ? (double) sp.timeMs->load() : 0.0);
+    return { std::max(0.0, ms * 0.001 * sampleRate), d.polarity.load(std::memory_order_relaxed),
+             free ? (double) sp.phaseDeg->load() * kPi / 180.0 : 0.0 };
+}
+
+void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
     const int numSamples = buffer.getNumSamples();
@@ -111,168 +221,656 @@ void MonstrosityProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
     if (numSamples == 0 || numOut == 0)
         return;
 
+    const double sr = currentSampleRate.load(std::memory_order_relaxed);
     inputGain.setTargetValue(juce::Decibels::decibelsToGain(inputParam->load()));
     outputGain.setTargetValue(juce::Decibels::decibelsToGain(outputParam->load()));
-    const bool normalise = normaliseParam->load() > 0.5f;
+    const double bypassTarget = bypassParam->load() > 0.5f ? 1.0 : 0.0;
+    const bool levelMatch = levelMatchParam->load() > 0.5f;
 
-    // Guitar DI is taken from the first input channel; the result is copied to every output.
+    // Engine settings from parameters (lock-free reads) + measured values.
+    bool rotation = false;
+    for (int s = 0; s < kNumSlots; ++s)
+    {
+        const auto& sp = slotParams[(size_t) s];
+        auto& ss = settings.slots[(size_t) s];
+        ss.mix = sp.mix->load();
+        ss.mute = sp.mute->load() > 0.5f;
+        ss.solo = sp.solo->load() > 0.5f;
+        ss.eqEnabled = sp.eqOn->load() > 0.5f;
+        for (int b = 0; b < kNumBands; ++b)
+            ss.eq[(size_t) b] = { sp.freq[(size_t) b]->load(), sp.gain[(size_t) b]->load(), sp.q[(size_t) b]->load() };
+        const auto a = effectiveAlign(s, sr);
+        ss.delaySamples = a.delaySamples;
+        ss.polarity = a.polarity;
+        ss.phaseRadians = a.phaseRadians;
+        ss.levelGain = levelMatch ? derived[(size_t) s].levelGain.load(std::memory_order_relaxed) : 1.0;
+        rotation = rotation || (engine.isSlotLoaded(s) && std::abs(a.phaseRadians) > 1e-4);
+    }
+    settings.rotationActive = rotation;
+
     const float* in = numIn > 0 ? buffer.getReadPointer(0) : nullptr;
     float* out = buffer.getWritePointer(0);
-
-    float inPeak = 0.0f, outPeak = 0.0f;
-    bool clip = false;
     const int maxBlock = (int) inBuffer.size();
+    const int latency = juce::jlimit(0, (int) dryDelay.size() - 1, totalLatency.load(std::memory_order_relaxed));
+    float inPeak = 0.0f, outPeak = 0.0f;
 
-    // Hosts may occasionally deliver more samples than announced: process in chunks.
     for (int start = 0; start < numSamples; start += maxBlock)
     {
         const int n = juce::jmin(maxBlock, numSamples - start);
         for (int i = 0; i < n; ++i)
         {
-            const float x = (in != nullptr ? in[start + i] : 0.0f) * inputGain.getNextValue();
+            const float raw = in != nullptr ? in[start + i] : 0.0f;
+            // dry signal delayed by the plugin latency, for click-free, time-aligned bypass
+            dryDelay[(size_t) dryDelayPos] = raw;
+            int rp = dryDelayPos - latency;
+            if (rp < 0) rp += (int) dryDelay.size();
+            dryBuffer[(size_t) i] = dryDelay[(size_t) rp];
+            dryDelayPos = (dryDelayPos + 1) % (int) dryDelay.size();
+
+            const float x = raw * inputGain.getNextValue();
             inPeak = juce::jmax(inPeak, std::abs(x));
             inBuffer[(size_t) i] = x;
         }
 
-        slot.process(inBuffer.data(), outBuffer.data(), n, normalise);
+        engine.process(inBuffer.data(), outBuffer.data(), n, settings);
 
         for (int i = 0; i < n; ++i)
             outBuffer[(size_t) i] *= outputGain.getNextValue();
-
-        // Last stage: the safety limiter guarantees |y| <= -1 dBFS (no digital clipping).
-        limiter.process(outBuffer.data(), n);
+        limiter.process(outBuffer.data(), n); // never above -1 dBFS
 
         for (int i = 0; i < n; ++i)
         {
-            const float y = (float) outBuffer[(size_t) i];
-            out[start + i] = y;
-            const float a = std::abs(y);
-            outPeak = juce::jmax(outPeak, a);
-            clip = clip || a > 1.0f; // should never happen; kept as a self-check
+            bypassMix += (bypassTarget - bypassMix) * bypassCoef;
+            if (std::abs(bypassTarget - bypassMix) < 1e-6) bypassMix = bypassTarget;
+            const double y = (1.0 - bypassMix) * outBuffer[(size_t) i] + bypassMix * dryBuffer[(size_t) i];
+            out[start + i] = (float) y;
+            outPeak = juce::jmax(outPeak, (float) std::abs(y));
         }
     }
-
-    const float gr = (float) limiter.getAndResetMaxReductionDb();
-    if (gr > limiterReductionDb.load(std::memory_order_relaxed))
-        limiterReductionDb.store(gr, std::memory_order_relaxed);
 
     for (int ch = 1; ch < numOut; ++ch)
         buffer.copyFrom(ch, 0, buffer, 0, 0, numSamples);
 
     if (inPeak > inputPeak.load(std::memory_order_relaxed)) inputPeak.store(inPeak, std::memory_order_relaxed);
     if (outPeak > outputPeak.load(std::memory_order_relaxed)) outputPeak.store(outPeak, std::memory_order_relaxed);
-    if (clip) clipped.store(true, std::memory_order_relaxed);
+    const float gr = (float) limiter.getAndResetMaxReductionDb();
+    if (gr > limiterReductionDb.load(std::memory_order_relaxed)) limiterReductionDb.store(gr, std::memory_order_relaxed);
 }
 
-void MonstrosityProcessor::loadCapture(const juce::File& file)
+// ---------------------------------------------------------------------------------------------
+// Loading, measuring, alignment (non-audio threads)
+// ---------------------------------------------------------------------------------------------
+void AmpsurdProcessor::setSlotStatus(int slot, const SlotStatus& s)
 {
-    const int gen = ++loadGeneration;
-    setStatus(file.getFullPathName(), "Loading " + file.getFileName() + " ...", true, false);
+    const juce::ScopedLock sl(statusLock);
+    slotStatus[(size_t) slot] = s;
+}
+
+AmpsurdProcessor::SlotStatus AmpsurdProcessor::getSlotStatus(int slot) const
+{
+    const juce::ScopedLock sl(statusLock);
+    return slotStatus[(size_t) slot];
+}
+
+void AmpsurdProcessor::loadCapture(int slot, const juce::File& file)
+{
+    const auto previous = getSlotStatus(slot).state;
+    const bool wasEmpty = previous == SlotState::empty || previous == SlotState::missing || previous == SlotState::error;
+    const int gen = ++slotGeneration[(size_t) slot];
+    setSlotStatus(slot, { SlotState::loading, file.getFullPathName(), file.getFileNameWithoutExtension(), "Loading..." });
+    if (wasEmpty)
+        renormaliseMixAfterChange(slot, true); // inaudible: the slot does not play until it is loaded
 
     auto aliveFlag = alive;
-    loaderPool.addJob([this, file, gen, aliveFlag] {
-        if (!aliveFlag->load())
-            return;
+    loaderPool.addJob([this, slot, file, gen, aliveFlag] {
+        if (aliveFlag->load())
+            loadJob(slot, file, gen, true);
+    });
+}
 
-        std::unique_ptr<monstrosity::CaptureModel> model;
-        std::string error;
+void AmpsurdProcessor::loadJob(int slot, juce::File file, int gen, bool /*adjustMix*/)
+{
+    std::lock_guard<std::mutex> lock(configMutex);
+    if (gen != slotGeneration[(size_t) slot].load())
+        return; // superseded
+
+    const double sr = currentSampleRate.load();
+    auto result = CaptureModel::load(toStdPath(file), sr, currentMaxBlock);
+    if (!result.model)
+    {
+        setSlotStatus(slot, { SlotState::error, file.getFullPathName(), file.getFileNameWithoutExtension(),
+                              "Could not load this file:\n" + juce::String(result.error) });
+        auto aliveFlag = alive;
+        juce::MessageManager::callAsync([this, slot, aliveFlag] {
+            if (aliveFlag->load()) renormaliseMixAfterChange(slot, false);
+        });
+        return;
+    }
+
+    // Measure BEFORE the capture is heard, so alignment and level match are ready when it fades in.
+    const double gainDb = inputParam->load();
+    auto test = CaptureAnalyzer::makeTestSignal(sr);
+    const double g = std::pow(10.0, gainDb / 20.0);
+    for (double& v : test) v *= g;
+    const auto meas = CaptureAnalyzer::measure(CaptureAnalyzer::render(*result.model, test, false), sr);
+    result.model->prepare(sr, currentMaxBlock); // clear the state left by the measurement
+
+    std::array<std::shared_ptr<const CaptureAnalyzer::Measurement>, kNumSlots> snapshot;
+    {
+        std::lock_guard<std::mutex> al(analysisMutex);
+        measurements[(size_t) slot] = meas;
+        measuredInputGainDb = gainDb;
+        snapshot = measurements;
+    }
+    applyRig(CaptureAnalyzer::analyseRig(snapshot));
+
+    const auto info = describe(*result.model, file);
+    engine.getSlot(slot).submit(std::move(result.model));
+    setSlotStatus(slot, { SlotState::loaded, file.getFullPathName(), file.getFileNameWithoutExtension(), info });
+
+    auto aliveFlag = alive;
+    juce::MessageManager::callAsync([this, aliveFlag] {
+        if (aliveFlag->load()) updateLatency();
+    });
+}
+
+void AmpsurdProcessor::unloadCapture(int slot)
+{
+    const auto previous = getSlotStatus(slot).state;
+    const int gen = ++slotGeneration[(size_t) slot];
+    setSlotStatus(slot, {});
+    if (previous != SlotState::empty)
+        renormaliseMixAfterChange(slot, false);
+
+    auto aliveFlag = alive;
+    loaderPool.addJob([this, slot, gen, aliveFlag] {
+        if (!aliveFlag->load()) return;
+        std::lock_guard<std::mutex> lock(configMutex);
+        if (gen != slotGeneration[(size_t) slot].load()) return;
+        engine.getSlot(slot).submit(CaptureModel::makeEmpty(currentSampleRate.load(), currentMaxBlock));
+        std::array<std::shared_ptr<const CaptureAnalyzer::Measurement>, kNumSlots> snapshot;
         {
-            // Holding the config lock guarantees the model is prepared for the rate/block
-            // size the audio thread is actually using when it receives it.
-            std::lock_guard<std::mutex> lock(configMutex);
-            if (gen != loadGeneration.load())
-                return; // superseded by a newer request
-            auto result = monstrosity::CaptureModel::load(toStdPath(file), currentSampleRate, currentMaxBlock);
-            model = std::move(result.model);
-            error = result.error;
-            if (model)
+            std::lock_guard<std::mutex> al(analysisMutex);
+            measurements[(size_t) slot] = nullptr;
+            snapshot = measurements;
+        }
+        applyRig(CaptureAnalyzer::analyseRig(snapshot));
+        juce::MessageManager::callAsync([this, aliveFlag] {
+            if (aliveFlag->load()) updateLatency();
+        });
+    });
+}
+
+void AmpsurdProcessor::remeasureJob(int gen)
+{
+    std::lock_guard<std::mutex> lock(configMutex);
+    const double sr = currentSampleRate.load();
+    const double gainDb = inputParam->load();
+    auto test = CaptureAnalyzer::makeTestSignal(sr);
+    const double g = std::pow(10.0, gainDb / 20.0);
+    for (double& v : test) v *= g;
+
+    std::array<std::shared_ptr<const CaptureAnalyzer::Measurement>, kNumSlots> fresh {};
+    std::array<int, kNumSlots> gens {};
+    for (int s = 0; s < kNumSlots; ++s)
+    {
+        if (gen != remeasureGeneration.load()) return;
+        const auto st = getSlotStatus(s);
+        gens[(size_t) s] = slotGeneration[(size_t) s].load();
+        if (st.state != SlotState::loaded) continue;
+        auto r = CaptureModel::load(toStdPath(juce::File(st.path)), sr, currentMaxBlock);
+        if (!r.model) continue;
+        fresh[(size_t) s] = CaptureAnalyzer::measure(CaptureAnalyzer::render(*r.model, test, false), sr);
+    }
+
+    std::array<std::shared_ptr<const CaptureAnalyzer::Measurement>, kNumSlots> snapshot;
+    {
+        std::lock_guard<std::mutex> al(analysisMutex);
+        for (int s = 0; s < kNumSlots; ++s)
+            if (fresh[(size_t) s] && gens[(size_t) s] == slotGeneration[(size_t) s].load())
+                measurements[(size_t) s] = fresh[(size_t) s];
+        measuredInputGainDb = gainDb;
+        snapshot = measurements;
+    }
+    applyRig(CaptureAnalyzer::analyseRig(snapshot));
+}
+
+void AmpsurdProcessor::applyRig(std::shared_ptr<const CaptureAnalyzer::RigAnalysis> newRig)
+{
+    {
+        std::lock_guard<std::mutex> dl(derivedMutex);
+        for (int s = 0; s < kNumSlots; ++s)
+        {
+            auto& d = derived[(size_t) s];
+            if (newRig && newRig->meas[(size_t) s])
             {
-                const auto text = describe(*model);
-                const int latency = model->getLatencySamples();
-                slot.submit(std::move(model));
-                setStatus(file.getFullPathName(), text, false, false);
-                juce::MessageManager::callAsync([this, latency, aliveFlag] {
-                    if (aliveFlag->load())
-                        setLatencySamples(latency + limiterLatency.load());
-                });
-                return;
+                d.autoDelayMs.store(newRig->autoDelay[(size_t) s] / newRig->sampleRate * 1000.0);
+                d.polarity.store(newRig->align[(size_t) s].polarity);
+                d.levelGain.store(CaptureAnalyzer::levelMatchGain(newRig->loudnessDb[(size_t) s]));
+            }
+            else
+            {
+                d.autoDelayMs.store(0.0);
+                d.polarity.store(1.0);
+                d.levelGain.store(1.0);
             }
         }
-        setStatus(file.getFullPathName(), "Could not load " + file.getFileName() + "\n" + juce::String(error), false, true);
-    });
+        std::lock_guard<std::mutex> al(analysisMutex);
+        rig = std::move(newRig);
+        ++rigVersion;
+    }
+    updateCovariance(true);
 }
 
-void MonstrosityProcessor::unloadCapture()
+void AmpsurdProcessor::updateCovariance(bool force)
 {
-    const int gen = ++loadGeneration;
-    setStatus({}, "No capture loaded. Click LOAD and choose a .nam file.", false, false);
-    auto aliveFlag = alive;
-    loaderPool.addJob([this, gen, aliveFlag] {
-        if (!aliveFlag->load())
-            return;
-        std::lock_guard<std::mutex> lock(configMutex);
-        if (gen != loadGeneration.load())
-            return;
-        slot.submit(monstrosity::CaptureModel::makeEmpty(currentSampleRate, currentMaxBlock));
-    });
-    setLatencySamples(limiterLatency.load());
+    std::lock_guard<std::mutex> dl(derivedMutex);
+    std::shared_ptr<const CaptureAnalyzer::RigAnalysis> r;
+    {
+        std::lock_guard<std::mutex> al(analysisMutex);
+        r = rig;
+    }
+    const bool levelMatch = levelMatchParam->load() > 0.5f;
+    const double sr = r ? r->sampleRate : currentSampleRate.load();
+
+    std::array<double, kNumSlots> delays {}, pol {}, phase {}, lg {};
+    std::array<double, 4 * kNumSlots + 4> key {};
+    for (int s = 0; s < kNumSlots; ++s)
+    {
+        const auto a = effectiveAlign(s, sr);
+        delays[(size_t) s] = a.delaySamples;
+        pol[(size_t) s] = a.polarity;
+        phase[(size_t) s] = a.phaseRadians;
+        lg[(size_t) s] = levelMatch ? derived[(size_t) s].levelGain.load() : 1.0;
+        key[(size_t) (4 * s)] = delays[(size_t) s];
+        key[(size_t) (4 * s + 1)] = pol[(size_t) s];
+        key[(size_t) (4 * s + 2)] = phase[(size_t) s];
+        key[(size_t) (4 * s + 3)] = lg[(size_t) s];
+    }
+    key[4 * kNumSlots] = (double) rigVersion.load();
+    key[4 * kNumSlots + 1] = levelMatch ? 1.0 : 0.0;
+    if (!force && key == lastCovKey)
+        return;
+    lastCovKey = key;
+
+    if (!r)
+    {
+        engine.setCovariance({}, {});
+        return;
+    }
+    const auto cov = CaptureAnalyzer::covariance(*r, delays, pol, phase, lg);
+    engine.setCovariance(cov.C, cov.valid);
 }
 
-void MonstrosityProcessor::timerCallback()
+AmpsurdProcessor::AlignInfo AmpsurdProcessor::getAlignInfo(int slot) const
 {
-    slot.collectGarbage();
+    AlignInfo info;
+    std::lock_guard<std::mutex> al(analysisMutex);
+    if (!rig || !rig->meas[(size_t) slot])
+        return info;
+    const auto& a = rig->align[(size_t) slot];
+    info.measured = true;
+    info.isReference = rig->reference == slot;
+    info.reliable = a.reliable;
+    info.autoOffsetMs = rig->autoDelay[(size_t) slot] / rig->sampleRate * 1000.0;
+    info.polarity = a.polarity;
+    info.corrBefore = a.correlationBefore;
+    info.corrAfter = a.correlationAfter;
+    info.loudnessDb = rig->loudnessDb[(size_t) slot];
+    return info;
 }
 
-void MonstrosityProcessor::setStatus(const juce::String& path, const juce::String& text, bool loading, bool error)
+void AmpsurdProcessor::resetAlignment(int slot)
 {
-    const juce::ScopedLock sl(statusLock);
-    status.capturePath = path;
-    status.text = text;
-    status.loading = loading;
-    status.error = error;
+    setParam(params, slotParamId(slot, "align"), 0.0f);
+    setParam(params, slotParamId(slot, "time"), 0.0f);
+    setParam(params, slotParamId(slot, "phase"), 0.0f);
 }
 
-MonstrosityProcessor::Status MonstrosityProcessor::getStatus() const
+// ---------------------------------------------------------------------------------------------
+// Linked mix faders (message thread)
+// ---------------------------------------------------------------------------------------------
+namespace
 {
-    const juce::ScopedLock sl(statusLock);
-    return status;
+bool countsAsLoaded(AmpsurdProcessor::SlotState s)
+{
+    return s == AmpsurdProcessor::SlotState::loaded || s == AmpsurdProcessor::SlotState::loading;
+}
+} // namespace
+
+bool AmpsurdProcessor::isSlotAudible(int slot) const
+{
+    bool anySolo = false;
+    for (int s = 0; s < kNumSlots; ++s)
+        anySolo = anySolo || (countsAsLoaded(getSlotStatus(s).state) && slotParams[(size_t) s].solo->load() > 0.5f);
+    const auto& sp = slotParams[(size_t) slot];
+    return countsAsLoaded(getSlotStatus(slot).state) && sp.mute->load() < 0.5f && (!anySolo || sp.solo->load() > 0.5f);
 }
 
-void MonstrosityProcessor::getStateInformation(juce::MemoryBlock& destData)
+void AmpsurdProcessor::renormaliseMixAfterChange(int changed, bool added)
 {
-    auto state = params.copyState();
-    // A MONSTROSITY state references the .nam file; the capture itself is never embedded.
-    state.setProperty(kCapturePathId, getStatus().capturePath, nullptr);
+    std::vector<int> others;
+    for (int s = 0; s < kNumSlots; ++s)
+        if (s != changed && countsAsLoaded(getSlotStatus(s).state))
+            others.push_back(s);
+
+    float newShare = 0.0f;
+    if (added)
+        newShare = 100.0f / (float) (others.size() + 1);
+    const float remaining = 100.0f - newShare;
+
+    float sum = 0.0f;
+    for (int s : others) sum += slotParams[(size_t) s].mix->load();
+    for (int s : others)
+    {
+        const float v = sum > 0.01f ? slotParams[(size_t) s].mix->load() * remaining / sum : remaining / (float) others.size();
+        setParam(params, slotParamId(s, "mix"), v);
+    }
+    setParam(params, slotParamId(changed, "mix"), added ? newShare : 0.0f);
+}
+
+void AmpsurdProcessor::beginMixGesture(int slot)
+{
+    mixGestureSlot = slot;
+    for (int s = 0; s < kNumSlots; ++s)
+    {
+        mixGestureSnapshot[(size_t) s] = slotParams[(size_t) s].mix->load();
+        if (countsAsLoaded(getSlotStatus(s).state))
+            if (auto* p = params.getParameter(slotParamId(s, "mix"))) p->beginChangeGesture();
+    }
+}
+
+void AmpsurdProcessor::setMixLinked(int slot, float v)
+{
+    std::vector<int> others;
+    for (int s = 0; s < kNumSlots; ++s)
+        if (s != slot && countsAsLoaded(getSlotStatus(s).state))
+            others.push_back(s);
+    if (others.empty())
+        v = 100.0f;
+    v = juce::jlimit(0.0f, 100.0f, v);
+
+    const bool snap = mixGestureSlot == slot;
+    float sum = 0.0f;
+    for (int s : others) sum += snap ? mixGestureSnapshot[(size_t) s] : slotParams[(size_t) s].mix->load();
+    for (int s : others)
+    {
+        const float base = snap ? mixGestureSnapshot[(size_t) s] : slotParams[(size_t) s].mix->load();
+        const float nv = sum > 0.01f ? base * (100.0f - v) / sum : (100.0f - v) / (float) others.size();
+        setParam(params, slotParamId(s, "mix"), nv);
+    }
+    setParam(params, slotParamId(slot, "mix"), v);
+}
+
+void AmpsurdProcessor::endMixGesture(int)
+{
+    for (int s = 0; s < kNumSlots; ++s)
+        if (countsAsLoaded(getSlotStatus(s).state))
+            if (auto* p = params.getParameter(slotParamId(s, "mix"))) p->endChangeGesture();
+    mixGestureSlot = -1;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Housekeeping (message thread)
+// ---------------------------------------------------------------------------------------------
+void AmpsurdProcessor::updateLatency()
+{
+    int resampler = 0;
+    for (int s = 0; s < kNumSlots; ++s)
+        resampler = std::max(resampler, engine.getSlot(s).getLatencySamples());
+    const double sr = currentSampleRate.load();
+    const int total = resampler + ampsurd::PathAligner::kBaseLatency + (int) std::lround(kReserveMs * 0.001 * sr)
+                      + limiter.getLatencySamples();
+    if (totalLatency.exchange(total) != total)
+        setLatencySamples(total);
+}
+
+void AmpsurdProcessor::timerCallback()
+{
+    for (int s = 0; s < kNumSlots; ++s)
+        engine.getSlot(s).collectGarbage();
+
+    updateCovariance(false);
+    updateLatency();
+
+    // Captures are non-linear: when the input gain changes, re-measure (debounced).
+    const float g = inputParam->load();
+    const double now = juce::Time::getMillisecondCounterHiRes();
+    if (std::abs(g - lastSeenInputGainDb) > 0.01f)
+    {
+        lastSeenInputGainDb = g;
+        inputGainChangedAt = now;
+    }
+    bool anyMeasured = false;
+    double measuredGain = 0.0;
+    {
+        std::lock_guard<std::mutex> al(analysisMutex);
+        for (auto& m : measurements) anyMeasured = anyMeasured || m != nullptr;
+        measuredGain = measuredInputGainDb;
+    }
+    if (anyMeasured && std::abs(g - measuredGain) > 0.5 && now - inputGainChangedAt > 400.0)
+        needsRemeasure.store(true);
+
+    if (needsRemeasure.exchange(false))
+    {
+        const int gen = ++remeasureGeneration;
+        auto aliveFlag = alive;
+        loaderPool.addJob([this, gen, aliveFlag] {
+            if (aliveFlag->load()) remeasureJob(gen);
+        });
+        std::lock_guard<std::mutex> al(analysisMutex);
+        measuredInputGainDb = g; // do not queue the same re-measurement twice
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// State and presets: one preset = the complete rig
+// ---------------------------------------------------------------------------------------------
+juce::ValueTree AmpsurdProcessor::createStateTree() const
+{
+    auto state = const_cast<juce::AudioProcessorValueTreeState&>(params).copyState();
+    if (auto old = state.getChildWithName(kSlotsId); old.isValid())
+        state.removeChild(old, nullptr);
+    state.setProperty(kFormatId, kFormatVersion, nullptr);
+    state.setProperty(kPresetNameId, getCurrentPresetName(), nullptr);
+
+    juce::ValueTree slots(kSlotsId);
+    for (int s = 0; s < kNumSlots; ++s)
+    {
+        juce::ValueTree t(kSlotId);
+        t.setProperty(kIndexId, s + 1, nullptr);
+        // Only a REFERENCE to the capture is stored, never the capture data itself.
+        t.setProperty(kPathId, getSlotStatus(s).path, nullptr);
+        slots.appendChild(t, nullptr);
+    }
+    state.appendChild(slots, nullptr);
+    return state;
+}
+
+void AmpsurdProcessor::restoreState(const juce::ValueTree& tree, const juce::File& presetFile)
+{
+    if (!tree.isValid() || tree.getType() != params.state.getType())
+        return;
+
+    auto paramsOnly = tree.createCopy();
+    if (auto old = paramsOnly.getChildWithName(kSlotsId); old.isValid())
+        paramsOnly.removeChild(old, nullptr);
+    params.replaceState(paramsOnly);
+
+    {
+        const juce::ScopedLock sl(statusLock);
+        currentPresetName = tree.getProperty(kPresetNameId, "Init").toString();
+    }
+
+    const auto slots = tree.getChildWithName(kSlotsId);
+    for (int s = 0; s < kNumSlots; ++s)
+    {
+        juce::String path;
+        for (const auto& t : slots)
+            if ((int) t.getProperty(kIndexId) == s + 1)
+                path = t.getProperty(kPathId).toString();
+
+        if (path.isEmpty())
+        {
+            if (getSlotStatus(s).state != SlotState::empty)
+            {
+                ++slotGeneration[(size_t) s];
+                setSlotStatus(s, {});
+                auto aliveFlag = alive;
+                const int gen = slotGeneration[(size_t) s].load();
+                loaderPool.addJob([this, s, gen, aliveFlag] {
+                    if (!aliveFlag->load()) return;
+                    std::lock_guard<std::mutex> lock(configMutex);
+                    if (gen != slotGeneration[(size_t) s].load()) return;
+                    engine.getSlot(s).submit(CaptureModel::makeEmpty(currentSampleRate.load(), currentMaxBlock));
+                    std::array<std::shared_ptr<const CaptureAnalyzer::Measurement>, kNumSlots> snapshot;
+                    {
+                        std::lock_guard<std::mutex> al(analysisMutex);
+                        measurements[(size_t) s] = nullptr;
+                        snapshot = measurements;
+                    }
+                    applyRig(CaptureAnalyzer::analyseRig(snapshot));
+                });
+            }
+            continue;
+        }
+
+        juce::File file(path);
+        if (!file.existsAsFile() && presetFile != juce::File())
+        {
+            // A preset shared together with its captures: look next to the preset file.
+            const auto sibling = presetFile.getSiblingFile(file.getFileName());
+            if (sibling.existsAsFile()) file = sibling;
+        }
+
+        if (file.existsAsFile())
+        {
+            const int gen = ++slotGeneration[(size_t) s];
+            setSlotStatus(s, { SlotState::loading, file.getFullPathName(), file.getFileNameWithoutExtension(), "Loading..." });
+            auto aliveFlag = alive;
+            loaderPool.addJob([this, s, file, gen, aliveFlag] {
+                if (aliveFlag->load()) loadJob(s, file, gen, false);
+            });
+        }
+        else
+        {
+            ++slotGeneration[(size_t) s];
+            setSlotStatus(s, { SlotState::missing, path, juce::File(path).getFileNameWithoutExtension(),
+                               "Capture file not found:\n" + path });
+            auto aliveFlag = alive;
+            const int gen = slotGeneration[(size_t) s].load();
+            loaderPool.addJob([this, s, gen, aliveFlag] {
+                if (!aliveFlag->load()) return;
+                std::lock_guard<std::mutex> lock(configMutex);
+                if (gen != slotGeneration[(size_t) s].load()) return;
+                engine.getSlot(s).submit(CaptureModel::makeEmpty(currentSampleRate.load(), currentMaxBlock));
+                std::array<std::shared_ptr<const CaptureAnalyzer::Measurement>, kNumSlots> snapshot;
+                {
+                    std::lock_guard<std::mutex> al(analysisMutex);
+                    measurements[(size_t) s] = nullptr;
+                    snapshot = measurements;
+                }
+                applyRig(CaptureAnalyzer::analyseRig(snapshot));
+            });
+        }
+    }
+}
+
+void AmpsurdProcessor::getStateInformation(juce::MemoryBlock& destData)
+{
+    auto state = createStateTree();
+    state.setProperty("presetFile", getCurrentPresetFile().getFullPathName(), nullptr);
     if (auto xml = state.createXml())
         copyXmlToBinary(*xml, destData);
 }
 
-void MonstrosityProcessor::setStateInformation(const void* data, int sizeInBytes)
+void AmpsurdProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
     auto xml = getXmlFromBinary(data, sizeInBytes);
-    if (xml == nullptr || !xml->hasTagName(params.state.getType()))
+    if (xml == nullptr)
         return;
-
-    auto state = juce::ValueTree::fromXml(*xml);
-    params.replaceState(state);
-
-    const juce::String path = state.getProperty(kCapturePathId).toString();
-    if (path.isEmpty())
-        return;
-
-    const juce::File file(path);
-    if (file.existsAsFile())
-        loadCapture(file);
-    else
-        setStatus(path, "Capture file not found:\n" + path, false, true);
+    auto tree = juce::ValueTree::fromXml(*xml);
+    const juce::File presetFile(tree.getProperty("presetFile").toString());
+    {
+        const juce::ScopedLock sl(statusLock);
+        currentPresetFile = presetFile;
+    }
+    restoreState(tree, presetFile);
 }
 
-juce::AudioProcessorEditor* MonstrosityProcessor::createEditor()
+juce::File AmpsurdProcessor::getPresetFolder() const
 {
-    return new MonstrosityEditor(*this);
+    return juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile("AMPSURD").getChildFile("Presets");
+}
+
+juce::Array<juce::File> AmpsurdProcessor::listPresets() const
+{
+    auto files = getPresetFolder().findChildFiles(juce::File::findFiles, false, "*.ampsurd");
+    files.sort();
+    return files;
+}
+
+bool AmpsurdProcessor::savePreset(const juce::File& fileIn)
+{
+    auto file = fileIn.withFileExtension(".ampsurd");
+    {
+        const juce::ScopedLock sl(statusLock);
+        currentPresetName = file.getFileNameWithoutExtension();
+        currentPresetFile = file;
+    }
+    auto state = createStateTree();
+    auto xml = state.createXml();
+    if (!xml) return false;
+    file.getParentDirectory().createDirectory();
+    return xml->writeTo(file);
+}
+
+bool AmpsurdProcessor::loadPreset(const juce::File& file)
+{
+    auto xml = juce::XmlDocument::parse(file);
+    if (!xml) return false;
+    auto tree = juce::ValueTree::fromXml(*xml);
+    if (tree.getType() != params.state.getType()) return false;
+    {
+        const juce::ScopedLock sl(statusLock);
+        currentPresetFile = file;
+    }
+    tree.setProperty(kPresetNameId, file.getFileNameWithoutExtension(), nullptr);
+    restoreState(tree, file);
+    return true;
+}
+
+void AmpsurdProcessor::loadInitPreset()
+{
+    for (auto* p : getParameters())
+        if (auto* rp = dynamic_cast<juce::RangedAudioParameter*>(p))
+            rp->setValueNotifyingHost(rp->getDefaultValue());
+    for (int s = 0; s < kNumSlots; ++s)
+        if (getSlotStatus(s).state != SlotState::empty)
+            unloadCapture(s);
+    const juce::ScopedLock sl(statusLock);
+    currentPresetName = "Init";
+    currentPresetFile = juce::File();
+}
+
+juce::String AmpsurdProcessor::getCurrentPresetName() const
+{
+    const juce::ScopedLock sl(statusLock);
+    return currentPresetName;
+}
+
+juce::File AmpsurdProcessor::getCurrentPresetFile() const
+{
+    const juce::ScopedLock sl(statusLock);
+    return currentPresetFile;
+}
+
+juce::AudioProcessorEditor* AmpsurdProcessor::createEditor()
+{
+    return new AmpsurdEditor(*this);
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new MonstrosityProcessor();
+    return new AmpsurdProcessor();
 }

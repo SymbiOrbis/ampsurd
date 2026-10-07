@@ -1,9 +1,9 @@
-// monstrosity_bench: CPU cost of 1..5 parallel captures at different sample rates and
+// ampsurd_bench: CPU cost of 1..5 parallel captures at different sample rates and
 // buffer sizes, plus a real-time-safety stress test of capture hot-swapping.
 //
 // Usage:
-//   monstrosity_bench <model.nam> [--slots N] [--seconds S]
-//   monstrosity_bench <model.nam> --stress [--seconds S] [<other.nam> ...]
+//   ampsurd_bench <model.nam> [--slots N] [--seconds S]
+//   ampsurd_bench <model.nam> --stress [--seconds S] [<other.nam> ...]
 
 #include <atomic>
 #include <chrono>
@@ -18,10 +18,10 @@
 #include <thread>
 #include <vector>
 
-#include "monstrosity/CaptureModel.h"
-#include "monstrosity/CaptureSlot.h"
+#include "ampsurd/CaptureModel.h"
+#include "ampsurd/CaptureSlot.h"
 
-using namespace monstrosity;
+using namespace ampsurd;
 
 static std::vector<double> makeTestSignal(double sr, double seconds)
 {
@@ -136,7 +136,7 @@ int main(int argc, char** argv)
 {
     if (argc < 2)
     {
-        std::cerr << "Usage: monstrosity_bench <model.nam> [--slots N] [--seconds S] | --stress [more.nam ...]\n";
+        std::cerr << "Usage: ampsurd_bench <model.nam> [--slots N] [--seconds S] | --stress [more.nam ...]\n";
         return 1;
     }
     int slots = 1;

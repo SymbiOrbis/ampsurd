@@ -1,0 +1,22 @@
+capture 1: A2                             Slimmable [A2 Lite + A2 Full]
+capture 2: A2_lite_only                   A2 Lite
+capture 3: Test Model                     A1 WaveNet (3 ch)
+capture 4: Test LSTM                      LSTM
+capture 5: wavenet_a1_standard            A1 WaveNet (16 ch)
+
+auto alignment vs capture 1 (low-band correlation before -> after):
+  capture 2: offset  -0.15 samples, polarity +1, correlation +0.97 -> +0.97 
+  capture 3: offset +10.30 samples, polarity -1, correlation -0.28 -> +0.52 
+  capture 4: offset  +3.27 samples, polarity -1, correlation -0.58 -> +0.60 
+  capture 5: offset +22.76 samples, polarity +1, correlation +0.05 -> +0.52 
+
+individual loudness, level match from file metadata: -10.9 -13.3 -18.1 -24.6 -11.3 dB
+individual loudness, AMPSURD measured level match: -18.0 -18.0 -18.0 -18.0 -18.0 dB (K-weighted)
+
+law                                      mean |err|   max +err   max -err  peak vs max
+A  linear  (gains = percentages)             2.72 dB    +0.00 dB    -4.58 dB      +0.00 dB
+B  constant power (p / sqrt(sum p^2))        1.18 dB    +3.06 dB    -0.26 dB      +0.17 dB
+C  AMPSURD, raw-power covariance             0.26 dB    +0.03 dB    -0.65 dB      +0.00 dB
+D  AMPSURD, K-weighted covariance            0.01 dB    +0.02 dB    -0.01 dB      +0.24 dB
+
+(331 mixes: every combination with equal faders + 300 random fader settings)

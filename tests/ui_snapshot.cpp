@@ -1,0 +1,163 @@
+// ui_snapshot: renders the real AMPSURD editor to PNG files (no DAW, no screen needed).
+// Also exercises the processor end to end: loading, linked faders, presets.
+//
+// Usage: ui_snapshot <outDir> <a.nam> [b.nam ... up to 5]
+
+#include <juce_audio_processors/juce_audio_processors.h>
+#include <juce_gui_basics/juce_gui_basics.h>
+
+#include <iostream>
+
+#include "../plugin/PluginEditor.h"
+#include "../plugin/PluginProcessor.h"
+
+static void pump(int ms)
+{
+    // the plugin library is built without modal loops; background loading needs no message pump
+    juce::Thread::sleep(ms);
+}
+
+static void save(juce::Component& c, const juce::File& f, float scale = 1.0f)
+{
+    auto img = c.createComponentSnapshot(c.getLocalBounds(), true, scale);
+    f.deleteFile();
+    juce::FileOutputStream os(f);
+    juce::PNGImageFormat().writeImageToStream(img, os);
+    std::cout << "wrote " << f.getFullPathName() << "\n";
+}
+
+static void setP(AmpsurdProcessor& p, const juce::String& id, float v)
+{
+    if (auto* rp = p.params.getParameter(id)) rp->setValueNotifyingHost(rp->convertTo0to1(v));
+}
+
+int main(int argc, char** argv)
+{
+    if (argc < 3) { std::cerr << "Usage: ui_snapshot <outDir> <a.nam> [...]\n"; return 1; }
+    juce::ScopedJuceInitialiser_GUI init;
+    const juce::File out(argv[1]);
+    out.createDirectory();
+
+    auto proc = std::make_unique<AmpsurdProcessor>();
+    proc->prepareToPlay(48000.0, 256);
+
+    // 1. empty rig
+    {
+        std::unique_ptr<juce::AudioProcessorEditor> ed(proc->createEditor());
+        auto* e = dynamic_cast<AmpsurdEditor*>(ed.get());
+        e->refreshAll();
+        save(*ed, out.getChildFile("01_empty.png"));
+    }
+
+    // 2. load captures (one per argument) and check the linked mix
+    const int n = juce::jmin(argc - 2, 5);
+    for (int i = 0; i < n; ++i)
+        proc->loadCapture(i, juce::File(argv[i + 2]));
+    for (int t = 0; t < 400; ++t)
+    {
+        bool busy = false;
+        for (int i = 0; i < n; ++i)
+            busy = busy || proc->getSlotStatus(i).state == AmpsurdProcessor::SlotState::loading;
+        if (!busy) break;
+        pump(50);
+    }
+    // run some audio so the engine adopts the captures
+    juce::AudioBuffer<float> buf(2, 256);
+    juce::MidiBuffer midi;
+    for (int b = 0; b < 40; ++b) { buf.clear(); proc->processBlock(buf, midi); }
+
+    float total = 0;
+    for (int i = 0; i < 5; ++i) total += proc->params.getRawParameterValue(AmpsurdProcessor::slotParamId(i, "mix"))->load();
+    std::cout << "after loading " << n << " captures, stored mix total = " << total << " %\n";
+
+    // move fader 1 to 42 % (linked)
+    proc->beginMixGesture(0);
+    proc->setMixLinked(0, 42.0f);
+    proc->endMixGesture(0);
+    for (int b = 0; b < 4; ++b) { buf.clear(); proc->processBlock(buf, midi); }
+    std::cout << "linked faders:";
+    total = 0;
+    for (int i = 0; i < 5; ++i)
+    {
+        const float v = proc->params.getRawParameterValue(AmpsurdProcessor::slotParamId(i, "mix"))->load();
+        total += v;
+        std::cout << " " << juce::String(v, 1) << "%";
+    }
+    std::cout << "  (total " << total << " %)\n";
+
+    // a little EQ on slot 2 and a mute on slot 4
+    setP(*proc, AmpsurdProcessor::bandParamId(1, 1, "gain"), -4.5f);
+    setP(*proc, AmpsurdProcessor::bandParamId(1, 4, "gain"), 3.0f);
+    setP(*proc, AmpsurdProcessor::bandParamId(1, 4, "q"), 2.0f);
+    setP(*proc, AmpsurdProcessor::bandParamId(1, 7, "gain"), -6.0f);
+    setP(*proc, AmpsurdProcessor::bandParamId(1, 7, "freq"), 3500.0f);
+    if (n >= 4) setP(*proc, AmpsurdProcessor::slotParamId(3, "mute"), 1.0f);
+    for (int b = 0; b < 4; ++b) { buf.clear(); proc->processBlock(buf, midi); }
+
+    {
+        std::unique_ptr<juce::AudioProcessorEditor> ed(proc->createEditor());
+        auto* e = dynamic_cast<AmpsurdEditor*>(ed.get());
+        e->refreshAll();
+        save(*ed, out.getChildFile("02_loaded.png"));
+        e->selectSlot(1);
+        e->refreshAll();
+        save(*ed, out.getChildFile("03_edit_slot2.png"));
+        setP(*proc, AmpsurdProcessor::slotParamId(1, "align"), 1.0f);
+        setP(*proc, AmpsurdProcessor::slotParamId(1, "time"), 0.25f);
+        setP(*proc, AmpsurdProcessor::slotParamId(1, "phase"), 45.0f);
+        e->refreshAll();
+        save(*ed, out.getChildFile("04_edit_free.png"));
+        ed->setSize(1800, 1200);
+        e->refreshAll();
+        save(*ed, out.getChildFile("05_scaled_1800.png"));
+    }
+
+    // 3. preset round trip
+    const auto presetFile = out.getChildFile("Test rig.ampsurd");
+    proc->savePreset(presetFile);
+    auto proc2 = std::make_unique<AmpsurdProcessor>();
+    proc2->prepareToPlay(48000.0, 256);
+    proc2->loadPreset(presetFile);
+    for (int t = 0; t < 400; ++t)
+    {
+        bool busy = false;
+        for (int i = 0; i < 5; ++i)
+            busy = busy || proc2->getSlotStatus(i).state == AmpsurdProcessor::SlotState::loading;
+        if (!busy) break;
+        pump(50);
+    }
+    int same = 0, checked = 0;
+    for (auto* prm : proc->getParameters())
+        if (auto* rp = dynamic_cast<juce::RangedAudioParameter*>(prm))
+        {
+            ++checked;
+            if (std::abs(rp->getValue() - proc2->params.getParameter(rp->getParameterID())->getValue()) < 1e-6f) ++same;
+        }
+    int slotsSame = 0;
+    for (int i = 0; i < 5; ++i)
+        slotsSame += proc->getSlotStatus(i).path == proc2->getSlotStatus(i).path
+                     && proc->getSlotStatus(i).state == proc2->getSlotStatus(i).state;
+    std::cout << "preset round trip: " << same << "/" << checked << " parameters, " << slotsSame << "/5 slots restored, name '"
+              << proc2->getCurrentPresetName() << "'\n";
+
+    // 4. preset with a missing capture
+    {
+        auto xml = juce::XmlDocument::parse(presetFile);
+        if (auto* slots = xml->getChildByName("SLOTS"))
+            if (auto* first = slots->getChildByName("SLOT"))
+                first->setAttribute("path", "C:/Captures/Rectifier_CH3_Modern_SM57_A2.nam");
+        const auto missingPreset = out.getChildFile("Missing.ampsurd");
+        xml->writeTo(missingPreset);
+        proc2->loadPreset(missingPreset);
+        pump(1500);
+        std::unique_ptr<juce::AudioProcessorEditor> ed(proc2->createEditor());
+        dynamic_cast<AmpsurdEditor*>(ed.get())->refreshAll();
+        save(*ed, out.getChildFile("06_missing_file.png"));
+        std::cout << "missing capture slot state: "
+                  << (proc2->getSlotStatus(0).state == AmpsurdProcessor::SlotState::missing ? "MISSING (ok)" : "unexpected") << "\n";
+    }
+
+    proc2.reset();
+    proc.reset();
+    return 0;
+}

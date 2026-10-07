@@ -1,9 +1,9 @@
-juce_add_plugin(Monstrosity
-  PRODUCT_NAME              "MONSTROSITY"
-  COMPANY_NAME              "MONSTROSITY"
-  BUNDLE_ID                 "com.monstrosity.monstrosity"
-  PLUGIN_MANUFACTURER_CODE  Mnst
-  PLUGIN_CODE               Mns1
+juce_add_plugin(Ampsurd
+  PRODUCT_NAME              "AMPSURD"
+  COMPANY_NAME              "AMPSURD"
+  BUNDLE_ID                 "com.ampsurd.ampsurd"
+  PLUGIN_MANUFACTURER_CODE  Amps
+  PLUGIN_CODE               Amp5
   FORMATS                   VST3
   IS_SYNTH                  FALSE
   NEEDS_MIDI_INPUT          FALSE
@@ -15,19 +15,29 @@ juce_add_plugin(Monstrosity
   COPY_PLUGIN_AFTER_BUILD   FALSE
   VST3_CATEGORIES           Fx Distortion)
 
-target_sources(Monstrosity PRIVATE
+target_sources(Ampsurd PRIVATE
   PluginProcessor.cpp
-  PluginEditor.cpp)
+  PluginEditor.cpp
+  ui/Theme.cpp
+  ui/Components.cpp)
 
-target_compile_definitions(Monstrosity PUBLIC
+# Embedded assets: fonts (Inter, SIL OFL) and the footer logos (assets/logos/logo_1..3.svg|png).
+file(GLOB AMPSURD_ASSETS CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/*.ttf"
+  "${CMAKE_CURRENT_SOURCE_DIR}/assets/logos/*.svg"
+  "${CMAKE_CURRENT_SOURCE_DIR}/assets/logos/*.png")
+juce_add_binary_data(AmpsurdAssets SOURCES ${AMPSURD_ASSETS})
+
+target_compile_definitions(Ampsurd PUBLIC
   JUCE_WEB_BROWSER=0
   JUCE_USE_CURL=0
   JUCE_VST3_CAN_REPLACE_VST2=0
   JUCE_DISPLAY_SPLASH_SCREEN=0)
 
-target_link_libraries(Monstrosity
+target_link_libraries(Ampsurd
   PRIVATE
-    monstrosity_core
+    ampsurd_core
+    AmpsurdAssets
     juce::juce_audio_utils
   PUBLIC
     juce::juce_recommended_config_flags

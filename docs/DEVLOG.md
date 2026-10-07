@@ -1,6 +1,52 @@
-# MONSTROSITY — Development Log
+# AMPSURD — Development Log
+
+(Project renamed from MONSTROSITY to AMPSURD on 2026-10-07; older entries were renamed too.)
 
 Newest entry first. Each entry: implemented / files / tested / known issues / build / next.
+
+---
+
+## 2026-10-07 — Session 2: AMPSURD UI/UX spec, five-slot engine, mix law, EQ, alignment, presets — Claude (Opus 5.5)
+
+### Implemented
+- Renamed to AMPSURD (plugin code `Amp5`, manufacturer `Amps`). Spec stored verbatim as
+  `docs/UI_SPEC.md`. AGPLv3 `LICENSE.md` (spec: open source). `PROJECT_STATUS.md` added.
+- core: `Engine` (5 fixed paths, mute/solo-aware percentages, K-weighted covariance mix law),
+  `PathAligner` (fractional delay, polarity, 90° all-pass phase rotation), `ParametricEq`
+  (10 Simper-SVF bells), `CaptureAnalyzer` (test signal, auto alignment, measured level match,
+  covariance). Level match now measured by AMPSURD instead of .nam metadata.
+- plugin: 189 parameters, loader thread measures before swap-in, debounced re-measurement on INPUT /
+  sample-rate change, linked faders with gesture snapshots, complete-rig presets
+  (`Documents/AMPSURD/Presets/*.ampsurd`), missing-file handling, time-aligned BYPASS
+  (`getBypassParameter`), constant latency.
+- UI per spec: header (AMPSURD, PRESET menu, SAVE, SAVE AS, settings), five fixed slots with
+  fixed-size wrapped filenames, vertical linked faders + %, EDIT area (monochrome EQ graph +
+  ALIGNMENT AUTO/FREE/TIME/PHASE/RESET), master (INPUT, OUTPUT, meters, LIMIT, BYPASS, CPU),
+  footer with three equal logo areas (placeholders; assets folder ready). Embedded Inter font
+  (OFL), subset without character-substituting features so filenames render exactly.
+- Tests/tools: `engine_test`, `mix_experiment`, `ui_snapshot`, rewritten `plugin_host_test`.
+
+### Tested (Linux build; not yet on Windows/REAPER)
+- engine_test ALL PASS (EQ 0.000 dB error; delay 0.2°; rotation ±0.7° 30 Hz–18 kHz; planted 37.3-sample
+  offset + inverted polarity found exactly; real-engine loudness within 0.06 dB of target incl. rotation;
+  mute/solo).
+- mix_experiment (5 captures, 331 mixes): chosen law within ±0.02 dB (`docs/REVIEW.md` §5).
+- Real VST3 via host: 1 capture bit-identical to NAM reference delayed by reported 104 samples;
+  5 captures OUTPUT +12 dB → peak −1.00 dBFS (48 k) / −1.28 dBFS (44.1 k); latency 104/123;
+  BYPASS = dry input delayed by latency, sample-identical; 5 capture paths saved in state.
+- ui_snapshot: linked faders total 100 %; preset round trip 189/189 params + 5/5 slots; missing file →
+  FILE MISSING; screenshots reviewed (`docs/screenshots/`).
+- Regression: compat_test ALL PASS, limiter_test ALL PASS, hot-swap stress clean.
+
+### Known issues
+- See `PROJECT_STATUS.md`.
+
+### Build
+- Windows: `docs/BUILD_WINDOWS.md`. Linux dev: as before; extra options `-DAMPSURD_BUILD_HOST_TEST=ON
+  -DAMPSURD_BUILD_UI_SNAPSHOT=ON`.
+
+### Next recommended step
+- Owner: GitHub repo, REAPER checklist (BUILD_WINDOWS Part D), logo files, EQ band-type decision.
 
 ---
 
@@ -46,7 +92,7 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 - `plugin/`: VST3 with Input / Output / Normalise parameters, LOAD/REMOVE, background loader,
   latency reporting, state save/restore by file path, missing-file message, CPU %, meters,
   clip indicator. UI intentionally plain.
-- `tools/`: `monstrosity_render`, `monstrosity_bench` (CPU table + hot-swap stress test),
+- `tools/`: `ampsurd_render`, `ampsurd_bench` (CPU table + hot-swap stress test),
   `compat_test.py` (compares against NAM Core's reference renderer).
 - `tests/plugin_host_test.cpp`: hosts the built `.vst3` and renders through it.
 - GitHub Actions workflow building the Windows VST3.
@@ -54,7 +100,7 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 ### Tested (Linux cloud build, x86-64; Windows build not yet run)
 - **Compatibility/correctness**: all 9 example models shipped with NAM Core (A2 slimmable,
   A2 feature test, A1 standard, LSTM, slimmable WaveNet/container, condition-DSP WaveNet…)
-  plus standalone A2-Full-only and A2-Lite-only files extracted from `A2.nam`: MONSTROSITY output
+  plus standalone A2-Full-only and A2-Lite-only files extracted from `A2.nam`: AMPSURD output
   matches NAM Core's reference `render` to within float rounding (≤ −124 dB, most identical)
   at block sizes 1, 32, 64, 256.
 - **Resampling**: at 44.1 and 96 kHz output matches the 48 kHz reference within −52/−58 dB once
@@ -77,9 +123,9 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 ### Build
 - Windows: `docs/BUILD_WINDOWS.md`.
 - Linux (dev): `cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build`
-  (needs X11/ALSA dev headers for the plugin; `-DMONSTROSITY_BUILD_PLUGIN=OFF` builds core+tools only).
+  (needs X11/ALSA dev headers for the plugin; `-DAMPSURD_BUILD_PLUGIN=OFF` builds core+tools only).
 - Correctness test: build NAM Core's `render` tool, then
-  `python3 tools/compat_test.py --ref <render> --ours build/tools/monstrosity_render --input <NAMCore>/example_audio/input.wav <models...>`
+  `python3 tools/compat_test.py --ref <render> --ours build/tools/ampsurd_render --input <NAMCore>/example_audio/input.wav <models...>`
 
 ### Next recommended step
 1. User builds on Windows and runs the Milestone 1 checklist in REAPER (BUILD_WINDOWS.md Part D).

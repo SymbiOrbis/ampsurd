@@ -1,0 +1,79 @@
+# AMPSURD — Project Status
+
+_Last updated: 2026-10-07 (Claude, session 2)_
+
+**Product name:** AMPSURD (formerly MONSTROSITY / QUINQUEPLEX).
+**What it is:** free, open-source (GNU AGPLv3) guitar plugin: one DI signal → up to five Neural
+Amp Modeler captures in parallel → blended into one sound. Windows VST3 first.
+**Current UI/UX specification:** `docs/UI_SPEC.md` (verbatim, 2026-10-07).
+
+> Everything below marked **tested** was run here on a Linux build of the same code (unit tests,
+> the real VST3 binary loaded by a test host, rendered UI screenshots). **Nothing has yet been
+> built or tried on Windows or in REAPER.**
+
+## Implemented and tested
+
+| Area | Status | How it was tested |
+|---|---|---|
+| NAM loading (A2 Full, A2 Lite, slimmable A2, A1, LSTM, ConvNet…, unmodified .nam) | done | `compat_test.py`: all 9 NAM Core example models match the official renderer (≤ −124 dB, most bit-identical) |
+| Single capture through the real VST3 | done | output **bit-identical** to the official NAM reference, delayed by exactly the reported latency |
+| Five fixed slots, load / remove / swap with 20 ms crossfade | done | VST3 host test with 5 captures; 93 hot-swaps under random block sizes, no glitches/NaN |
+| Linked, normalised mix faders + percentages | done | moving fader 1 to 42 % → others 14.5 % each, total 100 %; engine normalises automation too |
+| Mix law (constant perceived loudness) | done, measured | `mix_experiment`: within ±0.02 dB of target over 331 mixes (vs. −4.6 dB for plain percentages) — `docs/REVIEW.md` §5 |
+| Level match (measured by AMPSURD, K-weighted) | done | 5 captures 14 dB apart via file metadata → all at −18.0 dB |
+| SOLO / MUTE (stored mix kept) | done | `engine_test` |
+| EDIT selection, 10-band parametric EQ per path (monochrome graph, drag/wheel/double-click) | done | measured response = drawn curve (0.000 dB error); flat EQ bit-transparent |
+| AUTO alignment (offset + polarity) | done | finds a planted 37.3-sample offset + inverted polarity exactly |
+| FREE: TIME (fractional delay ±1 ms), PHASE (rotation ±180°), RESET | done | delay accurate to 0.2°, rotation flat ±0.7° from 30 Hz–18 kHz; mix law holds with rotation |
+| Master: INPUT, OUTPUT, meters, BYPASS (time-aligned dry) | done | bypass output = dry input delayed by latency, sample-identical |
+| No digital clipping (−1 dBFS safety limiter) | done | 5 captures, OUTPUT +12 dB, 44.1/48 kHz → peak −1.00 / −1.28 dBFS |
+| Complete-rig presets: PRESET menu, SAVE, SAVE AS, DAW project state | done | round trip 189/189 parameters + 5/5 slots; missing capture → FILE MISSING, no crash |
+| Fixed five-slot layout, fixed-size filename typography with wrapping | done | screenshots in `docs/screenshots/` (filenames shown character-exact, e.g. "4x12") |
+| Branding footer with three equal logo areas | placeholders | real logos: drop files into `plugin/assets/logos/` (see README there) |
+| Resizable window (scales whole UI, fixed aspect) | done | rendered at 1200x800 and 1800x1200 |
+
+Latency: 104 samples (2.17 ms) at 48 kHz, 123 at 44.1 kHz (constant; includes 1 ms limiter
+look-ahead and 1 ms alignment reserve). CPU: five A2 Full captures ≈ 40–48 % of one 2.8 GHz cloud
+core at 64–128 samples; the full plugin with 5 mixed captures ran at 30 % of real time.
+
+## Still mock-up / planned / open
+
+- **Windows build + REAPER listening test** — next step, needs the owner (see below).
+- Real footer logos (official artwork only).
+- GitHub repository (owner to create; CI workflow is ready in `.github/workflows/`).
+- Mix-law and alignment validation with real amp captures (only NAM test models so far).
+- Product decisions pending: EQ band types (all 10 are bells now — a low-cut/high-cut on bands
+  1/10 would help corrective use), default window size on small screens.
+- Later: installer, ECO (A2 Lite) mode, macOS/AU, About/Easter egg.
+
+## Files changed in session 2
+
+Renamed everything to AMPSURD. New: `core/{Engine,PathAligner,ParametricEq,CaptureAnalyzer}`,
+`plugin/ui/{Theme,Components}`, `plugin/assets/`, `tools/{engine_test,mix_experiment}.cpp`,
+`tests/ui_snapshot.cpp`, `docs/UI_SPEC.md`, `docs/screenshots/`, `LICENSE.md` (AGPLv3),
+`PROJECT_STATUS.md`. Rewritten: `plugin/PluginProcessor.*`, `plugin/PluginEditor.*`,
+`tests/plugin_host_test.cpp`, docs.
+
+## Known issues
+
+- Loading a capture takes ~0.3 s longer than before (it is measured before it is heard).
+- After changing INPUT, captures are re-measured in the background (~1–2 s for five); level match
+  and alignment then glide to the new values.
+- PHASE rotation is accurate to ±2° from 20 Hz at 44.1/48 kHz; at 96 kHz accuracy drops below ~40 Hz.
+- AudioDSPTools resampler under-reports latency by ~2–3 samples at 44.1/96 kHz; AUTO alignment
+  absorbs it between captures, the DAW-reported latency is off by those samples.
+- Default window 1200x800 does not fit 768-pixel-high laptop screens (it can be resized smaller).
+- Linux-only verification so far; Windows-specific issues (fonts, file dialogs, DPI) not yet seen.
+
+## Build & test
+
+- Windows: `docs/BUILD_WINDOWS.md` (or download the CI build once GitHub is set up).
+- Tests (any platform): `limiter_test`, `engine_test <a.nam> <b.nam>`, `mix_experiment <2-5 .nam>`,
+  `compat_test.py`, `plugin_host_test`, `ui_snapshot` — see `docs/DEVLOG.md`.
+
+## Next concrete step
+
+1. Owner: create the empty GitHub repository → Claude pushes, CI produces the Windows VST3.
+2. Owner: REAPER checklist in `docs/BUILD_WINDOWS.md` Part D with real captures; send notes.
+3. Owner: provide the three logo files; decide on EQ band types.
+4. Claude: fix whatever the REAPER test finds; then installer + polish.

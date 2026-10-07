@@ -2,7 +2,7 @@
 # nam_core: the official NeuralAmpModelerCore sources, compiled unmodified.
 # Every architecture that NAM Core supports (A2 Full/Lite, slimmable A2
 # containers, A1 WaveNet, LSTM, ConvNet, Linear) is available through
-# nam::get_dsp(). MONSTROSITY adds no wrapper format and no conversion step.
+# nam::get_dsp(). AMPSURD adds no wrapper format and no conversion step.
 # ---------------------------------------------------------------------------
 file(GLOB NAM_SOURCES_TOP CONFIGURE_DEPENDS "${namcore_SOURCE_DIR}/NAM/*.cpp")
 file(GLOB NAM_SOURCES_SUB CONFIGURE_DEPENDS "${namcore_SOURCE_DIR}/NAM/*/*.cpp")
@@ -23,21 +23,25 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
-# monstrosity_core: framework-independent engine (no JUCE). Reusable by the
+# ampsurd_core: framework-independent engine (no JUCE). Reusable by the
 # plugin, by the command-line test tools and by any future product.
 # ---------------------------------------------------------------------------
-add_library(monstrosity_core STATIC
+add_library(ampsurd_core STATIC
   src/CaptureModel.cpp
   src/CaptureSlot.cpp
-  src/SafetyLimiter.cpp)
-target_include_directories(monstrosity_core PUBLIC include)
-target_include_directories(monstrosity_core SYSTEM PRIVATE "${audiodsptools_SOURCE_DIR}/dsp")
+  src/SafetyLimiter.cpp
+  src/ParametricEq.cpp
+  src/PathAligner.cpp
+  src/Engine.cpp
+  src/CaptureAnalyzer.cpp)
+target_include_directories(ampsurd_core PUBLIC include)
+target_include_directories(ampsurd_core SYSTEM PRIVATE "${audiodsptools_SOURCE_DIR}/dsp")
 # NAM Core registers each architecture's loader through static initialisers. A plain
 # static-library link lets the linker drop those as "unused", after which nothing
 # loads ("No config parser registered"). WHOLE_ARCHIVE keeps every architecture.
-target_link_libraries(monstrosity_core PUBLIC "$<LINK_LIBRARY:WHOLE_ARCHIVE,nam_core>")
+target_link_libraries(ampsurd_core PUBLIC "$<LINK_LIBRARY:WHOLE_ARCHIVE,nam_core>")
 if(MSVC)
-  target_compile_options(monstrosity_core PRIVATE /W4 /bigobj)
+  target_compile_options(ampsurd_core PRIVATE /W4 /bigobj)
 else()
-  target_compile_options(monstrosity_core PRIVATE -Wall -Wextra)
+  target_compile_options(ampsurd_core PRIVATE -Wall -Wextra)
 endif()

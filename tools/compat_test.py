@@ -5,11 +5,11 @@ Compatibility + correctness test.
 For every .nam file given (default: all example models shipped with NeuralAmpModelerCore),
 render the same input through
   (a) NeuralAmpModelerCore's official reference `render` tool, and
-  (b) MONSTROSITY's engine (`monstrosity_render`, the code path the plugin uses),
+  (b) AMPSURD's engine (`ampsurd_render`, the code path the plugin uses),
 then compare sample by sample.
 
 Usage:
-  python tools/compat_test.py --ref <path/to/NAM render> --ours <path/to/monstrosity_render>
+  python tools/compat_test.py --ref <path/to/NAM render> --ours <path/to/ampsurd_render>
                               --input <48k mono wav> [models...]
 """
 import argparse, glob, os, subprocess, sys, tempfile

@@ -17,7 +17,7 @@
 
 namespace nam { class DSP; }
 
-namespace monstrosity
+namespace ampsurd
 {
 
 using Sample = double; // NAM Core's default NAM_SAMPLE type
@@ -91,4 +91,4 @@ private:
     std::vector<Sample> inScratch;
 };
 
-} // namespace monstrosity
+} // namespace ampsurd

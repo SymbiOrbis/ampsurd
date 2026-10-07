@@ -1,9 +1,9 @@
-#include "monstrosity/CaptureSlot.h"
+#include "ampsurd/CaptureSlot.h"
 
 #include <algorithm>
 #include <cmath>
 
-namespace monstrosity
+namespace ampsurd
 {
 
 CaptureSlot::CaptureSlot() = default;
@@ -114,4 +114,4 @@ void CaptureSlot::process(const Sample* in, Sample* out, int n, bool normalise) 
     }
 }
 
-} // namespace monstrosity
+} // namespace ampsurd

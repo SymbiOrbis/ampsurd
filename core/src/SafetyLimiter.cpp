@@ -1,9 +1,9 @@
-#include "monstrosity/SafetyLimiter.h"
+#include "ampsurd/SafetyLimiter.h"
 
 #include <algorithm>
 #include <cmath>
 
-namespace monstrosity
+namespace ampsurd
 {
 
 void SafetyLimiter::prepare(double sampleRate, double lookaheadMs, double releaseMs, double ceilingDb)
@@ -113,4 +113,4 @@ void SafetyLimiter::process(double* x, int n) noexcept
     }
 }
 
-} // namespace monstrosity
+} // namespace ampsurd

@@ -18,9 +18,9 @@
 #include <memory>
 #include <vector>
 
-#include "monstrosity/CaptureModel.h"
+#include "ampsurd/CaptureModel.h"
 
-namespace monstrosity
+namespace ampsurd
 {
 
 class CaptureSlot
@@ -44,6 +44,9 @@ public:
 
     // Audio thread. Overwrites out[0..n). n <= maxBlockSize.
     void process(const Sample* in, Sample* out, int n, bool normalise) noexcept;
+
+    // Audio thread: true when a real (non-empty) capture is currently playing.
+    bool hasActiveCapture() const noexcept { return active != nullptr && !active->isEmpty(); }
 
     // Any thread: latency of the capture currently playing (updated on the audio thread).
     int getLatencySamples() const noexcept { return latency.load(std::memory_order_relaxed); }
@@ -70,4 +73,4 @@ private:
     std::atomic<int> retireRead { 0 };
 };
 
-} // namespace monstrosity
+} // namespace ampsurd

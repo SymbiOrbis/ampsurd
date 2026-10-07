@@ -1,42 +1,52 @@
 #pragma once
 
+#include <array>
+#include <memory>
+
 #include <juce_audio_utils/juce_audio_utils.h>
 
 #include "PluginProcessor.h"
+#include "ui/Components.h"
+#include "ui/Theme.h"
 
-// Milestone 1 development UI: intentionally plain. The real adaptive amp-deck UI is Milestone 5.
-class MonstrosityEditor final : public juce::AudioProcessorEditor, private juce::Timer
+// AMPSURD main window: header / five fixed amp slots / edit area / master / branding footer.
+// Laid out at a fixed logical size (kWidth x kHeight) and scaled as a whole when resized.
+class AmpsurdEditor final : public juce::AudioProcessorEditor, private juce::Timer
 {
 public:
-    explicit MonstrosityEditor(MonstrosityProcessor&);
-    ~MonstrosityEditor() override;
+    static constexpr int kWidth = 1200, kHeight = 800;
+
+    explicit AmpsurdEditor(AmpsurdProcessor&);
+    ~AmpsurdEditor() override;
 
     void paint(juce::Graphics&) override;
     void resized() override;
 
+    // for tests / screenshots
+    void selectSlot(int slot);
+    void refreshAll() { timerCallback(); }
+
 private:
     void timerCallback() override;
-    void chooseFile();
 
-    MonstrosityProcessor& processor;
+    struct Content final : public juce::Component
+    {
+        explicit Content(AmpsurdProcessor&);
+        void paint(juce::Graphics&) override;
+        void resized() override;
 
-    juce::TextButton loadButton { "LOAD .nam" }, unloadButton { "REMOVE" };
-    juce::Label infoLabel, cpuLabel;
-    juce::Slider inputSlider, outputSlider;
-    juce::Label inputLabel { {}, "INPUT" }, outputLabel { {}, "OUTPUT" };
-    juce::ToggleButton normaliseButton { "Normalise loudness" };
+        ampsurd::ui::HeaderBar header;
+        std::array<std::unique_ptr<ampsurd::ui::SlotComponent>, AmpsurdProcessor::kNumSlots> slots;
+        ampsurd::ui::EditPanel edit;
+        ampsurd::ui::MasterPanel master;
+        ampsurd::ui::BrandingFooter footer;
+    };
 
-    using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
-    using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
-    std::unique_ptr<SliderAttachment> inputAttachment, outputAttachment;
-    std::unique_ptr<ButtonAttachment> normaliseAttachment;
+    AmpsurdProcessor& proc;
+    ampsurd::ui::LookAndFeel lnf;
+    Content content;
+    juce::TooltipWindow tooltips { this, 600 };
+    int selected = -1;
 
-    std::unique_ptr<juce::FileChooser> chooser;
-    float inMeter = 0.0f, outMeter = 0.0f;
-    int clipHold = 0;
-    float limitDb = 0.0f;
-    int limitHold = 0;
-    bool statusIsError = false;
-
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MonstrosityEditor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AmpsurdEditor)
 };

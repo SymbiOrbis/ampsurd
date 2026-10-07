@@ -21,19 +21,21 @@ jobs:
         run: cmake -S . -B build -A x64
 
       - name: Build plugin and tools
-        run: cmake --build build --config Release --target Monstrosity_VST3 monstrosity_render monstrosity_bench limiter_test --parallel
+        run: cmake --build build --config Release --target Ampsurd_VST3 ampsurd_render ampsurd_bench limiter_test engine_test mix_experiment --parallel
 
       - name: Smoke test (load NAM Core example A2 model, hot-swap stress)
         shell: pwsh
         run: |
           ./build/tools/Release/limiter_test.exe
           if ($LASTEXITCODE -ne 0) { exit 1 }
+          ./build/tools/Release/engine_test.exe build/_deps/namcore-src/example_models/A2.nam build/_deps/namcore-src/example_models/wavenet_a1_standard.nam
+          if ($LASTEXITCODE -ne 0) { exit 1 }
           $m = "build/_deps/namcore-src/example_models/A2.nam"
-          ./build/tools/Release/monstrosity_bench.exe $m --stress --seconds 5 build/_deps/namcore-src/example_models/lstm.nam
-          ./build/tools/Release/monstrosity_render.exe $m build/_deps/namcore-src/example_audio/input.wav render.wav
+          ./build/tools/Release/ampsurd_bench.exe $m --stress --seconds 5 build/_deps/namcore-src/example_models/lstm.nam
+          ./build/tools/Release/ampsurd_render.exe $m build/_deps/namcore-src/example_audio/input.wav render.wav
 
       - name: Upload VST3
         uses: actions/upload-artifact@v4
         with:
-          name: MONSTROSITY-VST3-windows-x64
-          path: build/plugin/Monstrosity_artefacts/Release/VST3/MONSTROSITY.vst3
+          name: AMPSURD-VST3-windows-x64
+          path: build/plugin/Ampsurd_artefacts/Release/VST3/AMPSURD.vst3
