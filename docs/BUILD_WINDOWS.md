@@ -7,9 +7,16 @@ GitHub builds the Windows VST3 automatically after every change.
 1. Open https://github.com/SymbiOrbis/ampsurd/actions and click the newest run with a green tick.
 2. Scroll to **Artifacts** at the bottom and click **AMPSURD-VST3-windows-x64** (you must be signed
    in to GitHub). A zip file downloads.
-3. Unzip it. Inside is a folder called `AMPSURD.vst3`.
+3. Before unzipping: right-click the zip → **Properties** → tick **Unblock** (if shown) → **OK**.
+   Then unzip it. Inside is a folder called `AMPSURD.vst3`.
 4. Copy that whole `AMPSURD.vst3` folder into `C:\Program Files\Common Files\VST3`
    (Windows asks for administrator permission — click **Continue**).
+
+**"Bad Image ... Error status 0xc0e90002" when REAPER scans:** Windows 11 *Smart App Control*
+blocks plugin files that are not digitally signed. Check **Windows Security → App & browser
+control → Smart App Control settings**. If it is **On**, AMPSURD (and many other free plugins)
+cannot load until either Smart App Control is switched off or AMPSURD is code-signed (planned
+before public release). Read the warning Windows shows before switching it off.
 5. In REAPER: **Options → Preferences → Plug-ins → VST → Re-scan**, then continue with Part C
    step 4 below. (When a newer build arrives, close REAPER, replace the folder, reopen.)
 

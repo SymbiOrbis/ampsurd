@@ -38,4 +38,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: AMPSURD-VST3-windows-x64
-          path: build/plugin/Ampsurd_artefacts/Release/VST3/AMPSURD.vst3
+          # upload the parent folder so the zip contains the complete "AMPSURD.vst3" folder
+          path: build/plugin/Ampsurd_artefacts/Release/VST3/
