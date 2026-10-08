@@ -14,6 +14,7 @@
 #include <iostream>
 #include <thread>
 
+#include "../plugin/PluginEditor.h"
 #include "../plugin/PluginProcessor.h"
 
 static void setP(AmpsurdProcessor& p, const juce::String& id, float v)
@@ -34,6 +35,13 @@ int main(int argc, char** argv)
     proc->loadCapture(0, juce::File(argv[1]));
     for (int t = 0; t < 400 && proc->getSlotStatus(0).state == AmpsurdProcessor::SlotState::loading; ++t)
         juce::Thread::sleep(50);
+    if (const char* more = std::getenv("SOAK_MORE")) // same extra capture in slots 2 and 3
+    {
+        proc->loadCapture(1, juce::File(more));
+        proc->loadCapture(2, juce::File(more));
+        juce::Thread::sleep(3000);
+    }
+    if (std::getenv("SOAK_FRANK") != nullptr) proc->setFrankenstein(true);
     if (const char* ir = std::getenv("SOAK_IR"))
     {
         proc->loadIr(0, juce::File(ir));
@@ -69,6 +77,8 @@ int main(int argc, char** argv)
     bool finite = true;
     std::printf("block %d @ 48 kHz, budget %.0f us\n", block, budgetUs);
     std::printf("%-6s %-10s %-10s %-10s %-8s\n", "min", "mean us", "p99.9 us", "max us", "peak");
+    std::atomic<bool> audioDone { false };
+    auto audioLoop = [&] {
     for (int m = 0; m < (int) std::ceil(minutes); ++m)
     {
         times.clear();
@@ -115,6 +125,27 @@ int main(int argc, char** argv)
                     times[(size_t) (0.999 * (double) (times.size() - 1))], times.back(), peakOut);
         std::fflush(stdout);
     }
+    audioDone = true;
+    };
+
+    if (std::getenv("SOAK_EDITOR") != nullptr)
+    {
+        // the real editor on this (message) thread: its 30 Hz timer + a full repaint each frame
+        std::thread audio(audioLoop);
+        std::unique_ptr<juce::AudioProcessorEditor> ed(proc->createEditor());
+        auto* e = dynamic_cast<AmpsurdEditor*>(ed.get());
+        long long frames = 0;
+        while (!audioDone.load())
+        {
+            e->refreshAll();
+            if (++frames % 2 == 0) (void) ed->createComponentSnapshot(ed->getLocalBounds(), true, 1.0f);
+            std::this_thread::sleep_for(std::chrono::milliseconds(33));
+        }
+        audio.join();
+        std::printf("editor frames: %lld\n", frames);
+    }
+    else
+        audioLoop();
     stop = true;
     ui.join();
     std::printf("output finite: %s\n", finite ? "yes" : "NO");
