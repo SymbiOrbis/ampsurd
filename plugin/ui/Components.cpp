@@ -2661,11 +2661,15 @@ void HeaderBar::showSettings()
     }
     m.addSubMenu("My interface's input level: " + juce::String(dbu, 1) + " dBu", levels, true);
     m.addSeparator();
+    const bool mc = proc.isMultiCoreOn();
+    m.addItem(20, "Use several CPU cores" + (mc ? " (" + juce::String(proc.getNumWorkerThreads() + 1) + " in use)" : juce::String()), true, mc);
+    m.addSeparator();
     m.addItem(2, "Open preset folder");
     m.addItem(3, "About AMPSURD");
     m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&settingsButton), [this, lm, cal, dbu](int r) {
         if (r == 1) setParamValue(proc, "levelMatch", lm ? 0.0f : 1.0f);
         if (r == 10) proc.setInputCalibration(!cal, dbu);
+        if (r == 20) proc.setMultiCore(!proc.isMultiCoreOn());
         if (r >= 100 && r <= 156) proc.setInputCalibration(true, (r - 100) * 0.5);
         if (r == 2) { proc.getPresetFolder().createDirectory(); proc.getPresetFolder().revealToUser(); }
         if (r == 3)

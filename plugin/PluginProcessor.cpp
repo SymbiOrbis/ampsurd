@@ -298,7 +298,9 @@ AmpsurdProcessor::AmpsurdProcessor()
         juce::PropertiesFile pf(o);
         calibrateOn.store(pf.getBoolValue("calibrateInput", false));
         interfaceDbu.store(pf.getDoubleValue("interfaceInputDbu", 12.0));
+        multiCore.store(pf.getBoolValue("multiCore", true));
     }
+    engine.setMultiCore(multiCore.load() ? -1 : 0);
     bypassParamObj = params.getParameter("bypass");
     gateOnParam = params.getRawParameterValue("gateOn");
     gateThresholdParam = params.getRawParameterValue("gateThreshold");
@@ -763,6 +765,20 @@ void AmpsurdProcessor::remeasureJob(int gen)
     }
     measuredCalibrationVersion.store(calVersion);
     applyRig(CaptureAnalyzer::analyseRig(snapshot));
+}
+
+void AmpsurdProcessor::setMultiCore(bool on)
+{
+    if (on == multiCore.load()) return;
+    multiCore.store(on);
+    suspendProcessing(true); // the audio callback is not running while the worker threads change
+    engine.setMultiCore(on ? -1 : 0);
+    suspendProcessing(false);
+    juce::PropertiesFile::Options o;
+    o.applicationName = "AMPSURD"; o.filenameSuffix = ".settings"; o.osxLibrarySubFolder = "Application Support";
+    juce::PropertiesFile pf(o);
+    pf.setValue("multiCore", on);
+    pf.saveIfNeeded();
 }
 
 double AmpsurdProcessor::trimDbFor(bool on, double interfaceLevel, double captureLevel)

@@ -57,6 +57,8 @@ kHz; default 16-bit/44.1), BOUNCE: backing + recording become the new backing tr
 Fast tanh like the official NAM plugin, input calibration (interface dBu), dropout counter, smoother
 gate re-open, Frankenstein NOTES mode (split before the amps) + note band.
 
+## 3e+. CPU: silent amps sleep, several cores — IMPLEMENTED 2026-10-08, awaiting test
+
 ## 3f. Recorder timeline (next)
 Waveform of the take with the backing track's waveform above it, zoom, click to navigate, punch-in
 recording while the backing plays, draggable start edge of a correction (automatic crossfades, no

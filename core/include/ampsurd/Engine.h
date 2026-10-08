@@ -31,6 +31,7 @@
 #include "ampsurd/CaptureSlot.h"
 #include "ampsurd/Frankenstein.h"
 #include "ampsurd/IrSlot.h"
+#include "ampsurd/ParallelRunner.h"
 #include "ampsurd/ParametricEq.h"
 #include "ampsurd/PathAligner.h"
 
@@ -92,6 +93,13 @@ public:
         process(in, out, nullptr, n, settings);
     }
 
+    // Non-RT (call before / instead of prepare, audio stopped): use several CPU cores for the amp
+    // paths. workers = -1: as many as useful on this computer, 0: single core.
+    void setMultiCore(int workers);
+    int getNumWorkers() const noexcept { return runner.numWorkers(); }
+    // Any thread (diagnostics): how many amp paths are currently processed (silent ones sleep).
+    int getActivePaths() const noexcept { return activePaths.load(std::memory_order_relaxed); }
+
     // Pan gains {left, right}: constant power, centre = exactly {1, 1}.
     static std::array<double, 2> panGains(float pan) noexcept;
 
@@ -139,9 +147,32 @@ private:
     FrankensteinMixer splitter;       // Frankenstein NOTES mode: splits the guitar before the amps
     std::vector<double> splitIn;     // one input per slot (NOTES mode)
     bool notesRouting = false, splitterSnap = true;
-    std::vector<double> trimBuf;                 // one slot's calibrated input
+    std::vector<double> trimBuf;                 // calibrated inputs (one per slot)
     std::array<double, kNumSlots> trimNow {};    // smoothed input trims (no zipper noise when changed)
     double trimCoef = 0.0;
+
+    // Silent amps sleep: a path that cannot be heard (muted, 0 %, not in the Frankenstein layout)
+    // stops being processed 0.5 s after it went silent; when it is needed again it runs 100 ms
+    // unheard (fresh internal state) before it fades in, exactly like a newly loaded capture.
+    std::array<bool, kNumSlots> asleep {};
+    std::array<int, kNumSlots> holdLeft {}, warmLeft {};
+    int holdSamples = 24000, warmSamples = 4800;
+    std::atomic<int> activePaths { 0 };
+
+    // parallel amp paths (one job per running path)
+    ParallelRunner runner;
+    int wantedWorkers = -1;
+    struct PathJob
+    {
+        Engine* engine = nullptr;
+        const EngineSettings* settings = nullptr;
+        const double* in = nullptr;
+        int n = 0, stride = 0;
+        double rotationMix = 0.0;
+        std::array<int, kNumSlots> slot {};
+    } job;
+    static void runPathJob(void* context, int index) noexcept;
+    void processPath(int i, const EngineSettings& s, const double* in, int n, int stride, double rotationMix) noexcept;
     double routeGain = 1.0, routeStep = 0.001; // short dip while switching TONE <-> NOTES
     double frankMix = 0.0, frankCoef = 0.0;
     double gainCoef = 0.0;

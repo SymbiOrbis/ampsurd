@@ -6,6 +6,28 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-08 — Session 2k: CPU — silent amps sleep, several cores — Claude (Opus 5.5)
+
+Owner: "the more CPU is used, the more clicking"; crackles disappear after restarting the app.
+Long runs here (3 captures + Frankenstein + editor redrawing, 6 min) show no growth of the processing
+time, so the build-up is probably outside the engine (power plan / CPU clock / core scheduling) -
+asked the owner to watch the CPU and DROPOUTS readouts. Independently, two CPU reductions:
+
+- Silent amps sleep (core `Engine`): a path that cannot be heard (muted, 0 % fader, not in the
+  Frankenstein layout, empty slot) stops being processed 0.5 s after its fade-out. When it is needed
+  again it runs 100 ms unheard (fresh internal state) and then fades in like a newly loaded capture.
+  Tests: CPU freed ~1 s after MUTE; 1.5 s after unmute the output is identical to an amp that never
+  slept (-300 dB); fade-in without a click (curvature below the no-sleep reference).
+- Several cores (core `ParallelRunner`, new): the amp paths (capture -> IR -> IR EQ -> align -> EQ)
+  of one block run on worker threads at the same time; the audio thread works too and only waits for
+  jobs a worker already started; generation-tagged job claims; workers spin 0.3 ms then sleep on an
+  atomic wait; MMCSS "Pro Audio" + time-critical priority on Windows, denormals flushed. Automatic
+  only on computers with >= 4 logical cores (cores - 1 workers, max 4); settings menu "Use several
+  CPU cores" (per computer). Tests: 3 amps on 4 workers bit-identical to one core; ThreadSanitizer
+  clean (engine_test). Measured here (2 vCPU VM, 1 worker): mean block time 900 -> 590 us with three
+  captures; on 2 cores the worker is sometimes paused by the system (rare 30 ms waits), hence the
+  4-core minimum. Real gain on the owner's PC still to be confirmed.
+
 ## 2026-10-08 — Session 2j: tone check, input calibration, clicks, Frankenstein NOTES — Claude (Opus 5.5)
 
 Response to the user's test report (clicks with one capture, tone "duller / less gain / less clarity"

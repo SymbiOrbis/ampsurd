@@ -45,7 +45,14 @@ void Engine::prepare(double sr, int maxBlockSize, double maxDelayMs)
     frankMix = 0.0;
     splitter.prepare(sr, maxBlock);
     splitIn.assign((size_t) maxBlock * kNumSlots, 0.0);
-    trimBuf.assign((size_t) maxBlock, 0.0);
+    trimBuf.assign((size_t) maxBlock * kNumSlots, 0.0);
+    asleep.fill(false);
+    holdLeft.fill(0);
+    warmLeft.fill(0);
+    holdSamples = (int) std::lround(0.5 * sr);
+    warmSamples = (int) std::lround(0.1 * sr);
+    if (runner.numWorkers() == 0 && wantedWorkers != 0)
+        runner.start(wantedWorkers < 0 ? ParallelRunner::recommendedWorkers(kNumSlots - 1) : wantedWorkers);
     trimNow.fill(-1.0); // snaps to the first requested trim
     trimCoef = 1.0 - std::exp(-1.0 / (0.020 * sr));
     notesRouting = false;
@@ -157,6 +164,61 @@ double Engine::computeCompensation(const std::array<double, kNumSlots>& p,
     return std::clamp(std::sqrt(num / den), minG, maxG);
 }
 
+void Engine::setMultiCore(int workers)
+{
+    wantedWorkers = workers;
+    runner.stop();
+    if (workers != 0)
+        runner.start(workers < 0 ? ParallelRunner::recommendedWorkers(kNumSlots - 1) : workers);
+}
+
+void Engine::runPathJob(void* context, int index) noexcept
+{
+    const auto& j = *static_cast<const PathJob*>(context);
+    j.engine->processPath(j.slot[(size_t) index], *j.settings, j.in, j.n, j.stride, j.rotationMix);
+}
+
+void Engine::processPath(int i, const EngineSettings& s, const double* in, int n, int stride, double rotationMix) noexcept
+{
+    // Everything here belongs to path i only, so the five paths can run at the same time.
+    const auto& ss = s.slots[(size_t) i];
+    double* buf = scratch.data() + (size_t) i * (size_t) stride;
+    const double* slotIn = notesRouting ? splitIn.data() + (size_t) i * (size_t) stride : in;
+
+    // input calibration (exactly 1.0 = untouched, bit-identical)
+    const double trimTarget = std::clamp(ss.inputTrim, 0.01, 100.0);
+    double& tg = trimNow[(size_t) i];
+    if (tg < 0.0) tg = trimTarget;
+    if (tg != 1.0 || trimTarget != 1.0)
+    {
+        double* t = trimBuf.data() + (size_t) i * (size_t) stride;
+        for (int k = 0; k < n; ++k)
+        {
+            tg += (trimTarget - tg) * trimCoef;
+            t[k] = slotIn[k] * tg;
+        }
+        if (std::abs(tg - trimTarget) < 1e-7 * trimTarget) tg = trimTarget;
+        slotIn = t;
+    }
+    slots[(size_t) i].process(slotIn, buf, n, false); // level match is applied as levelGain
+
+    // cabinet IR and its own EQ (both bypassed together; no CPU without an IR)
+    auto& ir = irSlots[(size_t) i];
+    ir.process(buf, n, ss.irEnabled);
+    const bool irEqActive = ir.hasIr() && ss.irEnabled && ss.irEqEnabled;
+    auto& ieq = irEqs[(size_t) i];
+    ieq.setBands(irEqActive ? ss.irEq : ParametricEq::neutralised(ss.irEq));
+    ieq.process(buf, n);
+
+    auto& al = aligners[(size_t) i];
+    al.setTargets(ss.delaySamples, ss.polarity, ss.phaseRadians, rotationMix);
+    al.process(buf, n);
+
+    auto& eq = eqs[(size_t) i];
+    eq.setBands(ss.eqEnabled ? ss.eq : ParametricEq::neutralised(ss.eq)); // OFF also releases the cuts
+    eq.process(buf, n);
+}
+
 void Engine::process(const double* in, double* out, double* outR, int n, const EngineSettings& s) noexcept
 {
     const int stride = (int) (scratch.size() / kNumSlots);
@@ -207,32 +269,61 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
         splitter.processSplit(in, ptrs, n);
     }
 
-    // 1. Run every capture (keeps their internal state warm, also when muted).
+    // 1. Which amp paths must run? Silent ones sleep (no CPU); see Engine.h.
+    std::array<bool, kNumSlots> present {};
+    for (int i = 0; i < kNumSlots; ++i)
+        present[(size_t) i] = slots[(size_t) i].hasActiveCapture() || slots[(size_t) i].hasPending();
+    {
+        const auto audiblePre = computeAudible(s, present);
+        const auto pPre = computeProportions(s, present);
+        const bool splitting = notesRouting || s.frankenstein.enabled || frankMix > 0.0;
+        int count = 0;
+        for (int i = 0; i < kNumSlots; ++i)
+        {
+            const bool wanted = slots[(size_t) i].hasPending()
+                                || gains[(size_t) i] != 0.0 || gainsR[(size_t) i] != 0.0
+                                || (present[(size_t) i] && audiblePre[(size_t) i] && (splitting || pPre[(size_t) i] > 0.0));
+            int& hold = holdLeft[(size_t) i];
+            hold = wanted ? holdSamples : std::max(0, hold - n);
+            const bool run = wanted || hold > 0;
+            if (run && asleep[(size_t) i])
+            {
+                asleep[(size_t) i] = false;
+                // stale internal state from before the sleep: run unheard first (a capture that is
+                // only now arriving fades in from silence anyway)
+                warmLeft[(size_t) i] = slots[(size_t) i].hasActiveCapture() ? warmSamples : 0;
+            }
+            else if (!run && !asleep[(size_t) i])
+            {
+                asleep[(size_t) i] = true;
+                std::fill(scratch.data() + (size_t) i * (size_t) stride, scratch.data() + (size_t) (i + 1) * (size_t) stride, 0.0);
+            }
+            if (run) job.slot[(size_t) count++] = i;
+        }
+        activePaths.store(count, std::memory_order_relaxed);
+
+        // 2. Run the paths (capture -> IR -> IR EQ -> align -> EQ), on several cores when available.
+        job.engine = this;
+        job.settings = &s;
+        job.in = in;
+        job.n = n;
+        job.stride = stride;
+        job.rotationMix = s.rotationActive ? 1.0 : 0.0;
+        runner.run(count, &Engine::runPathJob, &job);
+    }
+
+    // a path that just woke up is treated like a capture that is still loading until it is warm
     std::array<bool, kNumSlots> isLoaded {};
     for (int i = 0; i < kNumSlots; ++i)
     {
-        double* buf = scratch.data() + (size_t) i * (size_t) stride;
-        const double* slotIn = notesRouting ? splitIn.data() + (size_t) i * (size_t) stride : in;
-        // input calibration (exactly 1.0 = untouched, bit-identical)
-        const double trimTarget = std::clamp(s.slots[(size_t) i].inputTrim, 0.01, 100.0);
-        double& tg = trimNow[(size_t) i];
-        if (tg < 0.0) tg = trimTarget;
-        if (tg != 1.0 || trimTarget != 1.0)
-        {
-            for (int k = 0; k < n; ++k)
-            {
-                tg += (trimTarget - tg) * trimCoef;
-                trimBuf[(size_t) k] = slotIn[k] * tg;
-            }
-            if (std::abs(tg - trimTarget) < 1e-7 * trimTarget) tg = trimTarget;
-            slotIn = trimBuf.data();
-        }
-        slots[(size_t) i].process(slotIn, buf, n, false); // level match is applied as levelGain
-        isLoaded[(size_t) i] = slots[(size_t) i].hasActiveCapture();
-        loaded[(size_t) i].store(isLoaded[(size_t) i], std::memory_order_relaxed);
+        const bool active = slots[(size_t) i].hasActiveCapture();
+        loaded[(size_t) i].store(active, std::memory_order_relaxed);
+        int& warm = warmLeft[(size_t) i];
+        if (warm > 0 && !asleep[(size_t) i]) warm = std::max(0, warm - n);
+        isLoaded[(size_t) i] = active && !asleep[(size_t) i] && warm == 0;
     }
 
-    // 2. Mix law.
+    // 3. Mix law.
     const auto p = computeProportions(s, isLoaded);
     std::array<std::array<double, kNumSlots>, kNumSlots> C {};
     std::array<bool, kNumSlots> valid {};
@@ -249,32 +340,15 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
     double* R = outR != nullptr ? outR : scratchR.data();
     compensationDb.store((float) (20.0 * std::log10(G)), std::memory_order_relaxed);
 
-    // 3. Align, EQ, gain, sum.
+    // 4. Gain, pan, sum.
     const auto audibleNow = computeAudible(s, isLoaded);
     std::fill(out, out + n, 0.0);
     std::fill(R, R + n, 0.0);
-    const double rotationMix = s.rotationActive ? 1.0 : 0.0;
     for (int i = 0; i < kNumSlots; ++i)
     {
         const auto& ss = s.slots[(size_t) i];
-        double* buf = scratch.data() + (size_t) i * (size_t) stride;
+        const double* buf = scratch.data() + (size_t) i * (size_t) stride;
         effectivePercent[(size_t) i].store((float) (100.0 * p[(size_t) i]), std::memory_order_relaxed);
-
-        // cabinet IR and its own EQ (both bypassed together; no CPU without an IR)
-        auto& ir = irSlots[(size_t) i];
-        ir.process(buf, n, ss.irEnabled);
-        const bool irEqActive = ir.hasIr() && ss.irEnabled && ss.irEqEnabled;
-        auto& ieq = irEqs[(size_t) i];
-        ieq.setBands(irEqActive ? ss.irEq : ParametricEq::neutralised(ss.irEq));
-        ieq.process(buf, n);
-
-        auto& al = aligners[(size_t) i];
-        al.setTargets(ss.delaySamples, ss.polarity, ss.phaseRadians, rotationMix);
-        al.process(buf, n);
-
-        auto& eq = eqs[(size_t) i];
-        eq.setBands(ss.eqEnabled ? ss.eq : ParametricEq::neutralised(ss.eq)); // OFF also releases the cuts
-        eq.process(buf, n);
 
         // NOTES mode: every amp plays its own note range in full (no fader blend / mix law)
         const double base = notesRouting ? (audibleNow[(size_t) i] ? ss.levelGain : 0.0) : p[(size_t) i] * G * ss.levelGain;
@@ -295,7 +369,7 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
         gainsR[(size_t) i] = gr;
     }
 
-    // 4. "Create Frankenstein": frequency-split blending of the same aligned, EQ'd, level-matched paths.
+    // 5. "Create Frankenstein": frequency-split blending of the same aligned, EQ'd, level-matched paths.
     const bool frankOn = s.frankenstein.enabled && !notesRouting; // TONE mode: split after the amps
     if (frankOn || frankMix > 0.0)
     {
@@ -335,7 +409,7 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
         for (int i = 0; i < kNumSlots; ++i) // percentages = share of the note range each amp plays
             effectivePercent[(size_t) i].store((float) (100.0 * notesLayout.spectrumShare[(size_t) i]), std::memory_order_relaxed);
 
-    // 4b. dip while the Frankenstein mode switches (amps receive different signals afterwards)
+    // 5b. dip while the Frankenstein mode switches (amps receive different signals afterwards)
     {
         const double target = notesWanted == notesRouting ? 1.0 : 0.0;
         if (routeGain != 1.0 || target != 1.0)
@@ -348,7 +422,7 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
             }
     }
 
-    // 5. Global EQ on the complete blend (same EQ as the paths; OFF glides to flat, then costs nothing).
+    // 6. Global EQ on the complete blend (same EQ as the paths; OFF glides to flat, then costs nothing).
     const auto geq = s.globalEqEnabled ? s.globalEq : ParametricEq::neutralised(s.globalEq);
     globalEq.setBands(geq);
     globalEq.process(out, n);

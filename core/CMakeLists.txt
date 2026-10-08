@@ -40,13 +40,19 @@ add_library(ampsurd_core STATIC
   src/Convolver.cpp
   src/IrSlot.cpp
   src/Effects.cpp
-  src/Resampler.cpp)
+  src/Resampler.cpp
+  src/ParallelRunner.cpp)
 target_include_directories(ampsurd_core PUBLIC include)
 target_include_directories(ampsurd_core SYSTEM PRIVATE "${audiodsptools_SOURCE_DIR}/dsp")
 # NAM Core registers each architecture's loader through static initialisers. A plain
 # static-library link lets the linker drop those as "unused", after which nothing
 # loads ("No config parser registered"). WHOLE_ARCHIVE keeps every architecture.
 target_link_libraries(ampsurd_core PUBLIC "$<LINK_LIBRARY:WHOLE_ARCHIVE,nam_core>")
+find_package(Threads REQUIRED)
+target_link_libraries(ampsurd_core PUBLIC Threads::Threads)
+if(WIN32)
+  target_link_libraries(ampsurd_core PRIVATE avrt) # MMCSS "Pro Audio" for the worker threads
+endif()
 if(MSVC)
   target_compile_options(ampsurd_core PRIVATE /W4 /bigobj)
 else()

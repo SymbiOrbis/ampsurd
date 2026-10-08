@@ -143,6 +143,12 @@ public:
     double getCalibrationTrimDb(int slot) const;                  // 0 when off / capture has no input level
     double getCaptureInputDbu(int slot) const { return captureDbu[(size_t) slot].load(); } // NaN = not stored
 
+    // --- several CPU cores for the amp paths (a setting of this computer) ---
+    bool isMultiCoreOn() const { return multiCore.load(); }
+    void setMultiCore(bool on); // message thread
+    int getNumWorkerThreads() const { return engine.getNumWorkers(); }
+    int getActivePaths() const { return engine.getActivePaths(); }
+
     // --- presets: one preset = the complete rig ---
     juce::File getPresetFolder() const;
     juce::Array<juce::File> listPresets() const;
@@ -295,6 +301,7 @@ private:
     double inputGainChangedAt = 0.0;
     float lastSeenInputGainDb = 0.0f;
     std::atomic<bool> calibrateOn { false };
+    std::atomic<bool> multiCore { true };
     std::atomic<double> interfaceDbu { 12.0 };
     std::array<std::atomic<double>, kNumSlots> captureDbu {};
     std::atomic<int> calibrationVersion { 0 }, measuredCalibrationVersion { 0 };

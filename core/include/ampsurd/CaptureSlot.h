@@ -47,6 +47,8 @@ public:
 
     // Audio thread: true when a real (non-empty) capture is currently playing.
     bool hasActiveCapture() const noexcept { return active != nullptr && !active->isEmpty(); }
+    // Audio thread: a newly submitted capture is waiting to be adopted.
+    bool hasPending() const noexcept { return pending.load(std::memory_order_relaxed) != nullptr; }
 
     // Any thread: latency of the capture currently playing (updated on the audio thread).
     int getLatencySamples() const noexcept { return latency.load(std::memory_order_relaxed); }

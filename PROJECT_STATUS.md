@@ -28,8 +28,10 @@ tone duller / less gain / less mid fullness and high-end clarity than the TONE30
 .nam (partly a lower input level); Frankenstein not changing the sound across a scale; divider 3/4
 stuck; blinking spot; CPU meter unreadable. Session 2j response: measured AMPSURD = NAM Core
 bit-identical (tone_test), fast tanh like the official plugin, input calibration, dropout counter,
-smoother gate, Frankenstein NOTES mode + note band, divider fix, averaged CPU meter. Awaiting re-test
-(BUILD_WINDOWS.md checklist 18-20).
+smoother gate, Frankenstein NOTES mode + note band, divider fix, averaged CPU meter. Session 2k:
+silent amps no longer use CPU; amp paths run on several cores (>= 4-core computers). Awaiting
+re-test (BUILD_WINDOWS.md checklist 18-20). Frankenstein "FOLLOW" (route the whole note by detected
+pitch) proposed, postponed by the owner.
 
 ## Implemented and tested
 

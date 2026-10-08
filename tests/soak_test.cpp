@@ -31,6 +31,8 @@ int main(int argc, char** argv)
     const double sr = 48000.0;
 
     auto proc = std::make_unique<AmpsurdProcessor>();
+    const bool wasMulti = proc->isMultiCoreOn();
+    proc->setMultiCore(std::getenv("SOAK_SINGLE") == nullptr); // SOAK_SINGLE: one core only
     proc->prepareToPlay(sr, block);
     proc->loadCapture(0, juce::File(argv[1]));
     for (int t = 0; t < 400 && proc->getSlotStatus(0).state == AmpsurdProcessor::SlotState::loading; ++t)
@@ -121,8 +123,9 @@ int main(int argc, char** argv)
         for (double x : times) mean += x;
         mean /= (double) times.size();
         std::sort(times.begin(), times.end());
-        std::printf("%-6d %-10.1f %-10.1f %-10.1f %-8.3f\n", m + 1, mean,
-                    times[(size_t) (0.999 * (double) (times.size() - 1))], times.back(), peakOut);
+        const auto late = std::count_if(times.begin(), times.end(), [&](double t) { return t > budgetUs; });
+        std::printf("%-6d %-10.1f %-10.1f %-10.1f %-8.3f late blocks: %d\n", m + 1, mean,
+                    times[(size_t) (0.999 * (double) (times.size() - 1))], times.back(), peakOut, (int) late);
         std::fflush(stdout);
     }
     audioDone = true;
@@ -148,6 +151,8 @@ int main(int argc, char** argv)
         audioLoop();
     stop = true;
     ui.join();
+    std::printf("worker threads: %d, amp paths running at the end: %d\n", proc->getNumWorkerThreads(), proc->getActivePaths());
+    proc->setMultiCore(wasMulti);
     std::printf("output finite: %s\n", finite ? "yes" : "NO");
     return finite ? 0 : 1;
 }

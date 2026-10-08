@@ -551,6 +551,65 @@ int main(int argc, char** argv)
               "MUTE/SOLO: percentages renormalise over audible slots and return unchanged afterwards");
     }
 
+    // ---------------- 7. CPU: several cores + silent amps sleep ----------------
+    {
+        // a guitar-like test signal: plucked notes on changing pitches
+        const int N = (int) (sr * 6.0);
+        std::vector<double> x((size_t) N);
+        double ph = 0;
+        for (int i = 0; i < N; ++i)
+        {
+            const double t = std::fmod(i / sr, 0.4);
+            ph += 110.0 * std::pow(2.0, ((i / (int) (0.4 * sr)) % 7) / 12.0) / sr;
+            x[(size_t) i] = 0.3 * std::sin(2 * kPi * ph) * std::exp(-3.0 * t) + 0.1 * std::sin(6 * kPi * ph) * std::exp(-6.0 * t);
+        }
+        auto render = [&](int workers, const std::function<void(EngineSettings&, int)>& automate, std::vector<int>* active) {
+            Engine eng;
+            eng.setMultiCore(workers);
+            eng.getSlot(0).submit(loadAt(argv[1]));
+            eng.getSlot(1).submit(loadAt(argv[2]));
+            eng.getSlot(2).submit(loadAt(argv[1]));
+            eng.prepare(sr, 128, 10.0);
+            EngineSettings st;
+            st.slots[0].mix = 40; st.slots[1].mix = 30; st.slots[2].mix = 30;
+            st.slots[1].pan = -0.5f; st.slots[2].pan = 0.5f;
+            std::vector<double> L((size_t) N), R((size_t) N);
+            for (int b = 0; b < N; b += 128)
+            {
+                if (automate) automate(st, b);
+                eng.process(x.data() + b, L.data() + b, R.data() + b, std::min(128, N - b), st);
+                if (active) active->push_back(eng.getActivePaths());
+            }
+            L.insert(L.end(), R.begin(), R.end());
+            return L;
+        };
+        const auto single = render(0, nullptr, nullptr);
+        const auto multi = render(4, nullptr, nullptr);
+        check(single == multi, "MULTI-CORE: three amps on 4 worker threads -> output bit-identical to one core");
+
+        // amp 3 muted at 1 s, unmuted at 3 s: it sleeps in between and comes back smoothly
+        std::vector<int> active;
+        const auto muted = render(4, [&](EngineSettings& st, int b) { st.slots[2].mute = b >= (int) sr && b < (int) (3 * sr); }, &active);
+        const auto ref = render(4, [&](EngineSettings& st, int b) { st.slots[2].mute = b >= (int) sr; }, nullptr);
+        const int sleptAt = (int) (std::find(active.begin(), active.end(), 2) - active.begin()) * 128;
+        const bool wokeUp = active.back() == 3;
+        // after the fade-in (3 s + 0.1 s warm-up + ~0.5 s glide) the output equals an engine that never slept
+        double diff = 0, sig = 0, curv = 0, curvRef = 0;
+        const auto never = render(4, nullptr, nullptr);
+        for (int i = (int) (4.5 * sr); i < N; ++i) { diff += std::pow(muted[(size_t) i] - never[(size_t) i], 2); sig += never[(size_t) i] * never[(size_t) i]; }
+        for (int i = (int) (2.9 * sr); i < (int) (3.8 * sr); ++i)
+        {
+            curv = std::max(curv, std::abs(muted[(size_t) i] - 2 * muted[(size_t) i - 1] + muted[(size_t) i - 2]));
+            curvRef = std::max({ curvRef, std::abs(never[(size_t) i] - 2 * never[(size_t) i - 1] + never[(size_t) i - 2]),
+                                 std::abs(ref[(size_t) i] - 2 * ref[(size_t) i - 1] + ref[(size_t) i - 2]) });
+        }
+        const double resDb = 10 * std::log10(diff / sig + 1e-30);
+        check(sleptAt > 0 && sleptAt < (int) (2.5 * sr) && wokeUp,
+              "SLEEP: a muted amp stops using CPU %.2f s after MUTE (fade-out + 0.5 s hold) and runs again after unmute", sleptAt / sr - 1.0);
+        check(resDb < -100.0, "SLEEP: 1.5 s after unmute the sound is identical to an amp that never slept (difference %.0f dB)", resDb);
+        check(curv <= curvRef * 1.05, "SLEEP: the amp fades back in without a click (curvature %.4f vs %.4f without sleeping)", curv, curvRef);
+    }
+
     std::printf(failures == 0 ? "\nALL PASS\n" : "\n%d FAILURE(S)\n", failures);
     return failures == 0 ? 0 : 1;
 }

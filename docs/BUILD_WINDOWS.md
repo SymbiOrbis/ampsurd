@@ -151,6 +151,10 @@ REAPER picks up the new version.
     number rises exactly when you hear a click, use a larger buffer (256) or close other programs.
     If you hear clicks and the number does NOT rise, please tell me (with GATE on or off?).
 
+19b. CPU: with 3-5 captures note the CPU value with **Use several CPU cores** (settings icon) on and
+    off. MUTE an amp: after about a second the CPU value drops; unmute: it comes back after ~0.1 s
+    without a click.
+
 20. Frankenstein **NOTES** (header of the Frankenstein panel): low notes play through the amp of the
     left section, high notes through the right one - play a scale upwards and listen to the amps
     taking over. **TONE** = the previous mode (every note, split by its frequency content). The thin
