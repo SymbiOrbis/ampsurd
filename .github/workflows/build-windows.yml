@@ -1,4 +1,4 @@
-name: Build Windows VST3
+name: Build Windows (VST3 + standalone)
 
 on:
   push:
@@ -18,10 +18,10 @@ jobs:
           key: deps-${{ hashFiles('cmake/Dependencies.cmake') }}
 
       - name: Configure
-        run: cmake -S . -B build -A x64
+        run: cmake -S . -B build -A x64 -DAMPSURD_BUILD_UI_SNAPSHOT=ON
 
       - name: Build plugin and tools
-        run: cmake --build build --config Release --target Ampsurd_VST3 ampsurd_render ampsurd_bench limiter_test engine_test gate_tuner_test frankenstein_test ir_test fx_test mix_experiment --parallel
+        run: cmake --build build --config Release --target Ampsurd_VST3 Ampsurd_Standalone recorder_test ampsurd_render ampsurd_bench limiter_test engine_test gate_tuner_test frankenstein_test ir_test fx_test mix_experiment --parallel
 
       - name: Smoke test (load NAM Core example A2 model, hot-swap stress)
         shell: pwsh
@@ -36,6 +36,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit 1 }
           ./build/tools/Release/fx_test.exe
           if ($LASTEXITCODE -ne 0) { exit 1 }
+          $env:AMPSURD_FORCE_PLAYER = "1"
+          ./build/Release/recorder_test.exe
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $env:AMPSURD_FORCE_PLAYER = "0"
           ./build/tools/Release/engine_test.exe build/_deps/namcore-src/example_models/A2.nam build/_deps/namcore-src/example_models/wavenet_a1_standard.nam
           if ($LASTEXITCODE -ne 0) { exit 1 }
           $m = "build/_deps/namcore-src/example_models/A2.nam"
@@ -48,3 +52,9 @@ jobs:
           name: AMPSURD-VST3-windows-x64
           # upload the parent folder so the zip contains the complete "AMPSURD.vst3" folder
           path: build/plugin/Ampsurd_artefacts/Release/VST3/
+
+      - name: Upload standalone app
+        uses: actions/upload-artifact@v4
+        with:
+          name: AMPSURD-Standalone-windows-x64
+          path: build/plugin/Ampsurd_artefacts/Release/Standalone/

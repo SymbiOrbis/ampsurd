@@ -21,6 +21,9 @@ core/  (ampsurd_core - plain C++20, no JUCE; reusable for the future single-capt
   Convolver             zero-latency non-uniform partitioned convolution (cabinet IRs), IR preparation
   IrSlot                per-slot IR: lock-free hand-over, warm-up + crossfade, bypass, idle when unused
   Effects               FxChain: flanger, 2 parallel delays (exact ms or SYNC), FDN reverb (5 types)
+  Resampler             streaming polyphase sinc SRC (export, backing tracks)
+plugin/player/PlayerRecorder   standalone only: backing track, take recording, export, bounce
+plugin/standalone/StandaloneApp  the Windows app (JUCE standalone wrapper, input not muted)
   PathAligner           fractional delay (TIME), polarity, phase rotation (PHASE)
   ParametricEq          low cut + 8 bells + high cut, Simper SVF, smoothed, bit-transparent when flat
                         (one per amp + the Global EQ)
@@ -44,6 +47,11 @@ DAW input ch 1 → INPUT gain ─┬→ slot 1: capture → [cab IR → IR EQ] �
 PAN: constant power, centre = 0 dB on both sides (centred amps: L and R identical to the former mono
 output), hard left/right = +3 dB on one side. Mix law G counts the power of both channels (BS.1770).
 Mono output bus: (L + R) / 2.
+Standalone app only: output → record the take (32-bit float WAV) → + backing x vol + take x vol →
+stereo safety limiter (-1 dBFS, +1 ms) → device. Takes are placed at song position (recording
+position - AMPSURD latency - device in/out latency - 1 ms - OFFSET), i.e. where they were played
+against the backing that was heard. Export: same mix, rendered offline, limited, resampled
+(StreamResampler) to 44.1/48/96 kHz, TPDF-dithered to 16/24 bit or 32-bit float, WAV or FLAC.
 Cabinet IR (optional, per slot): zero latency; level match, AUTO alignment and the mix law are measured
 on capture + IR (re-measured when the IR is loaded, replaced, removed or bypassed). IR EQ = the same
 10-band EQ, only active while the IR is on.

@@ -357,6 +357,10 @@ AmpsurdProcessor::AmpsurdProcessor()
         globalEqParams.q[(size_t) b] = params.getRawParameterValue(bandParamId(kGlobalEq, b, "q"));
     }
 
+    // The player / recorder exists only in the standalone app (a DAW has its own tracks).
+    if (wrapperType == wrapperType_Standalone || juce::SystemStats::getEnvironmentVariable("AMPSURD_FORCE_PLAYER", "0") == "1")
+        player = std::make_unique<PlayerRecorder>();
+
     prepareToPlay(48000.0, 512); // valid state before the host calls prepareToPlay
     startTimerHz(30);
 }
@@ -404,6 +408,7 @@ void AmpsurdProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     gate.prepare(sampleRate);
     tuner.prepare(sampleRate);
     fx.prepare(sampleRate, maxBlock);
+    if (player) player->prepare(sampleRate, maxBlock);
     dryDelay.assign((size_t) (sampleRate * 0.1) + 1, 0.0f); // up to 100 ms of latency
     dryDelayPos = 0;
     inputGain.reset(sampleRate, 0.02);
@@ -548,8 +553,15 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
             muteMix += (muteTarget - muteMix) * bypassCoef;
             if (std::abs(muteTarget - muteMix) < 1e-6) muteMix = muteTarget;
             const double dry = bypassMix * dryBuffer[(size_t) i];
-            double y = ((1.0 - bypassMix) * L[i] + dry) * (1.0 - muteMix);
-            const double yR = ((1.0 - bypassMix) * R[i] + dry) * (1.0 - muteMix);
+            L[i] = ((1.0 - bypassMix) * L[i] + dry) * (1.0 - muteMix);
+            R[i] = ((1.0 - bypassMix) * R[i] + dry) * (1.0 - muteMix);
+        }
+        // standalone: record the guitar, add backing track + take, limit the sum
+        if (player) player->process(L, R, n, latency, isNonRealtime());
+        for (int i = 0; i < n; ++i)
+        {
+            double y = L[i];
+            const double yR = R[i];
             if (outR != nullptr)
                 outR[start + i] = (float) yR;
             else

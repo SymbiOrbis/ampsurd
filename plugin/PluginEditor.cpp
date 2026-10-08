@@ -18,6 +18,13 @@ AmpsurdEditor::Content::Content(AmpsurdProcessor& p) : header(p), edit(p), ir(p)
     addAndMakeVisible(globalEqButton);
     addAndMakeVisible(master);
     addAndMakeVisible(footer);
+    if (auto* pl = p.getPlayer())
+    {
+        playerPanel = std::make_unique<PlayerPanel>(p, *pl);
+        addChildComponent(*playerPanel);
+        addAndMakeVisible(playerButton);
+        playerButton.setTooltip("Backing track and recorder");
+    }
 }
 
 void AmpsurdEditor::Content::paint(juce::Graphics& g)
@@ -29,6 +36,7 @@ void AmpsurdEditor::Content::resized()
 {
     auto r = getLocalBounds();
     header.setBounds(r.removeFromTop(56));
+    playerButton.setBounds(210, 13, 150, 30);
     footer.setBounds(r.removeFromBottom(40));
     r = r.reduced(24, 0);
     r.removeFromTop(8);
@@ -46,6 +54,7 @@ void AmpsurdEditor::Content::resized()
     r.removeFromBottom(14);
     edit.setBounds(r);
     ir.setBounds(r);
+    if (playerPanel) playerPanel->setBounds(r);
     globalEq.setBounds(r);
     auto withButton = r;
     globalEqButton.setBounds(withButton.removeFromRight(40));
@@ -68,6 +77,11 @@ AmpsurdEditor::AmpsurdEditor(AmpsurdProcessor& p) : AudioProcessorEditor(&p), pr
     }
     content.edit.onClose = [this] { selectSlot(-1); };
     content.ir.onClose = [this] { showIr(-1); };
+    if (content.playerPanel)
+    {
+        content.playerPanel->onClose = [this] { showPlayer(false); };
+        content.playerButton.onClick = [this] { showPlayer(!playerOpen); };
+    }
     content.globalEq.onClose = [this] { showGlobalEq(false); };
     content.globalEqButton.onClick = [this] { showGlobalEq(true); };
 
@@ -108,6 +122,7 @@ void AmpsurdEditor::showGlobalEq(bool show)
     globalEqOpen = show;
     if (show)
     {
+        playerOpen = false;
         selected = -1;
         content.edit.setSlot(-1);
         content.ir.setSlot(-1);
@@ -121,9 +136,24 @@ void AmpsurdEditor::selectSlot(int slot)
     if (slot >= 0)
     {
         globalEqOpen = false;
+        playerOpen = false;
         content.ir.setSlot(-1);
     }
     content.edit.setSlot(slot);
+    timerCallback();
+}
+
+void AmpsurdEditor::showPlayer(bool show)
+{
+    if (!content.playerPanel) return;
+    playerOpen = show;
+    if (show)
+    {
+        selected = -1;
+        globalEqOpen = false;
+        content.edit.setSlot(-1);
+        content.ir.setSlot(-1);
+    }
     timerCallback();
 }
 
@@ -131,6 +161,7 @@ void AmpsurdEditor::showIr(int slot)
 {
     content.edit.setSlot(-1);
     globalEqOpen = false;
+    if (slot >= 0) playerOpen = false;
     selected = slot;
     content.ir.setSlot(slot);
     timerCallback();
@@ -149,9 +180,31 @@ void AmpsurdEditor::timerCallback()
     content.ir.setVisible(irOpen);
     if (irOpen) content.ir.refresh();
     const bool editing = content.edit.getSlot() >= 0 || irOpen;
-    const bool global = !editing && globalEqOpen;
-    const bool frank = !editing && !global && proc.isFrankensteinOn();
-    const bool centre = !editing && !global && !frank;
+    const bool playerView = !editing && playerOpen && content.playerPanel != nullptr;
+    const bool global = !editing && !playerView && globalEqOpen;
+    const bool frank = !editing && !global && !playerView && proc.isFrankensteinOn();
+    const bool centre = !editing && !global && !playerView && !frank;
+    if (content.playerPanel)
+    {
+        content.playerPanel->setVisible(playerView);
+        if (playerView) content.playerPanel->refresh();
+        else if (auto* pl = proc.getPlayer()) pl->poll();
+        // the button shows a recording even while the panel is closed (blinks)
+        auto* pl = proc.getPlayer();
+        const bool rec = pl->getState() == PlayerRecorder::State::recording;
+        const bool blink = (juce::Time::getMillisecondCounter() / 500) % 2 == 0;
+        const juce::String t = rec ? juce::String::charToString((juce::juce_wchar) 0x25CF) + " REC  " + juce::String((int) pl->getPositionSeconds() / 60) + ":"
+                                         + juce::String((int) pl->getPositionSeconds() % 60).paddedLeft('0', 2)
+                                   : juce::String("PLAYER / REC");
+        if (content.playerButton.getButtonText() != t) content.playerButton.setButtonText(t);
+        const bool lit = (rec && blink) || pl->getState() == PlayerRecorder::State::playing;
+        if ((bool) content.playerButton.getProperties().getWithDefault("lit", false) != lit)
+        {
+            content.playerButton.getProperties().set("lit", lit);
+            content.playerButton.repaint();
+        }
+        content.playerButton.setToggleState(playerView, juce::dontSendNotification);
+    }
     content.edit.setVisible(content.edit.getSlot() >= 0);
     content.globalEq.setVisible(global);
     content.frankenstein.setVisible(frank);

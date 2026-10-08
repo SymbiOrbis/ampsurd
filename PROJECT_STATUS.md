@@ -49,6 +49,7 @@ EQ bands 1/10 as low/high cut, mouse wheel adjusts the nearest EQ point.
 | Per-amp PAN, stereo output (constant power, centre unchanged), stereo-linked limiter | done, awaiting REAPER test | centred: L = R bit-identical to before; hard left = +3.01 dB left, silence right; loudness on target for any panning (≤ 0.06 dB); 5 panned captures +12 dB → −1.00 dBFS |
 | Cabinet IR per slot (zero latency, WAV/AIFF/FLAC, any rate), IR EQ (10 bands), IR editor, IR in presets; slot redesign with six buttons | done, awaiting REAPER test | `ir_test`: exact convolution, zero latency, ~2 % CPU for a 1 s IR, click-free load/replace/bypass/remove; level match includes the IR (−17.84 vs −17.93 dB); presets 401/401 + IRs |
 | Effects after the gate: 2 parallel delays (exact ms / SYNC, ping-pong), reverb (Room, Hall, Plate, Cathedral, Ambience), flanger; GLOBAL EQ / FX panel | done, awaiting REAPER test | `fx_test`: echoes exact to the sample, RT60 within 12 %, all changes click-free, all off bit-identical; worst case -1.00 dBFS; presets 429/429 |
+| Standalone Windows app (input live by default) with PLAYER / REC: backing track (WAV/FLAC/MP3/OGG), guitar recording, pause, export WAV/FLAC 16/24/32f at 44.1/48/96 kHz, BOUNCE for layers | done, awaiting test on a real interface | `recorder_test`: recorded notes land exactly on the backing's clicks (simulated interface latency), all formats correct, never above -1 dBFS; app starts (virtual display) |
 
 Latency: 104 samples (2.17 ms) at 48 kHz, 123 at 44.1 kHz (constant; includes 1 ms limiter
 look-ahead and 1 ms alignment reserve). CPU: five A2 Full captures ≈ 40–48 % of one 2.8 GHz cloud
@@ -84,12 +85,12 @@ Renamed everything to AMPSURD. New: `core/{Engine,PathAligner,ParametricEq,Captu
 ## Build & test
 
 - Windows: `docs/BUILD_WINDOWS.md` (or download the CI build once GitHub is set up).
-- Tests (any platform): `limiter_test`, `gate_tuner_test`, `frankenstein_test`, `ir_test`, `fx_test`, `engine_test <a.nam> <b.nam>`, `mix_experiment <2-5 .nam>`,
+- Tests (any platform): `limiter_test`, `gate_tuner_test`, `frankenstein_test`, `ir_test`, `fx_test`, `recorder_test`, `engine_test <a.nam> <b.nam>`, `mix_experiment <2-5 .nam>`,
   `compat_test.py`, `plugin_host_test`, `ui_snapshot` — see `docs/DEVLOG.md`.
 
 ## Roadmap
 
-See `docs/ROADMAP.md`: gate + tuner (done) → Create Frankenstein (done) → Global EQ (done) → per-amp pan (done) → cabinet IRs (done) → effects (done) → standalone + player/recorder → release package.
+See `docs/ROADMAP.md`: gate + tuner (done) → Create Frankenstein (done) → Global EQ (done) → per-amp pan (done) → cabinet IRs (done) → effects (done) → standalone + player/recorder (done) → release package.
 
 ## Next concrete step
 

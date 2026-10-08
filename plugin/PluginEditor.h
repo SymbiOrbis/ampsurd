@@ -26,6 +26,7 @@ public:
     void selectSlot(int slot);
     void showGlobalEq(bool show);
     void showIr(int slot);   // -1 closes the IR editor
+    void showPlayer(bool show);
     void showFxPage(int which) { content.globalEq.selectFx(which); } // tests / screenshots
     void refreshAll() { timerCallback(); }
 
@@ -46,6 +47,8 @@ private:
         ampsurd::ui::FrankensteinPanel frankenstein;
         ampsurd::ui::GlobalEqPanel globalEq;
         ampsurd::ui::GlobalEqButton globalEqButton;
+        std::unique_ptr<ampsurd::ui::PlayerPanel> playerPanel; // standalone app only
+        juce::TextButton playerButton { "PLAYER / REC" };
         ampsurd::ui::MasterPanel master;
         ampsurd::ui::BrandingFooter footer;
     };
@@ -55,7 +58,7 @@ private:
     Content content;
     juce::TooltipWindow tooltips { this, 600 };
     int selected = -1;
-    bool globalEqOpen = false;
+    bool globalEqOpen = false, playerOpen = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AmpsurdEditor)
 };

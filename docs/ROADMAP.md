@@ -48,12 +48,12 @@ Two parallel delays (exact ms or SYNC, feedback, level, tone, ping-pong), reverb
 Cathedral, Ambience: decay, pre-delay, tone, level), flanger (rate, depth, feedback, mix). After the
 gate, so tails ring out. All in presets.
 
-## 3d. Standalone app + player / recorder (standalone only)
+## 3d. Standalone app + player / recorder (standalone only) — IMPLEMENTED 2026-10-08, awaiting test
 Backing track (WAV/FLAC/MP3/OGG) + guitar recording of AMPSURD's output, live guitar audible during
 playback, latency compensation + offset, export guitar alone or mixed (WAV 16/24/32f, FLAC; 44.1/48/96
 kHz; default 16-bit/44.1), BOUNCE: backing + recording become the new backing track (layers).
 
-## 4. Public release package
+## 4. Public release package (remaining)
 - Code signing (SignPath Foundation, free for OSI-licensed open source) so Windows Smart App Control
   accepts the plugin.
 - Installer with uninstaller (VST3 + standalone app).

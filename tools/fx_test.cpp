@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "ampsurd/Effects.h"
+#include "ampsurd/Resampler.h"
 
 using namespace ampsurd;
 static int failures = 0;
@@ -294,6 +295,83 @@ int main()
         for (size_t p = 0; p + 64 <= x.L.size(); p += 64) fx.process(x.L.data() + p, x.R.data() + p, 64, s);
         const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
         check(secs / 10.0 * 100.0 < 10.0, "CPU: all effects on (cathedral) cost %.1f %% of one core", secs / 10.0 * 100.0);
+    }
+
+    // 6. StreamResampler (export, backing tracks): level, distortion, aliasing, length, chunking
+    {
+        auto tone = [](double f, double rate, size_t n) {
+            std::vector<float> v(n);
+            for (size_t i = 0; i < n; ++i) v[i] = (float) (0.5 * std::sin(2 * kPi * f * (double) i / rate));
+            return v;
+        };
+        // fit amplitude of frequency f and the residual (everything else) in the middle part
+        auto analyse = [](const std::vector<float>& y, double f, double rate, double& ampDb, double& residualDb) {
+            const size_t a = y.size() / 4, b = 3 * y.size() / 4;
+            double ss = 0, sc = 0, cc = 0, sy = 0, cy = 0;
+            for (size_t i = a; i < b; ++i)
+            {
+                const double s1 = std::sin(2 * kPi * f * (double) i / rate), c1 = std::cos(2 * kPi * f * (double) i / rate);
+                ss += s1 * s1; cc += c1 * c1; sc += s1 * c1; sy += s1 * y[i]; cy += c1 * y[i];
+            }
+            const double det = ss * cc - sc * sc, A = (sy * cc - cy * sc) / det, B = (cy * ss - sy * sc) / det;
+            double res = 0, sig = 0;
+            for (size_t i = a; i < b; ++i)
+            {
+                const double fit = A * std::sin(2 * kPi * f * (double) i / rate) + B * std::cos(2 * kPi * f * (double) i / rate);
+                res += (y[i] - fit) * (y[i] - fit);
+                sig += fit * fit;
+            }
+            ampDb = 20 * std::log10(std::sqrt(A * A + B * B) / 0.5);
+            residualDb = 10 * std::log10(res / sig);
+        };
+        double worstAmp = 0, worstRes = -300;
+        for (auto rates : { std::pair<double, double> { 44100, 48000 }, { 48000, 44100 }, { 48000, 96000 }, { 96000, 44100 } })
+            for (double f : { 100.0, 1000.0, 15000.0 })
+            {
+                StreamResampler r(rates.first, rates.second, 1);
+                const auto x = tone(f, rates.first, 96000);
+                std::vector<std::vector<float>> out;
+                const float* p = x.data();
+                r.process(&p, (int) x.size(), out);
+                r.finish(out);
+                double a, res;
+                analyse(out[0], f, rates.second, a, res);
+                worstAmp = std::max(worstAmp, std::abs(a));
+                worstRes = std::max(worstRes, res);
+            }
+        check(worstAmp < 0.01 && worstRes < -90.0,
+              "RESAMPLER: 44.1/48/96 kHz conversions, 100 Hz-15 kHz: level within %.4f dB, everything else at %.0f dB", worstAmp, worstRes);
+
+        // aliasing: a 23 kHz tone at 48 kHz has no place at 44.1 kHz and must disappear
+        StreamResampler r(48000, 44100, 1);
+        const auto x = tone(23000, 48000, 96000);
+        std::vector<std::vector<float>> out;
+        const float* p = x.data();
+        r.process(&p, (int) x.size(), out);
+        r.finish(out);
+        double peak = 0;
+        for (size_t i = out[0].size() / 4; i < 3 * out[0].size() / 4; ++i) peak = std::max(peak, (double) std::abs(out[0][i]));
+        const size_t expectLen = (size_t) std::ceil(96000.0 * 44100.0 / 48000.0);
+        check(20 * std::log10(peak / 0.5 + 1e-12) < -90.0 && out[0].size() == expectLen,
+              "RESAMPLER: no aliasing (23 kHz at 48 kHz -> %.0f dB at 44.1 kHz), exact length (%.0f samples)", 20 * std::log10(peak / 0.5 + 1e-12), (double) out[0].size());
+
+        // streaming in random chunks gives exactly the same result as one call
+        StreamResampler one(44100, 48000, 2), many(44100, 48000, 2);
+        const auto a = tone(440, 44100, 50000), b = tone(3000, 44100, 50000);
+        std::vector<std::vector<float>> o1, o2;
+        const float* ab[2] = { a.data(), b.data() };
+        one.process(ab, 50000, o1); one.finish(o1);
+        std::mt19937 rng(4);
+        std::uniform_int_distribution<int> blk(1, 3000);
+        for (int pos = 0; pos < 50000;)
+        {
+            const int n = std::min(blk(rng), 50000 - pos);
+            const float* q[2] = { a.data() + pos, b.data() + pos };
+            many.process(q, n, o2);
+            pos += n;
+        }
+        many.finish(o2);
+        check(o1 == o2, "RESAMPLER: processing in random chunks gives a bit-identical result");
     }
 
     std::printf(failures == 0 ? "\nALL PASS\n" : "\n%d FAILURE(S)\n", failures);

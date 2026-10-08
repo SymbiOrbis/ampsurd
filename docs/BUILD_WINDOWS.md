@@ -20,6 +20,12 @@ before public release). Read the warning Windows shows before switching it off.
 5. In REAPER: **Options → Preferences → Plug-ins → VST → Re-scan**, then continue with Part C
    step 4 below. (When a newer build arrives, close REAPER, replace the folder, reopen.)
 
+**Standalone app (with backing-track player and recorder):** in the same Actions run, download
+**AMPSURD-Standalone-windows-x64**, Unblock the zip (as above), unzip, double-click `AMPSURD.exe`
+(Smart App Control must be off, as for the plugin). Click **Options** (top left) → choose your
+audio interface (ASIO driver if available), the input your guitar is on, and the outputs.
+The input is not muted by default. Close REAPER first if it uses the same interface exclusively.
+
 The rest of this page is only needed if you want to build it yourself.
 
 # Building AMPSURD yourself (step by step)
@@ -123,6 +129,14 @@ REAPER picks up the new version.
     type 500; DELAY 2: ON, type 756. Try PING-PONG and SYNC (follows REAPER's tempo). REVERB: try the
     five types (CATHEDRAL!), DECAY, PRE-DELAY. FLANGER. Change values while playing: any click?
     Switch a delay or the reverb OFF while it rings: the tail should fade out naturally.
+
+17. Standalone app, PLAYER / REC (button at the top): LOAD BACKING (a song or click track, WAV /
+    MP3 / FLAC). PLAY: does it play, can you hear your guitar on top? REC: play along, STOP, PLAY:
+    does your take sit exactly in time with the backing? If it is consistently early or late,
+    note by how much and set OFFSET (ms) - please tell me the value, it tells me how accurately
+    your interface reports its latency. Try PAUSE / CONTINUE while recording. SAVE AS: CD quality
+    (WAV 16-bit 44.1 kHz), guitar alone and with backing; open the files in REAPER - do they line
+    up? BOUNCE, then record a second layer on top.
 
 Expected latency shown by REAPER: 104 samples at 48 kHz, 123 at 44.1 kHz.
 

@@ -6,6 +6,40 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-08 — Session 2i: standalone app + player / recorder — Claude (Opus 5.5)
+
+- Standalone Windows app (`plugin/standalone/StandaloneApp.cpp`, JUCE standalone wrapper with
+  AMPSURD defaults: guitar input NOT muted on first start; device latency handed to the recorder).
+  CI builds it and uploads AMPSURD-Standalone-windows-x64.
+- `PlayerRecorder` (standalone only; created when wrapperType == Standalone): backing track (WAV,
+  FLAC, MP3, OGG, AIFF; any rate), guitar take = AMPSURD's final output recorded to a 32-bit float
+  WAV (Documents/AMPSURD/Recordings/Takes), PLAY / PAUSE (also while recording: one seamless take) /
+  STOP / REC (replaces the take, click twice) / |<. Live guitar always audible. Sum limiter (stereo,
+  -1 dBFS) so backing + guitar never clip (+1 ms monitoring latency in the app only). Takes are
+  shifted by AMPSURD latency + device input/output latency + 1 ms + OFFSET, so they land where they
+  were played. Export guitar alone (aligned to the backing's start) or mixed: WAV 16/24/32f, FLAC
+  16/24, 44.1/48/96 kHz (default WAV 16-bit 44.1 kHz), TPDF dither, limited. BOUNCE: backing + take
+  -> new backing (32-bit float, session rate) for layering.
+- Playback chain per file: reader -> BufferingAudioSource (read-ahead thread) -> ResamplingAudioSource.
+  Found in testing: JUCE's read-ahead plays silence when it is late; PLAY / seek now wait until the
+  first second is buffered, and offline rendering (isNonRealtime) waits for the disk.
+- core `StreamResampler` (polyphase sinc, chunk-independent, bit-identical in any chunk size).
+- UI: PLAYER / REC button in the header (blinks "REC m:ss" while recording, also with the panel
+  closed), player panel (backing / guitar recording / save columns, meters, typed values), dark
+  styled drop-down boxes (also fixes the FX note box).
+- Tested: `recorder_test` (new, in CI) through the real processor with a simulated 300-sample
+  interface: backing clicks exactly where expected; a "musician" playing in time with what is heard
+  -> every recorded note exactly on its click (7/7 samples); playback = click + note; all five export
+  formats at 44.1/48/96 kHz readable, right length, first note at 0.5000 s, peak <= -1 dBFS; pause /
+  resume -> one take; BOUNCE + second layer -> click + both takes at 0.5 s; full-scale backing +6 dB +
+  loud guitar -> -1.00 dBFS; 44.1 kHz backing in a 48 kHz session exact (live and export).
+  `fx_test`: resampler level exact, residual -114 dB, aliasing -103 dB, chunk-independent.
+  Standalone app started on a virtual display: runs, PLAYER / REC present. VST3 regression unchanged.
+- Not testable here: real audio interfaces (driver-reported latency accuracy -> OFFSET), MP3 decoding
+  (no MP3 encoder in this environment to make a test file).
+
+---
+
 ## 2026-10-08 — Session 2h: effects (2 delays, reverb, flanger) — Claude (Opus 5.5)
 
 - Owner's decisions: two parallel delays with exact times (e.g. 500 and 756 ms), optional SYNC;

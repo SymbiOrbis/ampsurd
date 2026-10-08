@@ -15,6 +15,7 @@
 #include "ampsurd/NoiseGate.h"
 #include "ampsurd/PitchDetector.h"
 #include "ampsurd/SafetyLimiter.h"
+#include "player/PlayerRecorder.h"
 
 // AMPSURD: one guitar DI -> five fixed NAM capture slots in parallel -> blended into one tone.
 //
@@ -78,6 +79,9 @@ public:
     void loadIr(int slot, const juce::File& file);
     void removeIr(int slot);
     bool isIrOn(int slot) const { return slotParams[(size_t) slot].irOn->load() > 0.5f; }
+
+    // --- player / recorder: standalone app only (nullptr in a DAW) ---
+    PlayerRecorder* getPlayer() { return player.get(); }
 
     // --- effects after the gate (Global EQ / FX panel) ---
     static juce::StringArray delayNoteNames();
@@ -225,6 +229,7 @@ private:
     ampsurd::FrankensteinSettings readFrankenstein() const noexcept;
     ampsurd::FxSettings readFx() const noexcept;
     ampsurd::FxChain fx;
+    std::unique_ptr<PlayerRecorder> player;
     struct DelayParams { std::atomic<float>* on, *time, *sync, *note, *feedback, *level, *tone, *pingPong; };
     std::array<DelayParams, 2> delayParams {};
     std::atomic<float>* revOn = nullptr, *revType = nullptr, *revDecay = nullptr, *revPre = nullptr, *revTone = nullptr, *revLevel = nullptr;

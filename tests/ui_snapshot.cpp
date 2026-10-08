@@ -6,6 +6,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <cmath>
 #include <iostream>
 
 #include "../plugin/PluginEditor.h"
@@ -225,6 +226,37 @@ int main(int argc, char** argv)
         e->showGlobalEq(false);
         e->refreshAll();
         save(*ed, out.getChildFile("18_fx_button.png"));
+    }
+
+    // Player / recorder (standalone only; AMPSURD_FORCE_PLAYER=1 shows it here)
+    if (auto* pl = proc->getPlayer())
+    {
+        const auto wavFile = out.getChildFile("backing_demo.wav");
+        {
+            juce::AudioBuffer<float> b(2, 48000 * 6);
+            for (int i = 0; i < b.getNumSamples(); ++i)
+                for (int c = 0; c < 2; ++c) b.setSample(c, i, 0.2f * (float) std::sin(2 * juce::MathConstants<double>::pi * 110 * i / 48000.0));
+            std::unique_ptr<juce::OutputStream> os = wavFile.createOutputStream();
+            juce::WavAudioFormat wav;
+            auto w = wav.createWriterFor(os, juce::AudioFormatWriterOptions {}.withSampleRate(48000).withNumChannels(2).withBitsPerSample(24));
+            w->writeFromAudioSampleBuffer(b, 0, b.getNumSamples());
+        }
+        proc->setNonRealtime(true);
+        pl->loadBacking(wavFile);
+        pl->record();
+        for (int k = 0; k < 48000 * 2 / 256; ++k) { buf.clear(); proc->processBlock(buf, midi); }
+        pl->stop();
+        pl->play();
+        for (int k = 0; k < 48000 / 256; ++k) { buf.clear(); proc->processBlock(buf, midi); }
+        pl->pause();
+        std::unique_ptr<juce::AudioProcessorEditor> ed(proc->createEditor());
+        auto* e = dynamic_cast<AmpsurdEditor*>(ed.get());
+        e->showPlayer(true);
+        e->refreshAll();
+        save(*ed, out.getChildFile("19_player.png"));
+        pl->stop();
+        proc->setNonRealtime(false);
+        wavFile.deleteFile();
     }
 
     // 3. preset round trip

@@ -1331,6 +1331,277 @@ void GlobalEqPanel::refresh()
 }
 
 // =============================================================================================
+// PlayerPanel
+// =============================================================================================
+namespace
+{
+juce::String clock(double seconds)
+{
+    const int total = (int) std::floor(seconds * 10.0);
+    return juce::String(total / 600).paddedLeft('0', 2) + ":" + juce::String((total / 10) % 60).paddedLeft('0', 2) + "." + juce::String(total % 10);
+}
+} // namespace
+
+PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), player(pl)
+{
+    for (auto* b : { &startButton, &playButton, &pauseButton, &stopButton, &recButton, &loadButton, &removeButton, &saveButton,
+                     &bounceButton, &closeButton })
+        addAndMakeVisible(*b);
+    startButton.onClick = [this] { player.toStart(); };
+    playButton.onClick = [this] { player.play(); };
+    pauseButton.onClick = [this] { player.pause(); };
+    stopButton.onClick = [this] { player.stop(); };
+    recButton.onClick = [this] {
+        // a new take replaces the current one (its file stays in Recordings/Takes) - click twice then
+        const double now = juce::Time::getMillisecondCounterHiRes();
+        if (player.hasTake() && !(recArmedAt > 0.0 && now - recArmedAt < 3000.0))
+        {
+            recArmedAt = now;
+            recButton.setButtonText("REPLACE?");
+            return;
+        }
+        recArmedAt = -1.0;
+        recButton.setButtonText("REC");
+        player.record();
+    };
+    loadButton.onClick = [this] { loadBacking(); };
+    removeButton.onClick = [this] { player.removeBacking(); };
+    saveButton.onClick = [this] { saveAs(); };
+    bounceButton.onClick = [this] {
+        setStatus("Bouncing...");
+        player.bounce([this](const juce::String& err) { setStatus(err.isEmpty() ? "Bounced: backing + take are the new backing track. Record the next layer." : err); });
+    };
+    closeButton.onClick = [this] { if (onClose) onClose(); };
+    startButton.setTooltip("Back to the start");
+    recButton.setTooltip("Record AMPSURD's output (your guitar) along with the backing track");
+    pauseButton.setTooltip("Pause / continue (also while recording: the take continues seamlessly)");
+    bounceButton.setTooltip("Mix backing + take into a new backing track, to record another layer on top");
+    saveButton.setTooltip("Save the recording (guitar alone, or with the backing track)");
+    loadButton.setTooltip("Backing track or click track: WAV, FLAC, MP3, OGG, AIFF");
+
+    auto setupDb = [this](juce::Slider& sl, double lo, double hi, std::function<void(float)> apply, double initial, const juce::String& unit) {
+        sl.setSliderStyle(juce::Slider::LinearHorizontal);
+        sl.setTextBoxStyle(juce::Slider::TextBoxRight, false, 70, 20);
+        sl.setRange(lo, hi, 0.1);
+        sl.setValue(initial, juce::dontSendNotification);
+        sl.setTextValueSuffix(" " + unit);
+        sl.setDoubleClickReturnValue(true, 0.0);
+        sl.onValueChange = [&sl, apply] { apply((float) sl.getValue()); };
+        addAndMakeVisible(sl);
+    };
+    setupDb(backVol, -40.0, 6.0, [this](float v) { player.setBackingGainDb(v); }, player.getBackingGainDb(), "dB");
+    setupDb(takeVol, -40.0, 6.0, [this](float v) { player.setTakeGainDb(v); }, player.getTakeGainDb(), "dB");
+    setupDb(offset, -50.0, 50.0, [this](float v) { player.setOffsetMs(v); }, player.getOffsetMs(), "ms");
+    offset.setTooltip("Fine-tune where takes land, if your audio driver reports its latency slightly wrong");
+
+    formatBox.addItemList(PlayerRecorder::formatNames(), 1);
+    formatBox.setSelectedItemIndex(0, juce::dontSendNotification); // CD quality
+    for (auto r : PlayerRecorder::exportRates()) rateBox.addItem(juce::String(r / 1000.0, 1) + " kHz", (int) r);
+    rateBox.setSelectedItemIndex(0, juce::dontSendNotification);   // 44.1 kHz
+    contentBox.addItem("GUITAR + BACKING", 1);
+    contentBox.addItem("GUITAR ONLY", 2);
+    contentBox.setSelectedId(1, juce::dontSendNotification);
+    for (auto* c : { &formatBox, &rateBox, &contentBox }) addAndMakeVisible(*c);
+}
+
+juce::Rectangle<int> PlayerPanel::column(int i) const
+{
+    auto r = getLocalBounds().reduced(16, 12);
+    r.removeFromTop(26 + 10 + 30 + 14);
+    const int w = (r.getWidth() - 2 * 24) / 3;
+    return r.withX(r.getX() + i * (w + 24)).withWidth(w);
+}
+
+void PlayerPanel::resized()
+{
+    auto r = getLocalBounds().reduced(16, 12);
+    auto header = r.removeFromTop(26);
+    closeButton.setBounds(header.removeFromRight(72));
+    r.removeFromTop(10);
+    auto transport = r.removeFromTop(30);
+    for (auto* b : { &startButton, &playButton, &pauseButton, &stopButton, &recButton })
+    {
+        b->setBounds(transport.removeFromLeft(b == &startButton ? 48 : 96));
+        transport.removeFromLeft(8);
+    }
+
+    // column 1: backing track
+    {
+        auto c = column(0);
+        c.removeFromTop(18 + 6 + 22 + 8);
+        auto row = c.removeFromTop(26);
+        loadButton.setBounds(row.removeFromLeft(130));
+        row.removeFromLeft(8);
+        removeButton.setBounds(row.removeFromLeft(90));
+        c.removeFromTop(12);
+        backVol.setBounds(c.removeFromTop(24).withTrimmedLeft(70));
+    }
+    // column 2: guitar take
+    {
+        auto c = column(1);
+        c.removeFromTop(18 + 6 + 22 + 8 + 26 + 12);
+        takeVol.setBounds(c.removeFromTop(24).withTrimmedLeft(70));
+        c.removeFromTop(8 + 8 + 12); // meter
+        offset.setBounds(c.removeFromTop(24).withTrimmedLeft(70));
+    }
+    // column 3: save / bounce
+    {
+        auto c = column(2);
+        c.removeFromTop(18 + 6);
+        auto row = c.removeFromTop(26);
+        formatBox.setBounds(row.removeFromLeft(row.getWidth() * 3 / 5));
+        row.removeFromLeft(8);
+        rateBox.setBounds(row);
+        c.removeFromTop(8);
+        contentBox.setBounds(c.removeFromTop(26));
+        c.removeFromTop(10);
+        auto b = c.removeFromTop(28);
+        saveButton.setBounds(b.removeFromLeft((b.getWidth() - 8) / 2));
+        b.removeFromLeft(8);
+        bounceButton.setBounds(b);
+    }
+}
+
+void PlayerPanel::paint(juce::Graphics& g)
+{
+    g.setColour(line);
+    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), 3.0f, 1.0f);
+    auto r = getLocalBounds().reduced(16, 12);
+    auto header = r.removeFromTop(26);
+    drawLabel(g, "PLAYER / RECORDER", header.removeFromLeft(170), text, juce::Justification::centredLeft, 11.0f);
+
+    using S = PlayerRecorder::State;
+    const auto st = player.getState();
+    const juce::String stateText = st == S::playing ? "PLAYING" : st == S::recording ? "RECORDING" : st == S::pausedPlay ? "PAUSED"
+                                 : st == S::pausedRec ? "RECORDING PAUSED" : "STOPPED";
+    g.setColour(text);
+    g.setFont(Fonts::get().semibold(18.0f));
+    g.drawText(clock(player.getPositionSeconds()) + "  /  " + clock(player.getLengthSeconds()), header.removeFromLeft(240), juce::Justification::centredLeft, false);
+    drawLabel(g, (st == S::recording ? juce::String::charToString((juce::juce_wchar) 0x25CF) + " " : juce::String()) + stateText,
+              header.removeFromLeft(220), st == S::recording ? text : textDim, juce::Justification::centredLeft);
+
+    // transport row: how takes are lined up
+    auto info = getLocalBounds().reduced(16, 12).withTrimmedTop(36).removeFromTop(30).withTrimmedLeft(48 + 4 * 96 + 5 * 8 + 16);
+    g.setColour(textDim);
+    g.setFont(Fonts::get().regular(12.5f));
+    g.drawFittedText("Takes are lined up with the backing automatically (shifted by " + juce::String(player.getCompensationMs(), 1)
+                     + " ms: AMPSURD + audio interface + 1 ms). Your live guitar is always audible.",
+                     info, juce::Justification::centredLeft, 2);
+
+    auto meter = [&](juce::Rectangle<int> m, float lvl) {
+        g.setColour(line);
+        g.drawRect(m.toFloat(), 1.0f);
+        const float db = juce::Decibels::gainToDecibels(lvl, -60.0f);
+        const float w = juce::jlimit(0.0f, 1.0f, (db + 60.0f) / 60.0f) * (float) (m.getWidth() - 2);
+        g.setColour(textDim);
+        g.fillRect((float) m.getX() + 1.0f, (float) m.getY() + 1.0f, w, (float) m.getHeight() - 2.0f);
+    };
+
+    // column 1
+    {
+        auto c = column(0);
+        drawLabel(g, "BACKING TRACK", c.removeFromTop(18), textDim);
+        c.removeFromTop(6);
+        g.setColour(player.hasBacking() ? text : textFaint);
+        g.setFont(Fonts::get().semibold(14.0f));
+        g.drawFittedText(player.hasBacking() ? player.getBackingName() + "   " + clock(player.getBackingLengthSeconds())
+                                             : juce::String("No backing track (optional: a song or a click track)"),
+                         c.removeFromTop(22), juce::Justification::centredLeft, 1, 0.85f);
+        c.removeFromTop(8 + 26 + 12);
+        drawLabel(g, "VOLUME", c.removeFromTop(24).withWidth(68), textDim);
+        c.removeFromTop(8);
+        meter(c.removeFromTop(8).withTrimmedLeft(70), backLevel);
+    }
+    // column 2
+    {
+        auto c = column(1);
+        drawLabel(g, "GUITAR RECORDING", c.removeFromTop(18), textDim);
+        c.removeFromTop(6);
+        g.setColour(player.hasTake() ? text : textFaint);
+        g.setFont(Fonts::get().semibold(14.0f));
+        g.drawFittedText(player.hasTake() ? "Take  " + clock(player.getTakeLengthSeconds()) : juce::String("No take yet - press REC and play"),
+                         c.removeFromTop(22), juce::Justification::centredLeft, 1, 0.85f);
+        c.removeFromTop(8 + 26 + 12);
+        drawLabel(g, "VOLUME", c.removeFromTop(24).withWidth(68), textDim);
+        c.removeFromTop(8);
+        meter(c.removeFromTop(8).withTrimmedLeft(70), takeLevel);
+        c.removeFromTop(12);
+        drawLabel(g, "OFFSET", c.removeFromTop(24).withWidth(68), textDim);
+    }
+    // column 3
+    {
+        auto c = column(2);
+        drawLabel(g, "SAVE", c.removeFromTop(18), textDim);
+        c.removeFromTop(6 + 26 + 8 + 26 + 10 + 28 + 10);
+        g.setColour(textDim);
+        g.setFont(Fonts::get().regular(12.0f));
+        const juce::String st2 = player.isBusy() ? "Working... " + juce::String(juce::roundToInt(player.getProgress() * 100.0f)) + " %" : status;
+        g.drawFittedText(st2.isNotEmpty() ? st2 : "Takes and bounces are kept in Documents / AMPSURD / Recordings", c.removeFromTop(34),
+                         juce::Justification::topLeft, 2);
+    }
+}
+
+void PlayerPanel::refresh()
+{
+    using S = PlayerRecorder::State;
+    player.poll();
+    const auto st = player.getState();
+    const bool rec = st == S::recording || st == S::pausedRec;
+    playButton.setToggleState(st == S::playing, juce::dontSendNotification);
+    recButton.setToggleState(rec, juce::dontSendNotification);
+    pauseButton.setToggleState(st == S::pausedPlay || st == S::pausedRec, juce::dontSendNotification);
+    pauseButton.setButtonText(st == S::pausedPlay || st == S::pausedRec ? "CONTINUE" : "PAUSE");
+    const bool busy = player.isBusy();
+    for (auto* b : { &saveButton, &bounceButton })
+        b->setEnabled(!busy && !rec && player.hasTake());
+    loadButton.setEnabled(!rec && !busy);
+    removeButton.setEnabled(!rec && !busy && player.hasBacking());
+    if (recArmedAt > 0.0 && juce::Time::getMillisecondCounterHiRes() - recArmedAt > 3000.0)
+    {
+        recArmedAt = -1.0;
+        recButton.setButtonText("REC");
+    }
+    backLevel = std::max(player.getAndResetBackingPeak(), backLevel * 0.85f);
+    takeLevel = std::max(player.getAndResetTakePeak(), takeLevel * 0.85f);
+    repaint();
+}
+
+void PlayerPanel::loadBacking()
+{
+    chooser = std::make_unique<juce::FileChooser>("Load a backing track", juce::File::getSpecialLocation(juce::File::userMusicDirectory),
+                                                  "*.wav;*.flac;*.mp3;*.ogg;*.aif;*.aiff");
+    chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles, [this](const juce::FileChooser& fc) {
+        const auto f = fc.getResult();
+        if (!f.existsAsFile()) return;
+        const auto err = player.loadBacking(f);
+        setStatus(err.isEmpty() ? "Backing track loaded." : err);
+    });
+}
+
+void PlayerPanel::saveAs()
+{
+    PlayerRecorder::ExportOptions o;
+    o.format = formatBox.getSelectedItemIndex();
+    o.rate = (double) rateBox.getSelectedId();
+    o.withBacking = contentBox.getSelectedId() == 1;
+    const bool flac = o.format >= 3;
+    auto folder = player.getRecordingsFolder();
+    folder.createDirectory();
+    const auto suggested = folder.getNonexistentChildFile(o.withBacking ? "AMPSURD mix" : "AMPSURD guitar", flac ? ".flac" : ".wav");
+    chooser = std::make_unique<juce::FileChooser>("Save the recording", suggested, flac ? "*.flac" : "*.wav");
+    chooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
+                         [this, o, flac](const juce::FileChooser& fc) {
+                             auto f = fc.getResult();
+                             if (f == juce::File()) return;
+                             f = f.withFileExtension(flac ? ".flac" : ".wav");
+                             setStatus("Saving...");
+                             player.exportAudio(f, o, [this, f](const juce::String& err) {
+                                 setStatus(err.isEmpty() ? "Saved: " + f.getFileName() : err);
+                             });
+                         });
+}
+
+// =============================================================================================
 // IrPanel
 // =============================================================================================
 IrPanel::IrPanel(AmpsurdProcessor& p) : proc(p), graph(p)

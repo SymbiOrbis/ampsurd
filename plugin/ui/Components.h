@@ -432,6 +432,37 @@ private:
 };
 
 // ---------------------------------------------------------------------------------------------
+// Player / recorder (standalone app only): backing track, guitar take, transport, save, bounce.
+class PlayerPanel final : public juce::Component
+{
+public:
+    PlayerPanel(AmpsurdProcessor&, PlayerRecorder&);
+    void paint(juce::Graphics&) override;
+    void resized() override;
+    void refresh();
+    std::function<void()> onClose;
+
+private:
+    void loadBacking();
+    void saveAs();
+    void setStatus(const juce::String& s) { status = s; repaint(); }
+    juce::Rectangle<int> column(int i) const;
+
+    AmpsurdProcessor& proc;
+    PlayerRecorder& player;
+    juce::TextButton startButton { "|<" }, playButton { "PLAY" }, pauseButton { "PAUSE" }, stopButton { "STOP" }, recButton { "REC" },
+                     loadButton { "LOAD BACKING" }, removeButton { "REMOVE" }, saveButton { "SAVE AS..." }, bounceButton { "BOUNCE" },
+                     closeButton { "CLOSE" };
+    juce::Slider backVol, takeVol, offset;
+    juce::ComboBox formatBox, rateBox, contentBox;
+    std::unique_ptr<juce::FileChooser> chooser;
+    juce::String status;
+    double recArmedAt = -1.0;
+    float backLevel = 0.0f, takeLevel = 0.0f;
+    juce::String shownTime;
+};
+
+// ---------------------------------------------------------------------------------------------
 // "BROUGHT TO YOU BY" + three equal logo areas. Logos are read from the embedded assets
 // plugin/assets/logos/logo_1|2|3.(svg|png); until they exist, clean placeholders are drawn.
 class BrandingFooter final : public juce::Component

@@ -71,6 +71,38 @@ LookAndFeel::LookAndFeel()
     setColour(juce::TextEditor::outlineColourId, line);
     setColour(juce::TextEditor::focusedOutlineColourId, lineStrong);
     setColour(juce::CaretComponent::caretColourId, text);
+    setColour(juce::ComboBox::backgroundColourId, background);
+    setColour(juce::ComboBox::textColourId, text);
+    setColour(juce::ComboBox::outlineColourId, line);
+    setColour(juce::ComboBox::arrowColourId, textDim);
+}
+
+// drop-down boxes: same flat outline style as the buttons, small caret
+void LookAndFeel::drawComboBox(juce::Graphics& g, int w, int h, bool, int, int, int, int, juce::ComboBox& box)
+{
+    using namespace colours;
+    const auto r = juce::Rectangle<float>(0.0f, 0.0f, (float) w, (float) h).reduced(0.5f);
+    const float a = box.isEnabled() ? 1.0f : 0.4f;
+    if (box.isMouseOver(true) && box.isEnabled())
+    {
+        g.setColour(raised);
+        g.fillRoundedRectangle(r, 2.0f);
+    }
+    g.setColour((box.isMouseOver(true) && box.isEnabled() ? lineStrong : line).withAlpha(a));
+    g.drawRoundedRectangle(r, 2.0f, 1.0f);
+    juce::Path caret;
+    const float cx = (float) w - 14.0f, cy = (float) h * 0.5f;
+    caret.addTriangle(cx - 4.0f, cy - 2.0f, cx + 4.0f, cy - 2.0f, cx, cy + 3.0f);
+    g.setColour(textDim.withAlpha(a));
+    g.fillPath(caret);
+}
+
+juce::Font LookAndFeel::getComboBoxFont(juce::ComboBox&) { return Fonts::get().medium(12.5f); }
+
+void LookAndFeel::positionComboBoxText(juce::ComboBox& box, juce::Label& label)
+{
+    label.setBounds(4, 1, box.getWidth() - 28, box.getHeight() - 2);
+    label.setFont(getComboBoxFont(box));
 }
 
 juce::Typeface::Ptr LookAndFeel::getTypefaceForFont(const juce::Font& f)
