@@ -22,8 +22,10 @@ before public release). Read the warning Windows shows before switching it off.
 
 **Standalone app (with backing-track player and recorder):** in the same Actions run, download
 **AMPSURD-Standalone-windows-x64**, Unblock the zip (as above), unzip, double-click `AMPSURD.exe`
-(Smart App Control must be off, as for the plugin). Click **Options** (top left) → choose your
-audio interface (ASIO driver if available), the input your guitar is on, and the outputs.
+(Smart App Control must be off, as for the plugin). Click **Options** (top left) → **Audio device
+type: ASIO** → your interface's ASIO driver (e.g. "Universal Control ASIO" for PreSonus), buffer
+64-128 samples. Without ASIO use "Windows Audio (Exclusive Mode)" or "(Low Latency Mode)" with a
+small buffer - plain "Windows Audio" (shared mode) adds a lot of delay.
 The input is not muted by default. Close REAPER first if it uses the same interface exclusively.
 
 The rest of this page is only needed if you want to build it yourself.

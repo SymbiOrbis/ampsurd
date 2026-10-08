@@ -37,6 +37,12 @@ target_compile_definitions(Ampsurd PUBLIC
   JUCE_DISPLAY_SPLASH_SCREEN=0
   JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1
   JUCE_USE_MP3AUDIOFORMAT=1)
+if(WIN32)
+  # ASIO drivers in the standalone app (lowest latency). JUCE bundles the Steinberg ASIO SDK headers,
+  # which are dual-licensed (Steinberg ASIO License or GPLv3); AMPSURD uses them under GPLv3,
+  # compatible with AMPSURD's AGPLv3. See THIRD_PARTY.md.
+  target_compile_definitions(Ampsurd PUBLIC JUCE_ASIO=1)
+endif()
 if(UNIX AND NOT APPLE)
   # Linux builds are for tests only: no audio driver headers needed
   target_compile_definitions(Ampsurd PUBLIC JUCE_ALSA=0 JUCE_JACK=0)

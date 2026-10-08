@@ -18,3 +18,9 @@ fonts/artwork licences.
 
 `.nam` captures are **not** part of this repository and are never embedded in presets or
 plugin state. Each capture remains under its creator's licence.
+
+## Steinberg ASIO SDK headers (Windows standalone app)
+
+Bundled with JUCE (`juce_audio_devices/native/asio`). (c) 2025 Steinberg Media Technologies GmbH.
+Dual-licensed under the Steinberg ASIO License or the GNU GPL v3; AMPSURD uses them under the
+GPL v3 (compatible with AMPSURD's AGPL v3). ASIO is a trademark of Steinberg Media Technologies GmbH.
