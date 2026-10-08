@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+
 // CaptureModel: one loaded, ready-to-run NAM capture.
 //
 // Loading and preparing happen OFF the audio thread (they parse JSON and allocate).
@@ -71,11 +73,16 @@ public:
     const CaptureInfo& getInfo() const noexcept { return info; }
 
     // Loudness reference used by the official NAM plugin's "Normalize" switch.
+    // tanh activation: NAM Core's fast approximation, exactly like the official NAM plugin (default),
+    // or the exact function (NAM Core's reference `render` tool). Call before loading any model.
+    static void setFastTanh(bool on);
+
     static constexpr double kNormalisationTargetDb = -18.0;
 
 private:
     CaptureModel();
 
+    static std::atomic<bool>& activationChosen();
     struct Resampler; // pimpl around AudioDSPTools' ResamplingContainer
 
     std::unique_ptr<nam::DSP> dsp;

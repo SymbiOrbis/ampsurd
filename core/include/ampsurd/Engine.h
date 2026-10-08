@@ -51,6 +51,7 @@ struct SlotSettings
     double phaseRadians = 0.0;  // frequency-independent phase rotation
     double levelGain = 1.0;     // level match (from the capture's measured loudness), linear
     float pan = 0.0f;           // -1 = hard left, 0 = centre, +1 = hard right
+    double inputTrim = 1.0;     // input calibration: drives this capture at the level it was recorded at (linear)
     bool irEnabled = true;      // IR ON / BYPASS (only matters when an IR is loaded)
     bool irEqEnabled = true;    // the IR's own EQ (bypassed together with the IR)
     std::array<EqBand, ParametricEq::kNumBands> irEq = ParametricEq::defaultBands();
@@ -135,6 +136,13 @@ private:
 
     std::vector<double> scratch, frankOut, frankOutR, scratchR;
     FrankensteinMixer frankenstein;
+    FrankensteinMixer splitter;       // Frankenstein NOTES mode: splits the guitar before the amps
+    std::vector<double> splitIn;     // one input per slot (NOTES mode)
+    bool notesRouting = false, splitterSnap = true;
+    std::vector<double> trimBuf;                 // one slot's calibrated input
+    std::array<double, kNumSlots> trimNow {};    // smoothed input trims (no zipper noise when changed)
+    double trimCoef = 0.0;
+    double routeGain = 1.0, routeStep = 0.001; // short dip while switching TONE <-> NOTES
     double frankMix = 0.0, frankCoef = 0.0;
     double gainCoef = 0.0;
     double sampleRate = 48000.0;

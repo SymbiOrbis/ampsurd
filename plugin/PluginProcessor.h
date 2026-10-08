@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 #include <array>
 #include <atomic>
 #include <memory>
@@ -119,6 +121,8 @@ public:
     void setFrankensteinSections(int sections);     // 2..5, redistributes dividers
     ampsurd::FrankensteinLayout getFrankensteinLayout() const; // what is heard right now (mute/solo aware)
     bool isFrankensteinOn() const { return frankOnParam->load() > 0.5f; }
+    // live spectrum of the guitar (clean DI, after INPUT), magnitudes in dB for bins of `binHz` each
+    void getInputSpectrum(std::vector<float>& magsDb, double& binHz);
 
     // Alignment diagnostics for the EDIT panel.
     struct AlignInfo
@@ -128,6 +132,16 @@ public:
     };
     AlignInfo getAlignInfo(int slot) const;
     void resetAlignment(int slot); // back to AUTO with zero manual offsets
+
+    // --- input calibration (like the official NAM plugin's "Calibrate input") ---
+    // Most captures store the input level (dBu) they were recorded at. With calibration on and the
+    // interface's input level entered once, each capture is driven exactly as during its recording:
+    // input trim = interface level - capture level. A setting of this computer, not of a preset.
+    bool isInputCalibrationOn() const { return calibrateOn.load(); }
+    double getInterfaceInputDbu() const { return interfaceDbu.load(); }
+    void setInputCalibration(bool on, double interfaceLevelDbu); // message thread; saved for all instances
+    double getCalibrationTrimDb(int slot) const;                  // 0 when off / capture has no input level
+    double getCaptureInputDbu(int slot) const { return captureDbu[(size_t) slot].load(); } // NaN = not stored
 
     // --- presets: one preset = the complete rig ---
     juce::File getPresetFolder() const;
@@ -140,6 +154,15 @@ public:
 
     // --- meters / diagnostics (any thread) ---
     float getCpuLoadPercent() const { return (float) loadMeasurer.getLoadAsPercentage(); }
+    // Dropouts since start: audio blocks AMPSURD did not finish in time, plus (standalone) the audio
+    // driver's own count of missed buffers. Any rise while playing = an audible click from CPU / driver.
+    int getDropoutCount() const
+    {
+        int n = loadMeasurer.getXRunCount();
+        if (deviceXRuns) n += juce::jmax(0, deviceXRuns());
+        return n;
+    }
+    void setDeviceXRunProvider(std::function<int()> f) { deviceXRuns = std::move(f); } // standalone, message thread
     float getAndResetOutputPeak() { return outputPeak.exchange(0.0f); }
     float getAndResetInputPeak() { return inputPeak.exchange(0.0f); }
     float getAndResetLimiterReductionDb() { return limiterReductionDb.exchange(0.0f); }
@@ -222,6 +245,10 @@ private:
     std::atomic<float>* gateDecayParam = nullptr;
     std::atomic<float>* tunerMuteParam = nullptr;
     std::atomic<float>* frankOnParam = nullptr;
+    std::atomic<float>* frankModeParam = nullptr;
+    static constexpr int kSpecRing = 8192;
+    std::vector<float> specRing = std::vector<float>((size_t) kSpecRing, 0.0f); // DI for the note band (audio thread writes)
+    std::atomic<int> specWrite { 0 };
     std::atomic<float>* frankSectionsParam = nullptr;
     std::atomic<float>* frankWidthParam = nullptr;
     std::array<std::atomic<float>*, 5> frankAmpParam {};
@@ -267,6 +294,11 @@ private:
     std::atomic<bool> needsRemeasure { false };
     double inputGainChangedAt = 0.0;
     float lastSeenInputGainDb = 0.0f;
+    std::atomic<bool> calibrateOn { false };
+    std::atomic<double> interfaceDbu { 12.0 };
+    std::array<std::atomic<double>, kNumSlots> captureDbu {};
+    std::atomic<int> calibrationVersion { 0 }, measuredCalibrationVersion { 0 };
+    static double trimDbFor(bool on, double interfaceLevel, double captureLevel);
 
     mutable juce::CriticalSection statusLock;
     std::array<SlotStatus, kNumSlots> slotStatus;
@@ -292,6 +324,7 @@ private:
 
     std::atomic<int> totalLatency { 0 };
     juce::AudioProcessLoadMeasurer loadMeasurer;
+    std::function<int()> deviceXRuns;
     std::atomic<float> inputPeak { 0.0f }, outputPeak { 0.0f }, limiterReductionDb { 0.0f };
 
     std::shared_ptr<std::atomic<bool>> alive = std::make_shared<std::atomic<bool>>(true);

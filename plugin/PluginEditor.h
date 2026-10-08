@@ -59,6 +59,8 @@ private:
     juce::TooltipWindow tooltips { this, 600 };
     int selected = -1;
     bool globalEqOpen = false, playerOpen = false;
+    double cpuAverage = -1.0;     // CPU display: averaged, updated once per second (readable)
+    juce::uint32 cpuShownAt = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AmpsurdEditor)
 };

@@ -30,7 +30,7 @@ public:
     // key: detection signal (n samples). target: processed in place.
     void process(const double* key, double* target, int n, double* target2 = nullptr) noexcept; // target2: other channel (same gain)
 
-    double getCurrentGain() const noexcept { return gain; }
+    double getCurrentGain() const noexcept { return shaped; }
     bool isOpen() const noexcept { return open; }
 
 private:
@@ -39,6 +39,10 @@ private:
     double openLevel = 0.0005, closeLevel = 0.0003;
     double env = 0.0, meanSquare = 0.0, envAttack = 0.0, envRelease = 0.0;
     double gain = 1.0, attackCoef = 0.0, decayCoef = 0.0, releaseToOneCoef = 0.0;
+    double reopenCoef = 0.0;  // re-opening while a note still sounds: smooth, not a snap (no click)
+    bool fastOpen = true;
+    double shaped = 1.0, shapeCoef = 0.0; // the gain actually applied (second smoothing stage)
+    double meanSquareSlow = 0.0, slowCoef = 0.0; // 30 ms average: tells a new pick attack from a fading note
     int holdSamples = 0, holdCounter = 0;
     bool open = true;
 };

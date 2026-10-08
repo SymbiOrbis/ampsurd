@@ -5,7 +5,8 @@ Compatibility + correctness test.
 For every .nam file given (default: all example models shipped with NeuralAmpModelerCore),
 render the same input through
   (a) NeuralAmpModelerCore's official reference `render` tool, and
-  (b) AMPSURD's engine (`ampsurd_render`, the code path the plugin uses),
+  (b) AMPSURD's engine (`ampsurd_render --exact-tanh`, the code path the plugin uses; the plugin
+      itself uses NAM Core's fast tanh, exactly like the official NAM plugin),
 then compare sample by sample.
 
 Usage:
@@ -39,7 +40,7 @@ def main():
         name = os.path.basename(m)
         ref_out, our_out = os.path.join(tmp, "ref.wav"), os.path.join(tmp, "ours.wav")
         r1 = subprocess.run([a.ref, m, a.input, ref_out], capture_output=True, text=True)
-        r2 = subprocess.run([a.ours, m, a.input, our_out, "--block", str(a.block)], capture_output=True, text=True)
+        r2 = subprocess.run([a.ours, m, a.input, our_out, "--block", str(a.block), "--exact-tanh"], capture_output=True, text=True)
         if r2.returncode != 0:
             print(f"{name:38s} {'LOADFAIL':8s}  {r2.stderr.strip()[-80:]}")
             fails += 1

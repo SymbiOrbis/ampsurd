@@ -1,6 +1,6 @@
 # AMPSURD — Project Status
 
-_Last updated: 2026-10-08 (Claude, session 2)_
+_Last updated: 2026-10-08 evening (Claude, session 2j)_
 
 **Product name:** AMPSURD (formerly MONSTROSITY / QUINQUEPLEX).
 **What it is:** free, open-source (GNU AGPLv3) guitar plugin: one DI signal → up to five Neural
@@ -20,6 +20,16 @@ SignPath Foundation planned for public release). Fader linking, mixing, capture 
 (mute overrides solo — intended), FREE alignment, limiter, presets, project recall and missing-file
 handling all OK. CPU ≈ 20 % with five captures. Changes requested and made: brighter small text,
 EQ bands 1/10 as low/high cut, mouse wheel adjusts the nearest EQ point.
+
+## Owner test of the standalone app (2026-10-08 evening, ASIO 48 kHz / 128)
+
+Reported: clicks with one capture that got worse over time and stopped after restarting the app;
+tone duller / less gain / less mid fullness and high-end clarity than the TONE3000 app with the same
+.nam (partly a lower input level); Frankenstein not changing the sound across a scale; divider 3/4
+stuck; blinking spot; CPU meter unreadable. Session 2j response: measured AMPSURD = NAM Core
+bit-identical (tone_test), fast tanh like the official plugin, input calibration, dropout counter,
+smoother gate, Frankenstein NOTES mode + note band, divider fix, averaged CPU meter. Awaiting re-test
+(BUILD_WINDOWS.md checklist 18-20).
 
 ## Implemented and tested
 
@@ -85,7 +95,8 @@ Renamed everything to AMPSURD. New: `core/{Engine,PathAligner,ParametricEq,Captu
 ## Build & test
 
 - Windows: `docs/BUILD_WINDOWS.md` (or download the CI build once GitHub is set up).
-- Tests (any platform): `limiter_test`, `gate_tuner_test`, `frankenstein_test`, `ir_test`, `fx_test`, `recorder_test`, `engine_test <a.nam> <b.nam>`, `mix_experiment <2-5 .nam>`,
+- Tests (any platform): `tone_test <a.nam> [rate] [block] [interfaceDbu]` (AMPSURD vs NAM Core),
+  `soak_test <a.nam> [minutes]` (CPU over time), `limiter_test`, `gate_tuner_test`, `frankenstein_test`, `ir_test`, `fx_test`, `recorder_test`, `engine_test <a.nam> <b.nam>`, `mix_experiment <2-5 .nam>`,
   `compat_test.py`, `plugin_host_test`, `ui_snapshot` — see `docs/DEVLOG.md`.
 
 ## Roadmap
@@ -97,4 +108,5 @@ See `docs/ROADMAP.md`: gate + tuner (done) → Create Frankenstein (done) → Gl
 1. Done: repository https://github.com/SymbiOrbis/ampsurd, Windows CI build green.
 2. Owner: download the VST3 from GitHub Actions (BUILD_WINDOWS.md, top), then the REAPER checklist in `docs/BUILD_WINDOWS.md` Part D with real captures; send notes.
 3. Owner: provide the three logo files; decide on EQ band types.
-4. Claude: fix whatever the REAPER test finds; then installer + polish.
+4. Claude: fix whatever the re-test finds; then recorder timeline (ROADMAP 3f), shareable presets
+   (3g), release package (4).

@@ -497,6 +497,40 @@ int main(int argc, char** argv)
         check(errEq / peak < 1e-6, "IR EQ: applied after the IR, matches the verified EQ (relative error %.1e)", errEq / peak);
     }
 
+    // ---------------- 6f. Frankenstein NOTES mode (split before the amps) ----------------
+    {
+        auto render = [&](bool frank, bool notes, std::array<int, 5> amps, bool toggle) {
+            Engine eng;
+            eng.getSlot(0).submit(loadAt(argv[1]));
+            eng.getSlot(1).submit(loadAt(argv[2]));
+            eng.prepare(sr, 256, 10.0);
+            EngineSettings s;
+            s.slots[1].mute = !frank; // without Frankenstein: amp A alone
+            s.frankenstein.enabled = frank;
+            s.frankenstein.beforeAmps = notes;
+            s.frankenstein.sections = 2;
+            s.frankenstein.amp = amps;
+            s.frankenstein.dividerHz[0] = 500.0f;
+            std::vector<double> out(test.size());
+            bool finite = true;
+            for (size_t pos = 0; pos < test.size(); pos += 256)
+            {
+                if (toggle) s.frankenstein.beforeAmps = (pos / (256 * 60)) % 2 == 1;
+                const int n = (int) std::min<size_t>(256, test.size() - pos);
+                eng.process(test.data() + pos, out.data() + pos, n, s);
+                for (int k = 0; k < n; ++k) finite = finite && std::isfinite(out[pos + (size_t) k]);
+            }
+            return std::make_pair(out, finite);
+        };
+        auto loud = [&](std::vector<double> y) { CaptureAnalyzer::kWeightInPlace(y, sr); return 10 * std::log10(power(y, 48000)); };
+        const auto single = render(false, false, { 0, 0, 0, 0, 0 }, false);
+        const auto same = render(true, true, { 0, 0, 0, 0, 0 }, false);
+        check(std::abs(loud(same.first) - loud(single.first)) < 0.5,
+              "FRANKENSTEIN NOTES: the same amp in both note ranges sounds as loud as the amp alone (%+.2f dB)", loud(same.first) - loud(single.first));
+        const auto split = render(true, true, { 0, 1, 0, 0, 0 }, true);
+        check(split.second, "FRANKENSTEIN: switching TONE <-> NOTES every 0.3 s while playing: no invalid samples");
+    }
+
     // ---------------- 7. Percentages with mute / solo ----------------
     {
         EngineSettings s;

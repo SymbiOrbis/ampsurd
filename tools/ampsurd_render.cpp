@@ -3,7 +3,7 @@
 //
 // Used to prove correctness against NeuralAmpModelerCore's reference `render` tool.
 //
-// Usage: ampsurd_render <model.nam> <input.wav> <output.wav> [--block N] [--normalise]
+// Usage: ampsurd_render <model.nam> <input.wav> <output.wav> [--block N] [--normalise] [--exact-tanh]
 
 #include <cstdio>
 #include <cstdlib>
@@ -28,7 +28,7 @@ int main(int argc, char** argv)
     }
     if (argc < 4)
     {
-        std::cerr << "Usage: ampsurd_render <model.nam> <input.wav> <output.wav> [--block N] [--normalise]\n";
+        std::cerr << "Usage: ampsurd_render <model.nam> <input.wav> <output.wav> [--block N] [--normalise] [--exact-tanh]\n";
         return 1;
     }
     int block = 64;
@@ -37,6 +37,7 @@ int main(int argc, char** argv)
     {
         if (!std::strcmp(argv[i], "--block") && i + 1 < argc) block = std::atoi(argv[++i]);
         else if (!std::strcmp(argv[i], "--normalise")) normalise = true;
+        else if (!std::strcmp(argv[i], "--exact-tanh")) ampsurd::CaptureModel::setFastTanh(false); // like NAM Core's render
     }
 
     std::vector<float> input;

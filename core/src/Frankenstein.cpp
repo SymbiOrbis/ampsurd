@@ -159,6 +159,8 @@ void FrankensteinMixer::reset() noexcept
             for (auto& f : cr) f.reset();
     for (auto& a : allpass) a.reset();
     for (auto& a : allpassR) a.reset();
+    for (auto& ch : allpassSlot)
+        for (auto& a : ch) a.reset();
 }
 
 void FrankensteinMixer::setTarget(const FrankensteinLayout& L) noexcept
@@ -173,6 +175,80 @@ void FrankensteinMixer::snapToTarget() noexcept
     logF = tLogF;
     w = tW;
     for (int c = 0; c < C; ++c) coefs[(size_t) c] = coef(std::exp(logF[(size_t) c]), fs);
+}
+
+void FrankensteinMixer::glide() noexcept
+{
+    // glide crossover frequencies and weights (one step per kStep samples)
+    for (int c = 0; c < C; ++c)
+        if (logF[(size_t) c] != tLogF[(size_t) c])
+        {
+            logF[(size_t) c] += (tLogF[(size_t) c] - logF[(size_t) c]) * smooth;
+            if (std::abs(tLogF[(size_t) c] - logF[(size_t) c]) < 1e-5) logF[(size_t) c] = tLogF[(size_t) c];
+            coefs[(size_t) c] = coef(std::exp(logF[(size_t) c]), fs);
+        }
+    for (int s = 0; s < kFrankMaxSlots; ++s)
+        for (int b = 0; b < B; ++b)
+        {
+            double& v = w[(size_t) s][(size_t) b];
+            const double t = tW[(size_t) s][(size_t) b];
+            if (v != t)
+            {
+                v += (t - v) * smooth;
+                if (std::abs(t - v) < 1e-6) v = t;
+            }
+        }
+}
+
+void FrankensteinMixer::processSplit(const double* in, const std::array<double*, kFrankMaxSlots>& outs, int n) noexcept
+{
+    auto tick = [](Svf& s, const Coef& c, double v0, double& v1, double& v2) {
+        const double v3 = v0 - s.ic2;
+        v1 = c.a1 * s.ic1 + c.a2 * v3;
+        v2 = s.ic2 + c.a2 * s.ic1 + c.a3 * v3;
+        s.ic1 = 2.0 * v1 - s.ic1;
+        s.ic2 = 2.0 * v2 - s.ic2;
+    };
+    for (int start = 0; start < n; start += kStep)
+    {
+        const int len = std::min(kStep, n - start);
+        glide();
+        for (int i = start; i < start + len; ++i)
+        {
+            // the guitar split into bands once (same tree as the TONE mode)
+            std::array<double, B> band {};
+            double rest = in[i];
+            auto& st = split[0];
+            for (int c = 0; c < C; ++c)
+            {
+                const Coef& k = coefs[(size_t) c];
+                double v1, v2;
+                tick(st[(size_t) c][0], k, rest, v1, v2);
+                const double lp1 = v2, hp1 = rest - k.k * v1 - v2;
+                double u1, u2;
+                tick(st[(size_t) c][1], k, lp1, u1, u2);
+                band[(size_t) c] = u2;
+                tick(st[(size_t) c][2], k, hp1, u1, u2);
+                rest = hp1 - k.k * u1 - u2;
+            }
+            band[(size_t) C] = rest;
+            // each slot gets its weighted bands, phase-compensated (Horner, as in process())
+            for (int s = 0; s < kFrankMaxSlots; ++s)
+            {
+                if (outs[(size_t) s] == nullptr) continue;
+                const auto& ws = w[(size_t) s];
+                auto& ap = allpassSlot[(size_t) s];
+                double t = ws[0] * band[0];
+                for (int c = 1; c < C; ++c)
+                {
+                    double v1, v2;
+                    tick(ap[(size_t) c], coefs[(size_t) c], t, v1, v2);
+                    t = (t - 2.0 * coefs[(size_t) c].k * v1) + ws[(size_t) c] * band[(size_t) c];
+                }
+                outs[(size_t) s][i] = t + ws[(size_t) C] * band[(size_t) C];
+            }
+        }
+    }
 }
 
 void FrankensteinMixer::process(const std::array<const double*, kFrankMaxSlots>& amps,
@@ -191,28 +267,7 @@ void FrankensteinMixer::process(const std::array<const double*, kFrankMaxSlots>&
     {
         const int len = std::min(kStep, n - start);
 
-        // glide crossover frequencies and weights
-        bool moved = false;
-        for (int c = 0; c < C; ++c)
-            if (logF[(size_t) c] != tLogF[(size_t) c])
-            {
-                logF[(size_t) c] += (tLogF[(size_t) c] - logF[(size_t) c]) * smooth;
-                if (std::abs(tLogF[(size_t) c] - logF[(size_t) c]) < 1e-5) logF[(size_t) c] = tLogF[(size_t) c];
-                coefs[(size_t) c] = coef(std::exp(logF[(size_t) c]), fs);
-                moved = true;
-            }
-        (void) moved;
-        for (int s = 0; s < kFrankMaxSlots; ++s)
-            for (int b = 0; b < B; ++b)
-            {
-                double& v = w[(size_t) s][(size_t) b];
-                const double t = tW[(size_t) s][(size_t) b];
-                if (v != t)
-                {
-                    v += (t - v) * smooth;
-                    if (std::abs(t - v) < 1e-6) v = t;
-                }
-            }
+        glide();
 
         for (int i = start; i < start + len; ++i)
         {

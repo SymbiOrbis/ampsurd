@@ -21,7 +21,7 @@ jobs:
         run: cmake -S . -B build -A x64 -DAMPSURD_BUILD_UI_SNAPSHOT=ON
 
       - name: Build plugin and tools
-        run: cmake --build build --config Release --target Ampsurd_VST3 Ampsurd_Standalone recorder_test ampsurd_render ampsurd_bench limiter_test engine_test gate_tuner_test frankenstein_test ir_test fx_test mix_experiment --parallel
+        run: cmake --build build --config Release --target Ampsurd_VST3 Ampsurd_Standalone recorder_test tone_test ampsurd_render ampsurd_bench limiter_test engine_test gate_tuner_test frankenstein_test ir_test fx_test mix_experiment --parallel
 
       - name: Smoke test (load NAM Core example A2 model, hot-swap stress)
         shell: pwsh
@@ -40,6 +40,8 @@ jobs:
           ./build/Release/recorder_test.exe
           if ($LASTEXITCODE -ne 0) { exit 1 }
           $env:AMPSURD_FORCE_PLAYER = "0"
+          ./build/Release/tone_test.exe build/_deps/namcore-src/example_models/A2.nam 48000 128 12
+          if ($LASTEXITCODE -ne 0) { exit 1 }
           ./build/tools/Release/engine_test.exe build/_deps/namcore-src/example_models/A2.nam build/_deps/namcore-src/example_models/wavenet_a1_standard.nam
           if ($LASTEXITCODE -ne 0) { exit 1 }
           $m = "build/_deps/namcore-src/example_models/A2.nam"

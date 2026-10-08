@@ -218,7 +218,16 @@ void AmpsurdEditor::timerCallback()
     else if (centre)
         content.centre.refresh();
     content.globalEqButton.refresh();
-    content.footer.setCpuText("CPU " + juce::String(juce::roundToInt(proc.getCpuLoadPercent())) + "%");
+    const double cpu = proc.getCpuLoadPercent();
+    cpuAverage = cpuAverage < 0.0 ? cpu : cpuAverage + (cpu - cpuAverage) * 0.05; // ~0.7 s average at 30 Hz
+    const auto now = juce::Time::getMillisecondCounter();
+    if (now - cpuShownAt >= 1000)
+    {
+        cpuShownAt = now;
+        const int drops = proc.getDropoutCount();
+        content.footer.setCpuText((drops > 0 ? "DROPOUTS " + juce::String(drops) + "   " : juce::String())
+                                  + "CPU " + juce::String(juce::roundToInt(cpuAverage)) + "%");
+    }
     content.master.refresh();
     content.header.refresh();
 }

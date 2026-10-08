@@ -36,6 +36,10 @@ struct FrankensteinSettings
     float width = 0.3f;                                // 0..0.9 (share of each section used for hand-over)
     std::array<int, 5> amp { 0, 1, 2, 3, 4 };          // slot (0..4) playing in each section
     std::array<float, 4> dividerHz { 200.0f, 800.0f, 2500.0f, 6000.0f };
+    // false = TONE: split the amps' OUTPUTS (every note through all amps, each amp plays its part
+    //               of the spectrum).  true = NOTES: split the guitar signal BEFORE the amps, so each
+    //               note range is played through its own amp (low notes -> section 1 amp, ...).
+    bool beforeAmps = false;
 };
 
 struct FrankensteinLayout
@@ -81,6 +85,11 @@ public:
     void process(const std::array<const double*, kFrankMaxSlots>& amps, const std::array<double, kFrankMaxSlots>& gainsL,
                  const std::array<double, kFrankMaxSlots>& gainsR, double* outL, double* outR, int n) noexcept;
 
+    // NOTES mode: splits ONE signal (the guitar) into one band-limited input per slot,
+    // outs[s] = sum over bands of weight[s][band] x band (phase-compensated); the inputs of all slots
+    // add up to an all-pass of `in` (perfect reconstruction). outs[s] may be nullptr (slot unused).
+    void processSplit(const double* in, const std::array<double*, kFrankMaxSlots>& outs, int n) noexcept;
+
 private:
     struct Svf
     {
@@ -101,6 +110,8 @@ private:
     // per slot, per crossover: stage-1 SVF (gives LP2 and HP2), stage-2 LP2, stage-2 HP2
     std::array<std::array<std::array<Svf, 3>, C>, kFrankMaxSlots> split {};
     std::array<Svf, C> allpass {}, allpassR {};
+    std::array<std::array<Svf, C>, kFrankMaxSlots> allpassSlot {}; // NOTES mode: one compensation chain per slot
+    void glide() noexcept;
 };
 
 } // namespace ampsurd

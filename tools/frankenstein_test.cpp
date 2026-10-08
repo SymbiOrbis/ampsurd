@@ -181,6 +181,48 @@ int main()
               "GLIDES: 2000 blocks of random divider / width / section / mute changes: no invalid samples, peak %.2f x input peak", peak / inPeak);
     }
 
+    // 7. NOTES mode: the guitar is split BEFORE the amps
+    {
+        auto splitResponse = [&](const FrankensteinLayout& L, int slot) {
+            FrankensteinMixer m;
+            m.prepare(sr, N);
+            m.setTarget(L);
+            m.snapToTarget();
+            std::vector<double> imp((size_t) N, 0.0);
+            imp[0] = 1.0;
+            std::array<std::vector<double>, 5> outs;
+            std::array<double*, 5> ptr {};
+            for (int s2 = 0; s2 < 5; ++s2) { outs[(size_t) s2].assign((size_t) N, 0.0); ptr[(size_t) s2] = outs[(size_t) s2].data(); }
+            m.processSplit(imp.data(), ptr, N);
+            std::vector<std::complex<double>> X((size_t) N);
+            for (int i = 0; i < N; ++i)
+            {
+                double v = 0;
+                if (slot < 0) for (int s2 = 0; s2 < 5; ++s2) v += outs[(size_t) s2][(size_t) i];
+                else v = outs[(size_t) slot][(size_t) i];
+                X[(size_t) i] = v;
+            }
+            CaptureAnalyzer::fft(X, false);
+            return X;
+        };
+        FrankensteinSettings s;
+        s.sections = 3;
+        s.width = 0.3f;
+        s.amp = { 0, 1, 2, 0, 0 };
+        s.dividerHz[0] = 250.0f;
+        s.dividerHz[1] = 800.0f;
+        s.beforeAmps = true;
+        const auto L = computeFrankensteinLayout(s, all);
+        const auto sum = splitResponse(L, -1);
+        double worst = 0;
+        for (double f = 20; f < 20000; f *= 1.05) worst = std::max(worst, std::abs(dbAt(sum, f)));
+        check(worst < 0.01, "NOTES: the inputs of all amps add up to the unchanged guitar (flat within %.4f dB)", worst);
+        const auto a = splitResponse(L, 0), b = splitResponse(L, 1), c = splitResponse(L, 2);
+        // low E (82 Hz) -> amp 1, A4 (440 Hz) -> amp 2, high E (1319 Hz, 21st fret) -> amp 3
+        check(dbAt(a, 82) > -0.5 && dbAt(b, 82) < -30 && dbAt(b, 440) > -3.0 && dbAt(a, 440) < -18 && dbAt(c, 1319) > -3.0 && dbAt(b, 1319) < -12,
+              "NOTES: low E goes to amp 1 (%.1f dB), A4 to amp 2 (%.1f dB), high E (1319 Hz) to amp 3 (%.1f dB)", dbAt(a, 82), dbAt(b, 440), dbAt(c, 1319));
+    }
+
     std::printf(failures == 0 ? "\nALL PASS\n" : "\n%d FAILURE(S)\n", failures);
     return failures == 0 ? 0 : 1;
 }

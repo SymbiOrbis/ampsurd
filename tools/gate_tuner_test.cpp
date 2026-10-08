@@ -1,5 +1,6 @@
 // gate_tuner_test: objective tests of the noise gate and the tuner.  Exit code 0 = all pass.
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <random>
@@ -116,6 +117,42 @@ int main()
         bool allOne = true;
         for (double v : t2) allOne = allOne && v == 1.0;
         check(allOne, "GATE: switched off -> bit-identical pass-through");
+    }
+    {
+        // A loud, sustaining amp note while the clean guitar level hovers around the threshold
+        // (fades below it for 40 ms, then swells back): the gate must not snap back open (click).
+        const double sr = 48000.0;
+        NoiseGate g;
+        g.prepare(sr);
+        g.setParameters(true, -70.0f, 120.0f);
+        const double thr = std::pow(10.0, -70.0 / 20.0);
+        const int N = (int) (sr * 1.0);
+        std::vector<double> key((size_t) N), amp((size_t) N);
+        for (int i = 0; i < N; ++i)
+        {
+            const double t = (double) i / sr;
+            // DI level: 3x threshold, dips to 0.4x between 0.3 and 0.34 s (slow swells, 10 ms ramps)
+            double lvl = 3.0;
+            if (t > 0.29 && t < 0.35)
+            {
+                const double a = std::clamp((t - 0.29) / 0.01, 0.0, 1.0) * std::clamp((0.35 - t) / 0.01, 0.0, 1.0);
+                lvl = 3.0 - 2.6 * a;
+            }
+            key[(size_t) i] = lvl * thr * std::sqrt(2.0) * std::sin(2 * kPi * 196.0 * t);
+            amp[(size_t) i] = 0.4 * std::sin(2 * kPi * 196.0 * t) + 0.1 * std::sin(2 * kPi * 588.0 * t); // compressed, still loud
+        }
+        auto out = amp;
+        for (int p = 0; p < N; p += 64) g.process(key.data() + p, out.data() + p, std::min(64, N - p));
+        double worstStep = 0, steadyStep = 0;
+        for (int i = 2; i < N; ++i)
+        {
+            const double c = std::abs(out[(size_t) i] - 2 * out[(size_t) i - 1] + out[(size_t) i - 2]);
+            const double c0 = std::abs(amp[(size_t) i] - 2 * amp[(size_t) i - 1] + amp[(size_t) i - 2]);
+            worstStep = std::max(worstStep, c);
+            steadyStep = std::max(steadyStep, c0);
+        }
+        check(worstStep <= steadyStep * 1.05,
+              "GATE: a fading note that swells back above the threshold is faded in smoothly, no click (curvature %.5f vs %.5f)", worstStep, steadyStep);
     }
 
     std::printf(failures == 0 ? "\nALL PASS\n" : "\n%d FAILURE(S)\n", failures);

@@ -6,6 +6,43 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-08 — Session 2j: tone check, input calibration, clicks, Frankenstein NOTES — Claude (Opus 5.5)
+
+Response to the user's test report (clicks with one capture, tone "duller / less gain / less clarity"
+than the TONE3000 app with the same .nam, Frankenstein not changing the sound, divider 3/4 stuck,
+blinking spot, unreadable CPU meter).
+
+- Tone, measured (`tests/tone_test.cpp`, new): the full AMPSURD processor with one capture (gate and
+  level match off) vs the same capture run directly through NeuralAmpModelerCore: 48 kHz bit-identical
+  (difference -300 dB, every octave band +0.00 dB); 44.1 kHz (resampled) within 0.02 dB 88 Hz-11 kHz.
+  So AMPSURD's own processing does not change the tone; the difference must be the drive level, the
+  loudness or processing in the other app.
+- Official-plugin parity: the official NAM plugin switches NAM Core to its fast tanh approximation at
+  start-up; AMPSURD used the exact tanh (difference ~-43 dB on tanh WaveNets, none on A2). AMPSURD now
+  does the same as the official plugin (`CaptureModel::setFastTanh`, default on). `ampsurd_render
+  --exact-tanh` keeps the bit-exact compatibility test against NAM Core's `render` (all 9 example
+  models PASS, <= -124 dB).
+- Input calibration (new, like the NAM plugin's "Calibrate input"): settings menu -> "Calibrate input
+  to each capture" + "My interface's input level" (dBu, default +12 = NAM default). Each capture that
+  stores `input_level_dbu` gets input trim = interface - capture (limited +-24 dB, smoothed 20 ms,
+  exactly 1.0 when off = bit-identical). Level match / alignment are measured at the calibrated drive
+  (re-measured when the setting changes). Stored per computer (AMPSURD.settings), not in presets.
+  Slot tooltip shows the capture's recording input level.
+- Clicks: `tests/soak_test.cpp` (new) runs the real processor for many simulated minutes (one capture,
+  with IR, with all effects; UI-thread spectrum/tuner polling in parallel): mean callback time flat
+  (270-350 us of 2667 us at 128 samples), no growth over time. New footer readout "DROPOUTS n" (blocks
+  AMPSURD finished too late + the audio driver's missed buffers in the standalone app) so a click can
+  be identified as a dropout. Gate: second smoothing stage (2 ms) so closing / re-opening on a
+  sustaining note has no corner (new test PASS); a new pick attack still opens in 0.98 ms.
+- Frankenstein: NOTES mode (split the guitar BEFORE the amps: each note range plays through its own
+  amp - what the user expected) next to TONE (split the output spectrum, as before); TONE/NOTES
+  buttons in the header; narrow band under the graph showing the played note's position (from the
+  tuner) on the frequency axis + live input spectrum; divider drag limited only by visible neighbours
+  (fixes 3/4 stuck); repaint only on change.
+- CPU meter averaged and updated once per second.
+- Tests: all core tests PASS (limiter, gate/tuner, frankenstein incl. NOTES, ir, fx, engine incl. NOTES
+  loudness), compat test PASS, tone_test PASS (also with calibration), soak stable.
+
 ## 2026-10-08 — Session 2i: standalone app + player / recorder — Claude (Opus 5.5)
 
 - Standalone Windows app (`plugin/standalone/StandaloneApp.cpp`, JUCE standalone wrapper with

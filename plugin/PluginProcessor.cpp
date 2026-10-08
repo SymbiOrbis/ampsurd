@@ -1,4 +1,8 @@
 #include "PluginProcessor.h"
+
+#include <limits>
+
+#include "ampsurd/Convolver.h"
 #include "PluginEditor.h"
 
 #include <algorithm>
@@ -33,6 +37,7 @@ juce::String describe(const CaptureModel& m, const juce::File& f)
     s << "Model " << juce::String(i.modelSampleRate, 0) << " Hz";
     if (std::abs(i.modelSampleRate - m.getPreparedSampleRate()) > 0.5)
         s << " (resampled from " << juce::String(m.getPreparedSampleRate(), 0) << " Hz)";
+    if (i.hasInputLevel) s << "\nRecorded at input level " << juce::String(i.inputLevelDbu, 2) << " dBu";
     s << "\n" << f.getParentDirectory().getFullPathName();
     return s;
 }
@@ -157,6 +162,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout AmpsurdProcessor::createLayo
 
     // Create Frankenstein: frequency-split blending
     layout.add(std::make_unique<AudioParameterBool>(ParameterID { "frankOn", 1 }, "Frankenstein", false));
+    layout.add(std::make_unique<AudioParameterChoice>(ParameterID { "frankMode", 1 }, "Frankenstein Split",
+                                                      StringArray { "Tone (after the amps)", "Notes (before the amps)" }, 0));
     layout.add(std::make_unique<AudioParameterInt>(ParameterID { "frankSections", 1 }, "Frankenstein Sections", 2, 5, 2));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { "frankWidth", 1 }, "Frankenstein Width",
                                                      NormalisableRange<float>(0.0f, 90.0f, 0.1f), 30.0f,
@@ -284,12 +291,21 @@ AmpsurdProcessor::AmpsurdProcessor()
     outputParam = params.getRawParameterValue("output");
     bypassParam = params.getRawParameterValue("bypass");
     levelMatchParam = params.getRawParameterValue("levelMatch");
+    for (auto& d : captureDbu) d.store(std::numeric_limits<double>::quiet_NaN());
+    {
+        juce::PropertiesFile::Options o;
+        o.applicationName = "AMPSURD"; o.filenameSuffix = ".settings"; o.osxLibrarySubFolder = "Application Support";
+        juce::PropertiesFile pf(o);
+        calibrateOn.store(pf.getBoolValue("calibrateInput", false));
+        interfaceDbu.store(pf.getDoubleValue("interfaceInputDbu", 12.0));
+    }
     bypassParamObj = params.getParameter("bypass");
     gateOnParam = params.getRawParameterValue("gateOn");
     gateThresholdParam = params.getRawParameterValue("gateThreshold");
     gateDecayParam = params.getRawParameterValue("gateDecay");
     tunerMuteParam = params.getRawParameterValue("tunerMute");
     frankOnParam = params.getRawParameterValue("frankOn");
+    frankModeParam = params.getRawParameterValue("frankMode");
     frankSectionsParam = params.getRawParameterValue("frankSections");
     frankWidthParam = params.getRawParameterValue("frankWidth");
     for (int k = 0; k < 5; ++k) frankAmpParam[(size_t) k] = params.getRawParameterValue("frankAmp" + juce::String(k + 1));
@@ -485,6 +501,7 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         ss.polarity = a.polarity;
         ss.phaseRadians = a.phaseRadians;
         ss.levelGain = levelMatch ? derived[(size_t) s].levelGain.load(std::memory_order_relaxed) : 1.0;
+        ss.inputTrim = std::pow(10.0, getCalibrationTrimDb(s) / 20.0);
         rotation = rotation || (engine.isSlotLoaded(s) && std::abs(a.phaseRadians) > 1e-4);
     }
     settings.rotationActive = rotation;
@@ -530,6 +547,15 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
             inBuffer[(size_t) i] = x;
         }
         tuner.push(rawBuffer.data(), n); // tuner works on the clean DI, also when bypassed
+        {
+            int w = specWrite.load(std::memory_order_relaxed);
+            for (int i = 0; i < n; ++i)
+            {
+                specRing[(size_t) w] = (float) inBuffer[(size_t) i];
+                w = (w + 1) & (kSpecRing - 1);
+            }
+            specWrite.store(w, std::memory_order_release);
+        }
         keyPeak = juce::jmax(keyPeak, inPeak);
 
         double* L = outBuffer.data();
@@ -633,9 +659,12 @@ void AmpsurdProcessor::loadJob(int slot, juce::File file, int gen, bool /*adjust
     }
 
     // Measure BEFORE the capture is heard, so alignment and level match are ready when it fades in.
+    // (Driven exactly as it will be played: INPUT + input calibration.)
     const double gainDb = inputParam->load();
+    const auto& mi = result.model->getInfo();
+    const double newDbu = mi.hasInputLevel ? mi.inputLevelDbu : std::numeric_limits<double>::quiet_NaN();
     auto test = CaptureAnalyzer::makeTestSignal(sr);
-    const double g = std::pow(10.0, gainDb / 20.0);
+    const double g = std::pow(10.0, (gainDb + trimDbFor(calibrateOn.load(), interfaceDbu.load(), newDbu)) / 20.0);
     for (double& v : test) v *= g;
     auto raw = std::make_shared<const std::vector<double>>(CaptureAnalyzer::render(*result.model, test, false));
     const auto meas = measureWithIr(slot, *raw, sr); // with the slot's cabinet IR, if any
@@ -651,6 +680,7 @@ void AmpsurdProcessor::loadJob(int slot, juce::File file, int gen, bool /*adjust
     storeMeasurement(slot, meas, gainDb);
 
     const auto info = describe(*result.model, file);
+    captureDbu[(size_t) slot].store(newDbu);
     engine.getSlot(slot).submit(std::move(result.model));
     setSlotStatus(slot, { SlotState::loaded, file.getFullPathName(), file.getFileNameWithoutExtension(), info });
 
@@ -676,6 +706,7 @@ void AmpsurdProcessor::unloadCapture(int slot)
         std::lock_guard<std::mutex> lock(configMutex);
         if (gen != slotGeneration[(size_t) slot].load()) return;
         engine.getSlot(slot).submit(CaptureModel::makeEmpty(currentSampleRate.load(), currentMaxBlock));
+        captureDbu[(size_t) slot].store(std::numeric_limits<double>::quiet_NaN());
         std::array<std::shared_ptr<const CaptureAnalyzer::Measurement>, kNumSlots> snapshot;
         {
             std::lock_guard<std::mutex> al(analysisMutex);
@@ -695,9 +726,8 @@ void AmpsurdProcessor::remeasureJob(int gen)
     std::lock_guard<std::mutex> lock(configMutex);
     const double sr = currentSampleRate.load();
     const double gainDb = inputParam->load();
-    auto test = CaptureAnalyzer::makeTestSignal(sr);
-    const double g = std::pow(10.0, gainDb / 20.0);
-    for (double& v : test) v *= g;
+    const int calVersion = calibrationVersion.load();
+    const auto test = CaptureAnalyzer::makeTestSignal(sr);
 
     std::array<std::shared_ptr<const CaptureAnalyzer::Measurement>, kNumSlots> fresh {};
     std::array<std::shared_ptr<const std::vector<double>>, kNumSlots> renders {};
@@ -710,7 +740,12 @@ void AmpsurdProcessor::remeasureJob(int gen)
         if (st.state != SlotState::loaded) continue;
         auto r = CaptureModel::load(toStdPath(juce::File(st.path)), sr, currentMaxBlock);
         if (!r.model) continue;
-        renders[(size_t) s] = std::make_shared<const std::vector<double>>(CaptureAnalyzer::render(*r.model, test, false));
+        const auto& mi = r.model->getInfo();
+        const double g = std::pow(10.0, (gainDb + trimDbFor(calibrateOn.load(), interfaceDbu.load(),
+                                                            mi.hasInputLevel ? mi.inputLevelDbu : std::numeric_limits<double>::quiet_NaN())) / 20.0);
+        auto driven = test;
+        for (double& v : driven) v *= g;
+        renders[(size_t) s] = std::make_shared<const std::vector<double>>(CaptureAnalyzer::render(*r.model, driven, false));
         fresh[(size_t) s] = measureWithIr(s, *renders[(size_t) s], sr);
     }
 
@@ -726,7 +761,35 @@ void AmpsurdProcessor::remeasureJob(int gen)
         measuredInputGainDb = gainDb;
         snapshot = measurements;
     }
+    measuredCalibrationVersion.store(calVersion);
     applyRig(CaptureAnalyzer::analyseRig(snapshot));
+}
+
+double AmpsurdProcessor::trimDbFor(bool on, double interfaceLevel, double captureLevel)
+{
+    if (!on || std::isnan(captureLevel)) return 0.0;
+    return juce::jlimit(-24.0, 24.0, interfaceLevel - captureLevel);
+}
+
+double AmpsurdProcessor::getCalibrationTrimDb(int slot) const
+{
+    return trimDbFor(calibrateOn.load(std::memory_order_relaxed), interfaceDbu.load(std::memory_order_relaxed),
+                     captureDbu[(size_t) slot].load(std::memory_order_relaxed));
+}
+
+void AmpsurdProcessor::setInputCalibration(bool on, double interfaceLevelDbu)
+{
+    interfaceLevelDbu = juce::jlimit(-20.0, 30.0, interfaceLevelDbu);
+    if (on == calibrateOn.load() && interfaceLevelDbu == interfaceDbu.load()) return;
+    calibrateOn.store(on);
+    interfaceDbu.store(interfaceLevelDbu);
+    ++calibrationVersion; // the captures are re-measured (level match / alignment at the new drive)
+    juce::PropertiesFile::Options o;
+    o.applicationName = "AMPSURD"; o.filenameSuffix = ".settings"; o.osxLibrarySubFolder = "Application Support";
+    juce::PropertiesFile pf(o);
+    pf.setValue("calibrateInput", on);
+    pf.setValue("interfaceInputDbu", interfaceLevelDbu);
+    pf.saveIfNeeded();
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1042,6 +1105,24 @@ void AmpsurdProcessor::endMixGesture(int)
 // ---------------------------------------------------------------------------------------------
 // Create Frankenstein (message thread)
 // ---------------------------------------------------------------------------------------------
+void AmpsurdProcessor::getInputSpectrum(std::vector<float>& magsDb, double& binHz)
+{
+    constexpr int N = 4096;
+    static const ampsurd::Fft fft(N);
+    std::vector<double> re((size_t) N), im((size_t) N, 0.0);
+    const int w = specWrite.load(std::memory_order_acquire);
+    for (int i = 0; i < N; ++i)
+    {
+        const double hann = 0.5 - 0.5 * std::cos(2.0 * kPi * i / (N - 1));
+        re[(size_t) i] = hann * specRing[(size_t) ((w - N + i) & (kSpecRing - 1))];
+    }
+    fft.forward(re.data(), im.data());
+    magsDb.resize((size_t) N / 2);
+    for (int k = 0; k < N / 2; ++k)
+        magsDb[(size_t) k] = (float) (10.0 * std::log10(re[(size_t) k] * re[(size_t) k] + im[(size_t) k] * im[(size_t) k] + 1e-20) - 20.0 * std::log10(N / 4.0));
+    binHz = currentSampleRate.load() / N;
+}
+
 ampsurd::FxSettings AmpsurdProcessor::readFx() const noexcept
 {
     ampsurd::FxSettings f;
@@ -1087,6 +1168,7 @@ ampsurd::FrankensteinSettings AmpsurdProcessor::readFrankenstein() const noexcep
 {
     ampsurd::FrankensteinSettings f;
     f.enabled = frankOnParam->load() > 0.5f;
+    f.beforeAmps = frankModeParam->load() > 0.5f;
     f.sections = juce::jlimit(2, 5, (int) std::lround(frankSectionsParam->load()));
     f.width = juce::jlimit(0.0f, 0.9f, frankWidthParam->load() / 100.0f);
     for (int k = 0; k < 5; ++k) f.amp[(size_t) k] = juce::jlimit(0, 4, (int) std::lround(frankAmpParam[(size_t) k]->load()));
@@ -1214,6 +1296,11 @@ void AmpsurdProcessor::timerCallback()
     }
     if (anyMeasured && std::abs(g - measuredGain) > 0.5 && now - inputGainChangedAt > 400.0)
         needsRemeasure.store(true);
+    if (anyMeasured && calibrationVersion.load() != measuredCalibrationVersion.load())
+    {
+        measuredCalibrationVersion.store(calibrationVersion.load()); // queued once
+        needsRemeasure.store(true);
+    }
 
     if (needsRemeasure.exchange(false))
     {

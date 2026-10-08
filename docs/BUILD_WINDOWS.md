@@ -140,6 +140,22 @@ REAPER picks up the new version.
     (WAV 16-bit 44.1 kHz), guitar alone and with backing; open the files in REAPER - do they line
     up? BOUNCE, then record a second layer on top.
 
+18. Tone vs. another NAM player (same .nam, same sample rate and buffer): first switch **Level match
+    off** (settings icon) and match the loudness with OUTPUT - a louder sound always seems fuller.
+    If the other player calibrates its input, switch on **Calibrate input to each capture** in the
+    settings menu and choose **My interface's input level** (the dBu level that gives full scale on
+    your interface's guitar input - see its manual; +12 dBu is NAM's default). Hover over a capture
+    name: "Recorded at input level ... dBu" shows the level the capture was made at.
+
+19. Clicks: watch the footer. **DROPOUTS n** appears when the computer missed audio buffers - if the
+    number rises exactly when you hear a click, use a larger buffer (256) or close other programs.
+    If you hear clicks and the number does NOT rise, please tell me (with GATE on or off?).
+
+20. Frankenstein **NOTES** (header of the Frankenstein panel): low notes play through the amp of the
+    left section, high notes through the right one - play a scale upwards and listen to the amps
+    taking over. **TONE** = the previous mode (every note, split by its frequency content). The thin
+    band under the graph shows where the note you play sits.
+
 Expected latency shown by REAPER: 104 samples at 48 kHz, 123 at 44.1 kHz.
 
 Optional measurements (in Developer PowerShell):

@@ -5,6 +5,7 @@
 #include <fstream>
 #include <stdexcept>
 
+#include "NAM/activations.h"
 #include "NAM/dsp.h"
 #include "NAM/get_dsp.h"
 #include "NAM/slimmable.h"
@@ -87,9 +88,27 @@ std::string stemOf(const std::filesystem::path& p)
 CaptureModel::CaptureModel() = default;
 CaptureModel::~CaptureModel() = default;
 
+std::atomic<bool>& CaptureModel::activationChosen()
+{
+    static std::atomic<bool> chosen { false };
+    return chosen;
+}
+
+void CaptureModel::setFastTanh(bool on)
+{
+    activationChosen().store(true);
+    if (on) nam::activations::Activation::enable_fast_tanh();
+    else nam::activations::Activation::disable_fast_tanh();
+}
+
 CaptureModel::LoadResult CaptureModel::load(const std::filesystem::path& file, double hostSampleRate, int maxBlockSize)
 {
     LoadResult result;
+    // Same activation as the official NAM plugin (it enables NAM Core's fast tanh at start-up), so a
+    // capture in AMPSURD is sample-identical to the same capture in the NAM plugin. Set once, before
+    // the first model is created (models take their activation function when they are built).
+    if (!activationChosen().exchange(true))
+        nam::activations::Activation::enable_fast_tanh();
     try
     {
         auto model = std::unique_ptr<CaptureModel>(new CaptureModel());

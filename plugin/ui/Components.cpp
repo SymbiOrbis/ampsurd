@@ -2,6 +2,7 @@
 
 #include "BinaryData.h"
 
+#include <cstring>
 #include <limits>
 
 namespace ampsurd::ui
@@ -2102,11 +2103,23 @@ FrankensteinPanel::FrankensteinPanel(AmpsurdProcessor& p) : proc(p)
     widthSlider.textFromValueFunction = [](double v) { return juce::String(juce::roundToInt(v)) + " %"; };
     widthSlider.updateText();
     widthSlider.setTooltip("How gradually one amp hands over to the next: 0 % = abrupt, 90 % = smooth morph");
+    for (auto* b : { &toneButton, &notesButton }) addAndMakeVisible(*b);
+    toneButton.onClick = [this] { setParamValue(proc, "frankMode", 0.0f); };
+    notesButton.onClick = [this] { setParamValue(proc, "frankMode", 1.0f); };
+    toneButton.setTooltip("TONE: every note goes through all amps; each amp plays its part of the SOUND's spectrum");
+    notesButton.setTooltip("NOTES: the guitar is split before the amps; each NOTE RANGE is played through its own amp "
+                           "(low notes -> left section, high notes -> right section)");
+}
+
+juce::Rectangle<float> FrankensteinPanel::bandArea() const
+{
+    const auto m = mapArea();
+    return { m.getX(), m.getBottom() + 4.0f, m.getWidth(), 12.0f };
 }
 
 juce::Rectangle<float> FrankensteinPanel::mapArea() const
 {
-    return getLocalBounds().toFloat().reduced(16.0f, 0.0f).withTrimmedTop(52.0f).withTrimmedBottom(30.0f);
+    return getLocalBounds().toFloat().reduced(16.0f, 0.0f).withTrimmedTop(52.0f).withTrimmedBottom(46.0f);
 }
 
 float FrankensteinPanel::xForHz(double hz) const
@@ -2125,14 +2138,18 @@ void FrankensteinPanel::resized()
 {
     auto r = getLocalBounds().reduced(16, 12).removeFromTop(26);
     exitButton.setBounds(r.removeFromRight(64));
-    r.removeFromRight(24);
-    widthSlider.setBounds(r.removeFromRight(220));
-    r.removeFromRight(60);
+    r.removeFromRight(20);
+    widthSlider.setBounds(r.removeFromRight(170));
+    r.removeFromRight(56);
     for (int i = 3; i >= 0; --i)
     {
         sectionButtons[(size_t) i].setBounds(r.removeFromRight(30));
         r.removeFromRight(4);
     }
+    r.removeFromRight(76);
+    notesButton.setBounds(r.removeFromRight(62));
+    r.removeFromRight(4);
+    toneButton.setBounds(r.removeFromRight(56));
 }
 
 int FrankensteinPanel::dividerAt(juce::Point<float> p) const
@@ -2155,6 +2172,7 @@ void FrankensteinPanel::paint(juce::Graphics& g)
     g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), 3.0f, 1.0f);
     drawLabel(g, "FRANKENSTEIN", { 16, 12, 200, 26 }, text, juce::Justification::centredLeft, 11.5f);
     drawLabel(g, "SECTIONS", { sectionButtons[0].getX() - 76, 12, 70, 26 }, textDim, juce::Justification::centredRight);
+    drawLabel(g, "SPLIT", { toneButton.getX() - 50, 12, 44, 26 }, textDim, juce::Justification::centredRight);
     drawLabel(g, "WIDTH", { widthSlider.getX() - 56, 12, 50, 26 }, textDim, juce::Justification::centredRight);
 
     const auto m = mapArea();
@@ -2211,15 +2229,42 @@ void FrankensteinPanel::paint(juce::Graphics& g)
         g.drawText(lbl, juce::Rectangle<float>(x - 40.0f, m.getBottom() - 18.0f, 80.0f, 14.0f), juce::Justification::centred, false);
     }
 
+    // live note band: the spectrum of what is played (clean guitar), the played note marked
+    {
+        const auto b = bandArea();
+        g.setColour(raised);
+        g.fillRect(b);
+        for (int i = 0; i < (int) spectrum.size(); ++i)
+        {
+            const float v = spectrum[(size_t) i];
+            if (v <= 0.0f) continue;
+            g.setColour(textDim.withAlpha(juce::jlimit(0.0f, 1.0f, v)));
+            g.fillRect(b.getX() + (float) i, b.getY(), 1.0f, b.getHeight());
+        }
+        if (noteHz > 0.0f)
+        {
+            const float x = xForHz(noteHz);
+            g.setColour(text);
+            g.fillRect(x - 1.0f, b.getY() - 3.0f, 2.0f, b.getHeight() + 6.0f);
+            g.setFont(Fonts::get().semibold(11.0f));
+            const auto lr = juce::Rectangle<float>(x + 5.0f, b.getY() - 1.0f, 90.0f, b.getHeight() + 2.0f);
+            g.setColour(background.withAlpha(0.85f));
+            g.fillRect(lr.withWidth(juce::GlyphArrangement::getStringWidth(g.getCurrentFont(), noteName) + 6.0f));
+            g.setColour(text);
+            g.drawText(noteName, lr.translated(3.0f, 0.0f), juce::Justification::centredLeft, false);
+        }
+    }
+
     // frequency axis
     g.setFont(Fonts::get().regular(11.0f));
     g.setColour(textDim);
+    const float axisY = bandArea().getBottom();
     for (double f : { 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0 })
     {
         const float x = xForHz(f);
-        g.fillRect(x - 0.5f, m.getBottom(), 1.0f, 4.0f);
+        g.fillRect(x - 0.5f, axisY, 1.0f, 4.0f);
         g.drawText(f >= 1000 ? juce::String((int) (f / 1000)) + "k" : juce::String((int) f),
-                   juce::Rectangle<float>(x - 20.0f, m.getBottom() + 5.0f, 40.0f, 13.0f), juce::Justification::centred, false);
+                   juce::Rectangle<float>(x - 20.0f, axisY + 5.0f, 40.0f, 13.0f), juce::Justification::centred, false);
     }
 
     const int hidden = juce::jlimit(2, 5, (int) std::lround(proc.params.getRawParameterValue("frankSections")->load())) - layout.numVisible;
@@ -2228,17 +2273,49 @@ void FrankensteinPanel::paint(juce::Graphics& g)
     const juce::String hint = layout.numVisible == 0 ? juce::String("All amps used here are muted or empty")
                             : hidden > 0 ? juce::String(hidden) + " section(s) hidden (muted or empty amp)"
                                          : juce::String("Drag a divider to move the hand-over. Click a section to choose its amp.");
-    g.drawText(hint, juce::Rectangle<float>(130.0f, 12.0f, (float) sectionButtons[0].getX() - 76.0f - 140.0f, 26.0f),
-               juce::Justification::centredLeft, true);
+    g.drawFittedText(hint, juce::Rectangle<float>(130.0f, 12.0f, (float) toneButton.getX() - 50.0f - 136.0f, 26.0f).toNearestInt(),
+                     juce::Justification::centredLeft, 2, 0.9f);
 }
 
 void FrankensteinPanel::refresh()
 {
-    layout = proc.getFrankensteinLayout();
+    const auto l = proc.getFrankensteinLayout();
     const int K = juce::jlimit(2, 5, (int) std::lround(proc.params.getRawParameterValue("frankSections")->load()));
     for (int i = 0; i < 4; ++i)
         sectionButtons[(size_t) i].setToggleState(i + 2 == K, juce::dontSendNotification);
-    repaint();
+    // repaint the map only when the layout really changed (no constant redrawing / flicker)
+    const bool changed = std::memcmp(&l.crossoverHz, &layout.crossoverHz, sizeof(l.crossoverHz)) != 0 || l.numVisible != layout.numVisible
+                         || std::memcmp(&l.visibleDividersHz, &layout.visibleDividersHz, sizeof(l.visibleDividersHz)) != 0
+                         || l.dividerIsMerged != layout.dividerIsMerged;
+    bool slotsChanged = false;
+    for (int i = 0; i < l.numVisible; ++i) slotsChanged = slotsChanged || l.visibleSections[(size_t) i].slot != layout.visibleSections[(size_t) i].slot;
+    layout = l;
+    const bool notes = paramValue(proc, "frankMode") > 0.5f;
+    toneButton.setToggleState(!notes, juce::dontSendNotification);
+    notesButton.setToggleState(notes, juce::dontSendNotification);
+    if (changed || slotsChanged) repaint();
+
+    // note band: spectrum of the clean guitar per pixel column, relative to its loudest part
+    std::vector<float> mags;
+    double binHz = 1.0;
+    proc.getInputSpectrum(mags, binHz);
+    const auto b = bandArea();
+    spectrum.assign((size_t) b.getWidth(), 0.0f);
+    float peak = -200.0f;
+    for (auto v : mags) peak = std::max(peak, v);
+    if (peak > -75.0f)
+        for (int i = 0; i < (int) spectrum.size(); ++i)
+        {
+            const double f0 = hzForX(b.getX() + (float) i), f1 = hzForX(b.getX() + (float) i + 1.0f);
+            const int k0 = juce::jlimit(1, (int) mags.size() - 1, (int) (f0 / binHz)), k1 = juce::jlimit(k0, (int) mags.size() - 1, (int) (f1 / binHz));
+            float m = -200.0f;
+            for (int k = k0; k <= k1; ++k) m = std::max(m, mags[(size_t) k]);
+            spectrum[(size_t) i] = juce::jlimit(0.0f, 1.0f, (m - (peak - 45.0f)) / 45.0f); // the top 45 dB
+        }
+    const auto res = proc.analyseTuner();
+    noteHz = res.valid && peak > -75.0f ? (float) res.frequencyHz : 0.0f;
+    noteName = noteHz > 0.0f ? juce::String(res.noteName()) + juce::String(res.octave()) + "  " + juce::String(juce::roundToInt(noteHz)) + " Hz" : juce::String();
+    repaint(bandArea().expanded(4.0f, 4.0f).withRight((float) getWidth()).toNearestInt());
 }
 
 void FrankensteinPanel::mouseMove(const juce::MouseEvent& e)
@@ -2269,14 +2346,25 @@ void FrankensteinPanel::mouseDown(const juce::MouseEvent& e)
 void FrankensteinPanel::mouseDrag(const juce::MouseEvent& e)
 {
     if (dragDivider < 0 || dragParam < 0) return;
-    // keep dividers in order: stay at least 1/6 octave away from the neighbouring dividers
+    // Limits come only from the VISIBLE neighbouring dividers (1/6 octave apart). Boundaries of hidden
+    // sections (muted / empty amps) never block the drag: they are pushed along, keeping their order.
     const int K = juce::jlimit(2, 5, (int) std::lround(proc.params.getRawParameterValue("frankSections")->load()));
+    const double gap = std::pow(2.0, 1.0 / 6.0);
     double lo = 30.0, hi = 16000.0;
-    if (dragParam > 0) lo = proc.params.getRawParameterValue("frankDiv" + juce::String(dragParam))->load() * std::pow(2.0, 1.0 / 6.0);
-    if (dragParam < K - 2) hi = proc.params.getRawParameterValue("frankDiv" + juce::String(dragParam + 2))->load() / std::pow(2.0, 1.0 / 6.0);
+    if (dragDivider > 0) lo = layout.visibleDividersHz[(size_t) dragDivider - 1] * gap;
+    if (dragDivider < layout.numVisible - 2) hi = layout.visibleDividersHz[(size_t) dragDivider + 1] / gap;
     const double hz = juce::jlimit(lo, juce::jmax(lo, hi), hzForX(e.position.x));
-    if (auto* p = proc.params.getParameter("frankDiv" + juce::String(dragParam + 1)))
-        p->setValueNotifyingHost(p->convertTo0to1((float) hz));
+    auto div = [this](int k) { return (double) proc.params.getRawParameterValue("frankDiv" + juce::String(k + 1))->load(); };
+    auto setDiv = [this](int k, double v) {
+        if (auto* p = proc.params.getParameter("frankDiv" + juce::String(k + 1)))
+            p->setValueNotifyingHost(p->convertTo0to1((float) juce::jlimit(30.0, 16000.0, v)));
+    };
+    setDiv(dragParam, hz);
+    const double step = std::pow(2.0, 1.0 / 12.0);
+    for (int k = dragParam + 1; k < K - 1; ++k) // hidden boundaries above: keep them above
+        if (div(k) < div(k - 1) * step) setDiv(k, div(k - 1) * step);
+    for (int k = dragParam - 1; k >= 0; --k)    // and below
+        if (div(k) > div(k + 1) / step) setDiv(k, div(k + 1) / step);
     refresh();
 }
 
@@ -2559,10 +2647,26 @@ void HeaderBar::showSettings()
     const bool lm = proc.params.getRawParameterValue("levelMatch")->load() > 0.5f;
     m.addItem(1, "Level match (recommended)", true, lm);
     m.addSeparator();
+    // input calibration: drive every capture at the level it was recorded at
+    const bool cal = proc.isInputCalibrationOn();
+    const double dbu = proc.getInterfaceInputDbu();
+    m.addItem(10, "Calibrate input to each capture", true, cal);
+    juce::PopupMenu levels;
+    for (int i = 0; i <= 56; ++i)
+    {
+        const double v = i * 0.5; // 0 ... +28 dBu
+        if (std::fmod(v, 1.0) != 0.0 && (v < 6.0 || v > 22.0)) continue;
+        levels.addItem(100 + i, (v > 0 ? "+" : "") + juce::String(v, 1) + " dBu" + (i == 24 ? "  (NAM default)" : ""),
+                       true, std::abs(v - dbu) < 0.01);
+    }
+    m.addSubMenu("My interface's input level: " + juce::String(dbu, 1) + " dBu", levels, true);
+    m.addSeparator();
     m.addItem(2, "Open preset folder");
     m.addItem(3, "About AMPSURD");
-    m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&settingsButton), [this, lm](int r) {
+    m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&settingsButton), [this, lm, cal, dbu](int r) {
         if (r == 1) setParamValue(proc, "levelMatch", lm ? 0.0f : 1.0f);
+        if (r == 10) proc.setInputCalibration(!cal, dbu);
+        if (r >= 100 && r <= 156) proc.setInputCalibration(true, (r - 100) * 0.5);
         if (r == 2) { proc.getPresetFolder().createDirectory(); proc.getPresetFolder().revealToUser(); }
         if (r == 3)
             juce::AlertWindow::showMessageBoxAsync(
@@ -2572,6 +2676,8 @@ void HeaderBar::showSettings()
                 "Uses NeuralAmpModelerCore (MIT), JUCE (AGPLv3), the VST3 SDK (MIT), Eigen (MPL-2.0) "
                 "and the Inter typeface (SIL OFL 1.1).\n\n"
                 "Level match: every capture is measured by AMPSURD and played at the same perceived loudness.\n"
+                "Calibrate input: captures that store their recording input level (dBu) are driven exactly as "
+                "recorded - set your interface's input level (the dBu that gives 0 dBFS) once.\n"
                 "Mix: percentages are kept at a constant overall loudness.");
     });
 }

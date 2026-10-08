@@ -60,6 +60,10 @@ public:
                     return 0;
                 });
 
+        // dropout counter in the footer: the driver's missed buffers (ASIO / WASAPI report them)
+        if (auto* p = dynamic_cast<AmpsurdProcessor*>(holder->processor.get()))
+            p->setDeviceXRunProvider([h = holder.get()] { return h->deviceManager.getXRunCount(); });
+
         if (juce::Desktop::getInstance().getDisplays().displays.isEmpty())
         {
             headless = std::move(holder);

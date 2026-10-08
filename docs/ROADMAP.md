@@ -53,6 +53,19 @@ Backing track (WAV/FLAC/MP3/OGG) + guitar recording of AMPSURD's output, live gu
 playback, latency compensation + offset, export guitar alone or mixed (WAV 16/24/32f, FLAC; 44.1/48/96
 kHz; default 16-bit/44.1), BOUNCE: backing + recording become the new backing track (layers).
 
+## 3e. Tone parity + clicks + Frankenstein NOTES — IMPLEMENTED 2026-10-08, awaiting test
+Fast tanh like the official NAM plugin, input calibration (interface dBu), dropout counter, smoother
+gate re-open, Frankenstein NOTES mode (split before the amps) + note band.
+
+## 3f. Recorder timeline (next)
+Waveform of the take with the backing track's waveform above it, zoom, click to navigate, punch-in
+recording while the backing plays, draggable start edge of a correction (automatic crossfades, no
+pops), undo. One guitar track (no multitrack).
+
+## 3g. Shareable presets (after 3f)
+`.ampsurd` (settings only; captures / IRs found again by file name in the capture folders) and
+`.ampsurdpack` (zip: preset + the .nam / IR files it uses, with a licence reminder).
+
 ## 4. Public release package (remaining)
 - Code signing (SignPath Foundation, free for OSI-licensed open source) so Windows Smart App Control
   accepts the plugin.
@@ -62,4 +75,6 @@ kHz; default 16-bit/44.1), BOUNCE: backing + recording become the new backing tr
 
 ## Later / not planned
 - Stereo input processing (not planned: guitar DI is mono, doubles CPU).
-- ECO mode (A2 Lite), macOS / AU.
+- ECO mode (A2 Lite).
+- macOS (VST3 + AU + standalone) after 1.0: needs an Apple Developer account and someone with a Mac
+  for testing / notarisation.

@@ -43,6 +43,15 @@ void Engine::prepare(double sr, int maxBlockSize, double maxDelayMs)
     globalEqR.prepare(sr);
     frankenstein.prepare(sr, maxBlock);
     frankMix = 0.0;
+    splitter.prepare(sr, maxBlock);
+    splitIn.assign((size_t) maxBlock * kNumSlots, 0.0);
+    trimBuf.assign((size_t) maxBlock, 0.0);
+    trimNow.fill(-1.0); // snaps to the first requested trim
+    trimCoef = 1.0 - std::exp(-1.0 / (0.020 * sr));
+    notesRouting = false;
+    splitterSnap = true;
+    routeGain = 1.0;
+    routeStep = 1.0 / (0.020 * sr);
 }
 
 void Engine::setCovariance(const std::array<std::array<double, kNumSlots>, kNumSlots>& C,
@@ -158,12 +167,67 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
         return;
     }
 
+    // 0. Frankenstein NOTES mode: the guitar is split BEFORE the amps (each note range -> its amp).
+    //    Switching between the modes changes what the amps receive, so the output dips for 20 ms.
+    const bool notesWanted = s.frankenstein.enabled && s.frankenstein.beforeAmps;
+    if (notesWanted != notesRouting && routeGain == 0.0)
+    {
+        notesRouting = notesWanted;
+        if (notesRouting)
+        {
+            splitter.reset();
+            splitterSnap = true;
+            frankMix = 0.0;
+        }
+        else if (s.frankenstein.enabled)
+        {
+            frankenstein.reset();
+            frankMix = 1.0; // continue directly in TONE mode (while silent)
+            const auto lay = computeFrankensteinLayout(s.frankenstein, [&] {
+                std::array<bool, kNumSlots> l {};
+                for (int i = 0; i < kNumSlots; ++i) l[(size_t) i] = loaded[(size_t) i].load(std::memory_order_relaxed);
+                return computeAudible(s, l);
+            }());
+            frankenstein.setTarget(lay);
+            frankenstein.snapToTarget();
+        }
+        else
+            frankMix = 0.0;
+    }
+    FrankensteinLayout notesLayout;
+    if (notesRouting)
+    {
+        std::array<bool, kNumSlots> prevLoaded {};
+        for (int i = 0; i < kNumSlots; ++i) prevLoaded[(size_t) i] = loaded[(size_t) i].load(std::memory_order_relaxed);
+        notesLayout = computeFrankensteinLayout(s.frankenstein, computeAudible(s, prevLoaded));
+        splitter.setTarget(notesLayout);
+        if (splitterSnap) { splitter.snapToTarget(); splitterSnap = false; }
+        std::array<double*, kFrankMaxSlots> ptrs {};
+        for (int i = 0; i < kNumSlots; ++i) ptrs[(size_t) i] = splitIn.data() + (size_t) i * (size_t) stride;
+        splitter.processSplit(in, ptrs, n);
+    }
+
     // 1. Run every capture (keeps their internal state warm, also when muted).
     std::array<bool, kNumSlots> isLoaded {};
     for (int i = 0; i < kNumSlots; ++i)
     {
         double* buf = scratch.data() + (size_t) i * (size_t) stride;
-        slots[(size_t) i].process(in, buf, n, false); // level match is applied as levelGain
+        const double* slotIn = notesRouting ? splitIn.data() + (size_t) i * (size_t) stride : in;
+        // input calibration (exactly 1.0 = untouched, bit-identical)
+        const double trimTarget = std::clamp(s.slots[(size_t) i].inputTrim, 0.01, 100.0);
+        double& tg = trimNow[(size_t) i];
+        if (tg < 0.0) tg = trimTarget;
+        if (tg != 1.0 || trimTarget != 1.0)
+        {
+            for (int k = 0; k < n; ++k)
+            {
+                tg += (trimTarget - tg) * trimCoef;
+                trimBuf[(size_t) k] = slotIn[k] * tg;
+            }
+            if (std::abs(tg - trimTarget) < 1e-7 * trimTarget) tg = trimTarget;
+            slotIn = trimBuf.data();
+        }
+        slots[(size_t) i].process(slotIn, buf, n, false); // level match is applied as levelGain
         isLoaded[(size_t) i] = slots[(size_t) i].hasActiveCapture();
         loaded[(size_t) i].store(isLoaded[(size_t) i], std::memory_order_relaxed);
     }
@@ -186,6 +250,7 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
     compensationDb.store((float) (20.0 * std::log10(G)), std::memory_order_relaxed);
 
     // 3. Align, EQ, gain, sum.
+    const auto audibleNow = computeAudible(s, isLoaded);
     std::fill(out, out + n, 0.0);
     std::fill(R, R + n, 0.0);
     const double rotationMix = s.rotationActive ? 1.0 : 0.0;
@@ -211,7 +276,8 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
         eq.setBands(ss.eqEnabled ? ss.eq : ParametricEq::neutralised(ss.eq)); // OFF also releases the cuts
         eq.process(buf, n);
 
-        const double base = p[(size_t) i] * G * ss.levelGain;
+        // NOTES mode: every amp plays its own note range in full (no fader blend / mix law)
+        const double base = notesRouting ? (audibleNow[(size_t) i] ? ss.levelGain : 0.0) : p[(size_t) i] * G * ss.levelGain;
         const double target = base * pan[(size_t) i][0], targetR = base * pan[(size_t) i][1];
         double g = gains[(size_t) i], gr = gainsR[(size_t) i];
         if (g == 0.0 && target == 0.0 && gr == 0.0 && targetR == 0.0)
@@ -230,7 +296,7 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
     }
 
     // 4. "Create Frankenstein": frequency-split blending of the same aligned, EQ'd, level-matched paths.
-    const bool frankOn = s.frankenstein.enabled;
+    const bool frankOn = s.frankenstein.enabled && !notesRouting; // TONE mode: split after the amps
     if (frankOn || frankMix > 0.0)
     {
         const auto audible = computeAudible(s, isLoaded);
@@ -263,6 +329,23 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
         if (frankOn)
             for (int i = 0; i < kNumSlots; ++i) // percentages = share of the spectrum each amp plays
                 effectivePercent[(size_t) i].store((float) (100.0 * layout.spectrumShare[(size_t) i]), std::memory_order_relaxed);
+    }
+
+    if (notesRouting)
+        for (int i = 0; i < kNumSlots; ++i) // percentages = share of the note range each amp plays
+            effectivePercent[(size_t) i].store((float) (100.0 * notesLayout.spectrumShare[(size_t) i]), std::memory_order_relaxed);
+
+    // 4b. dip while the Frankenstein mode switches (amps receive different signals afterwards)
+    {
+        const double target = notesWanted == notesRouting ? 1.0 : 0.0;
+        if (routeGain != 1.0 || target != 1.0)
+            for (int k = 0; k < n; ++k)
+            {
+                routeGain = target > routeGain ? std::min(target, routeGain + routeStep) : std::max(target, routeGain - routeStep);
+                const double g = routeGain * routeGain * (3.0 - 2.0 * routeGain);
+                out[k] *= g;
+                R[k] *= g;
+            }
     }
 
     // 5. Global EQ on the complete blend (same EQ as the paths; OFF glides to flat, then costs nothing).

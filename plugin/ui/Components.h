@@ -351,6 +351,7 @@ public:
 
 private:
     juce::Rectangle<float> mapArea() const;
+    juce::Rectangle<float> bandArea() const;     // live note band under the map
     float xForHz(double hz) const;
     double hzForX(float x) const;
     int dividerAt(juce::Point<float>) const;     // visible divider index or -1
@@ -359,8 +360,11 @@ private:
     AmpsurdProcessor& proc;
     std::array<juce::TextButton, 4> sectionButtons { juce::TextButton { "2" }, juce::TextButton { "3" },
                                                      juce::TextButton { "4" }, juce::TextButton { "5" } };
-    juce::TextButton exitButton { "EXIT" };
+    juce::TextButton exitButton { "EXIT" }, toneButton { "TONE" }, notesButton { "NOTES" };
     juce::Slider widthSlider;
+    std::vector<float> spectrum;  // dB per column of the note band
+    float noteHz = 0.0f;
+    juce::String noteName;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> widthAtt;
     ampsurd::FrankensteinLayout layout;
     int dragDivider = -1, dragParam = -1, hoverDivider = -1;
