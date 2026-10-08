@@ -25,6 +25,7 @@ public:
     // for tests / screenshots
     void selectSlot(int slot);
     void showGlobalEq(bool show);
+    void showIr(int slot);   // -1 closes the IR editor
     void refreshAll() { timerCallback(); }
 
 private:
@@ -39,6 +40,7 @@ private:
         ampsurd::ui::HeaderBar header;
         std::array<std::unique_ptr<ampsurd::ui::SlotComponent>, AmpsurdProcessor::kNumSlots> slots;
         ampsurd::ui::EditPanel edit;
+        ampsurd::ui::IrPanel ir;
         ampsurd::ui::CentrePanel centre;
         ampsurd::ui::FrankensteinPanel frankenstein;
         ampsurd::ui::GlobalEqPanel globalEq;

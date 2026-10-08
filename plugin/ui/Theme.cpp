@@ -94,6 +94,16 @@ void LookAndFeel::drawButtonBackground(juce::Graphics& g, juce::Button& b, const
         g.fillRoundedRectangle(r, 2.0f);
         return;
     }
+    if ((bool) b.getProperties().getWithDefault("lit", false))
+    {
+        // "lit": something is active here (same look as the GLOBAL EQ button when on)
+        g.setColour(text.withAlpha((highlighted || down) ? 0.20f : 0.14f));
+        g.fillRoundedRectangle(r, 2.0f);
+        g.setColour(lineStrong.withAlpha(b.isEnabled() ? 1.0f : 0.5f));
+        g.drawRoundedRectangle(r, 2.0f, 1.2f);
+        return;
+    }
+
     if ((highlighted || down) && b.isEnabled())
     {
         g.setColour(raised);
@@ -114,7 +124,7 @@ void LookAndFeel::drawButtonText(juce::Graphics& g, juce::TextButton& b, bool, b
     const bool on = b.getToggleState();
     g.setFont(getTextButtonFont(b, b.getHeight()));
     g.setColour((on ? onText : text).withAlpha(b.isEnabled() ? 1.0f : 0.35f));
-    g.drawText(b.getButtonText(), b.getLocalBounds(), juce::Justification::centred, false);
+    g.drawFittedText(b.getButtonText(), b.getLocalBounds().reduced(3, 0), juce::Justification::centred, 1, 0.85f);
 }
 
 void LookAndFeel::drawLinearSlider(juce::Graphics& g, int x, int y, int w, int h, float pos, float, float,

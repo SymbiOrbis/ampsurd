@@ -49,6 +49,8 @@ void setParam(juce::AudioProcessorValueTreeState& apvts, const juce::String& id,
 // ---------------------------------------------------------------------------------------------
 static juce::String eqPrefix(int target)
 {
+    if (target >= AmpsurdProcessor::kIrEqBase)
+        return "s" + juce::String(target - AmpsurdProcessor::kIrEqBase + 1) + "_ir";
     return target == AmpsurdProcessor::kGlobalEq ? juce::String("geq") : "s" + juce::String(target + 1);
 }
 
@@ -65,9 +67,10 @@ juce::String AmpsurdProcessor::bandParamId(int slot, int band, const char* name)
 std::array<ampsurd::EqBand, ampsurd::ParametricEq::kNumBands> AmpsurdProcessor::getEqBands(int target) const
 {
     std::array<ampsurd::EqBand, kNumBands> b {};
-    const auto& freq = target == kGlobalEq ? globalEqParams.freq : slotParams[(size_t) target].freq;
-    const auto& gain = target == kGlobalEq ? globalEqParams.gain : slotParams[(size_t) target].gain;
-    const auto& q = target == kGlobalEq ? globalEqParams.q : slotParams[(size_t) target].q;
+    const EqParams* e = target == kGlobalEq ? &globalEqParams : target >= kIrEqBase ? &irEqParams[(size_t) (target - kIrEqBase)] : nullptr;
+    const auto& freq = e ? e->freq : slotParams[(size_t) target].freq;
+    const auto& gain = e ? e->gain : slotParams[(size_t) target].gain;
+    const auto& q = e ? e->q : slotParams[(size_t) target].q;
     for (int i = 0; i < kNumBands; ++i)
         b[(size_t) i] = { freq[(size_t) i]->load(), gain[(size_t) i]->load(), q[(size_t) i]->load() };
     return b;
@@ -169,6 +172,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout AmpsurdProcessor::createLayo
                 return i == 0 ? juce::String("C") : (i < 0 ? "L" : "R") + juce::String(std::abs(i));
             })));
         addEqBandParams(*group, s, n);
+        // cabinet IR of this slot and its own EQ (same ten bands)
+        group->addChild(std::make_unique<AudioParameterBool>(ParameterID { slotParamId(s, "irOn"), 1 }, n + "IR On", true));
+        group->addChild(std::make_unique<AudioParameterBool>(ParameterID { slotParamId(irEqTarget(s), "eqOn"), 1 }, n + "IR EQ On", true));
+        addEqBandParams(*group, irEqTarget(s), n + "IR ");
         layout.add(std::move(group));
     }
 
@@ -215,6 +222,15 @@ AmpsurdProcessor::AmpsurdProcessor()
         sp.timeMs = params.getRawParameterValue(slotParamId(s, "time"));
         sp.phaseDeg = params.getRawParameterValue(slotParamId(s, "phase"));
         sp.pan = params.getRawParameterValue(slotParamId(s, "pan"));
+        sp.irOn = params.getRawParameterValue(slotParamId(s, "irOn"));
+        auto& ie = irEqParams[(size_t) s];
+        ie.eqOn = params.getRawParameterValue(slotParamId(irEqTarget(s), "eqOn"));
+        for (int b = 0; b < kNumBands; ++b)
+        {
+            ie.freq[(size_t) b] = params.getRawParameterValue(bandParamId(irEqTarget(s), b, "freq"));
+            ie.gain[(size_t) b] = params.getRawParameterValue(bandParamId(irEqTarget(s), b, "gain"));
+            ie.q[(size_t) b] = params.getRawParameterValue(bandParamId(irEqTarget(s), b, "q"));
+        }
         for (int b = 0; b < kNumBands; ++b)
         {
             sp.freq[(size_t) b] = params.getRawParameterValue(bandParamId(s, b, "freq"));
@@ -261,6 +277,14 @@ void AmpsurdProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
         currentSampleRate.store(sampleRate);
         currentMaxBlock = maxBlock;
         engine.prepare(sampleRate, maxBlock, kReserveMs + CaptureAnalyzer::kMaxAutoLagMs + kMaxManualMs + 1.0);
+        if (rateChanged)
+            for (int sl = 0; sl < kNumSlots; ++sl)
+                if (const auto src = irSources[(size_t) sl])
+                {
+                    auto prep = ampsurd::prepareImpulseResponse(src->samples, src->rate, sampleRate);
+                    irPrepared[(size_t) sl] = std::make_shared<const std::vector<double>>(prep.samples);
+                    engine.getIrSlot(sl).replaceNow(std::make_unique<ampsurd::Convolver>(std::move(prep.samples)));
+                }
     }
     inBuffer.assign((size_t) maxBlock, 0.0);
     outBuffer.assign((size_t) maxBlock, 0.0);
@@ -337,6 +361,9 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         ss.eqEnabled = sp.eqOn->load() > 0.5f;
         ss.eq = getEqBands(s);
         ss.pan = sp.pan->load() / 100.0f;
+        ss.irEnabled = sp.irOn->load() > 0.5f;
+        ss.irEqEnabled = irEqParams[(size_t) s].eqOn->load() > 0.5f;
+        ss.irEq = getEqBands(irEqTarget(s));
         const auto a = effectiveAlign(s, sr);
         ss.delaySamples = a.delaySamples;
         ss.polarity = a.polarity;
@@ -474,20 +501,18 @@ void AmpsurdProcessor::loadJob(int slot, juce::File file, int gen, bool /*adjust
     auto test = CaptureAnalyzer::makeTestSignal(sr);
     const double g = std::pow(10.0, gainDb / 20.0);
     for (double& v : test) v *= g;
-    const auto meas = CaptureAnalyzer::measure(CaptureAnalyzer::render(*result.model, test, false), sr);
+    auto raw = std::make_shared<const std::vector<double>>(CaptureAnalyzer::render(*result.model, test, false));
+    const auto meas = measureWithIr(slot, *raw, sr); // with the slot's cabinet IR, if any
     result.model->prepare(sr, currentMaxBlock); // clear the state left by the measurement
 
     if (gen != slotGeneration[(size_t) slot].load())
         return; // a newer load / preset replaced this slot while we were measuring
 
-    std::array<std::shared_ptr<const CaptureAnalyzer::Measurement>, kNumSlots> snapshot;
     {
         std::lock_guard<std::mutex> al(analysisMutex);
-        measurements[(size_t) slot] = meas;
-        measuredInputGainDb = gainDb;
-        snapshot = measurements;
+        rawRenders[(size_t) slot] = raw;
     }
-    applyRig(CaptureAnalyzer::analyseRig(snapshot));
+    storeMeasurement(slot, meas, gainDb);
 
     const auto info = describe(*result.model, file);
     engine.getSlot(slot).submit(std::move(result.model));
@@ -501,6 +526,8 @@ void AmpsurdProcessor::loadJob(int slot, juce::File file, int gen, bool /*adjust
 
 void AmpsurdProcessor::unloadCapture(int slot)
 {
+    if (getIrStatus(slot).state != IrState::none)
+        removeIr(slot); // REMOVE empties the whole slot: capture and cabinet IR
     const auto previous = getSlotStatus(slot).state;
     const int gen = ++slotGeneration[(size_t) slot];
     setSlotStatus(slot, {});
@@ -517,6 +544,7 @@ void AmpsurdProcessor::unloadCapture(int slot)
         {
             std::lock_guard<std::mutex> al(analysisMutex);
             measurements[(size_t) slot] = nullptr;
+            rawRenders[(size_t) slot] = nullptr;
             snapshot = measurements;
         }
         applyRig(CaptureAnalyzer::analyseRig(snapshot));
@@ -536,6 +564,7 @@ void AmpsurdProcessor::remeasureJob(int gen)
     for (double& v : test) v *= g;
 
     std::array<std::shared_ptr<const CaptureAnalyzer::Measurement>, kNumSlots> fresh {};
+    std::array<std::shared_ptr<const std::vector<double>>, kNumSlots> renders {};
     std::array<int, kNumSlots> gens {};
     for (int s = 0; s < kNumSlots; ++s)
     {
@@ -545,7 +574,8 @@ void AmpsurdProcessor::remeasureJob(int gen)
         if (st.state != SlotState::loaded) continue;
         auto r = CaptureModel::load(toStdPath(juce::File(st.path)), sr, currentMaxBlock);
         if (!r.model) continue;
-        fresh[(size_t) s] = CaptureAnalyzer::measure(CaptureAnalyzer::render(*r.model, test, false), sr);
+        renders[(size_t) s] = std::make_shared<const std::vector<double>>(CaptureAnalyzer::render(*r.model, test, false));
+        fresh[(size_t) s] = measureWithIr(s, *renders[(size_t) s], sr);
     }
 
     std::array<std::shared_ptr<const CaptureAnalyzer::Measurement>, kNumSlots> snapshot;
@@ -553,11 +583,149 @@ void AmpsurdProcessor::remeasureJob(int gen)
         std::lock_guard<std::mutex> al(analysisMutex);
         for (int s = 0; s < kNumSlots; ++s)
             if (fresh[(size_t) s] && gens[(size_t) s] == slotGeneration[(size_t) s].load())
+            {
                 measurements[(size_t) s] = fresh[(size_t) s];
+                rawRenders[(size_t) s] = renders[(size_t) s];
+            }
         measuredInputGainDb = gainDb;
         snapshot = measurements;
     }
     applyRig(CaptureAnalyzer::analyseRig(snapshot));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Cabinet IRs
+// ---------------------------------------------------------------------------------------------
+std::shared_ptr<const CaptureAnalyzer::Measurement> AmpsurdProcessor::measureWithIr(int slot, const std::vector<double>& raw, double sr)
+{
+    // Called with configMutex held. The slot is measured as it is heard: capture -> IR (when on).
+    const auto ir = irPrepared[(size_t) slot];
+    if (ir && !ir->empty() && isIrOn(slot))
+    {
+        ampsurd::Convolver c(*ir);
+        std::vector<double> y(raw.size());
+        c.process(raw.data(), y.data(), (int) raw.size());
+        return CaptureAnalyzer::measure(y, sr);
+    }
+    return CaptureAnalyzer::measure(raw, sr);
+}
+
+void AmpsurdProcessor::storeMeasurement(int slot, std::shared_ptr<const CaptureAnalyzer::Measurement> m, double gainDb)
+{
+    std::array<std::shared_ptr<const CaptureAnalyzer::Measurement>, kNumSlots> snapshot;
+    {
+        std::lock_guard<std::mutex> al(analysisMutex);
+        measurements[(size_t) slot] = std::move(m);
+        measuredInputGainDb = gainDb;
+        snapshot = measurements;
+    }
+    applyRig(CaptureAnalyzer::analyseRig(snapshot));
+}
+
+void AmpsurdProcessor::measureSlotJob(int slot)
+{
+    std::lock_guard<std::mutex> lock(configMutex);
+    std::shared_ptr<const std::vector<double>> raw;
+    double gainDb = 0.0;
+    {
+        std::lock_guard<std::mutex> al(analysisMutex);
+        raw = rawRenders[(size_t) slot];
+        gainDb = measuredInputGainDb;
+    }
+    if (!raw || getSlotStatus(slot).state != SlotState::loaded)
+        return; // nothing measured yet: the capture's own load will include the IR
+    storeMeasurement(slot, measureWithIr(slot, *raw, currentSampleRate.load()), gainDb);
+}
+
+AmpsurdProcessor::IrStatus AmpsurdProcessor::getIrStatus(int slot) const
+{
+    const juce::ScopedLock sl(statusLock);
+    return irStatus[(size_t) slot];
+}
+
+void AmpsurdProcessor::setIrStatus(int slot, const IrStatus& st)
+{
+    const juce::ScopedLock sl(statusLock);
+    irStatus[(size_t) slot] = st;
+}
+
+void AmpsurdProcessor::loadIr(int slot, const juce::File& file)
+{
+    const int gen = ++irGeneration[(size_t) slot];
+    setIrStatus(slot, { IrState::loading, file.getFullPathName(), file.getFileNameWithoutExtension(), "Loading..." });
+    auto aliveFlag = alive;
+    loaderPool.addJob([this, slot, file, gen, aliveFlag] {
+        if (aliveFlag->load()) irJob(slot, file, gen);
+    });
+}
+
+void AmpsurdProcessor::irJob(int slot, juce::File file, int gen)
+{
+    std::lock_guard<std::mutex> lock(configMutex);
+    if (gen != irGeneration[(size_t) slot].load()) return;
+
+    juce::AudioFormatManager formats;
+    formats.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader(formats.createReaderFor(file));
+    auto fail = [&](const juce::String& why) {
+        setIrStatus(slot, { IrState::error, file.getFullPathName(), file.getFileNameWithoutExtension(), why });
+    };
+    if (!reader) { fail("Could not read this file as audio (WAV, AIFF, FLAC)."); return; }
+    const double fileRate = reader->sampleRate;
+    const auto len = (int) std::min<juce::int64>(reader->lengthInSamples, (juce::int64) (fileRate * 10.0));
+    if (len <= 0 || fileRate <= 0) { fail("The file contains no audio."); return; }
+    juce::AudioBuffer<float> buf((int) reader->numChannels, len);
+    reader->read(&buf, 0, len, 0, true, true);
+    auto src = std::make_shared<IrSource>();
+    src->rate = fileRate;
+    src->samples.resize((size_t) len);
+    for (int i = 0; i < len; ++i) src->samples[(size_t) i] = buf.getSample(0, i); // mono: first (left) channel
+
+    const double sr = currentSampleRate.load();
+    auto prep = ampsurd::prepareImpulseResponse(src->samples, fileRate, sr);
+    if (prep.samples.empty()) { fail("The file is silent."); return; }
+
+    juce::String info = juce::String(fileRate / 1000.0, 1) + " kHz,  " + juce::String(len) + " samples ("
+                      + juce::String(len * 1000.0 / fileRate, 1) + " ms)";
+    if (reader->numChannels > 1) info << "\n" << (int) reader->numChannels << " channels: the left channel is used";
+    if (prep.resampled) info << "\nconverted to " << juce::String(sr / 1000.0, 1) << " kHz";
+    if (prep.trimmedSamples > 0) info << "\n" << prep.trimmedSamples << " samples of silence at the start removed";
+    if (prep.truncated) info << "\nshortened to 1 s";
+
+    if (gen != irGeneration[(size_t) slot].load()) return;
+    irSources[(size_t) slot] = src;
+    irPrepared[(size_t) slot] = std::make_shared<const std::vector<double>>(prep.samples);
+    engine.getIrSlot(slot).submit(std::make_unique<ampsurd::Convolver>(std::move(prep.samples)));
+    setIrStatus(slot, { IrState::loaded, file.getFullPathName(), file.getFileNameWithoutExtension(), info });
+    lastIrOn[(size_t) slot] = isIrOn(slot);
+
+    // re-measure the slot as it now sounds (level match, alignment, mix law)
+    std::shared_ptr<const std::vector<double>> raw;
+    double gainDb = 0.0;
+    {
+        std::lock_guard<std::mutex> al(analysisMutex);
+        raw = rawRenders[(size_t) slot];
+        gainDb = measuredInputGainDb;
+    }
+    if (raw && getSlotStatus(slot).state == SlotState::loaded)
+        storeMeasurement(slot, measureWithIr(slot, *raw, sr), gainDb);
+}
+
+void AmpsurdProcessor::removeIr(int slot)
+{
+    ++irGeneration[(size_t) slot];
+    setIrStatus(slot, {});
+    auto aliveFlag = alive;
+    loaderPool.addJob([this, slot, aliveFlag] {
+        if (!aliveFlag->load()) return;
+        {
+            std::lock_guard<std::mutex> lock(configMutex);
+            irSources[(size_t) slot] = nullptr;
+            irPrepared[(size_t) slot] = nullptr;
+            engine.getIrSlot(slot).submit(std::make_unique<ampsurd::Convolver>(std::vector<double> {}));
+        }
+        measureSlotJob(slot);
+    });
 }
 
 void AmpsurdProcessor::applyRig(std::shared_ptr<const CaptureAnalyzer::RigAnalysis> newRig)
@@ -834,6 +1002,24 @@ void AmpsurdProcessor::timerCallback()
     updateCovariance(false);
     updateLatency();
 
+    // IR ON / BYPASS changes how the slot sounds: re-measure it (level match, alignment, mix law)
+    for (int sl = 0; sl < kNumSlots; ++sl)
+    {
+        engine.getIrSlot(sl).collectGarbage();
+        const bool on = isIrOn(sl);
+        if (on != lastIrOn[(size_t) sl])
+        {
+            lastIrOn[(size_t) sl] = on;
+            if (getIrStatus(sl).state == IrState::loaded)
+            {
+                auto aliveFlag = alive;
+                loaderPool.addJob([this, sl, aliveFlag] {
+                    if (aliveFlag->load()) measureSlotJob(sl);
+                });
+            }
+        }
+    }
+
     // Captures are non-linear: when the input gain changes, re-measure (debounced).
     const float g = inputParam->load();
     const double now = juce::Time::getMillisecondCounterHiRes();
@@ -882,6 +1068,7 @@ juce::ValueTree AmpsurdProcessor::createStateTree() const
         t.setProperty(kIndexId, s + 1, nullptr);
         // Only a REFERENCE to the capture is stored, never the capture data itself.
         t.setProperty(kPathId, getSlotStatus(s).path, nullptr);
+        t.setProperty("irPath", getIrStatus(s).path, nullptr); // reference to the cabinet IR file (or empty)
         slots.appendChild(t, nullptr);
     }
     state.appendChild(slots, nullptr);
@@ -917,10 +1104,32 @@ void AmpsurdProcessor::restoreState(const juce::ValueTree& tree, const juce::Fil
     const auto slots = tree.getChildWithName(kSlotsId);
     for (int s = 0; s < kNumSlots; ++s)
     {
-        juce::String path;
+        juce::String path, irPath;
         for (const auto& t : slots)
             if ((int) t.getProperty(kIndexId) == s + 1)
+            {
                 path = t.getProperty(kPathId).toString();
+                irPath = t.getProperty("irPath").toString();
+            }
+
+        // cabinet IR (queued after the capture on the same loader thread)
+        auto restoreIr = [this, s, irPath, presetFile] {
+            if (irPath.isEmpty())
+            {
+                if (getIrStatus(s).state != IrState::none) removeIr(s);
+                return;
+            }
+            juce::File f(irPath);
+            if (!f.existsAsFile() && presetFile != juce::File())
+                if (const auto sib = presetFile.getSiblingFile(f.getFileName()); sib.existsAsFile()) f = sib;
+            if (f.existsAsFile())
+                loadIr(s, f);
+            else
+            {
+                removeIr(s);
+                setIrStatus(s, { IrState::missing, irPath, juce::File(irPath).getFileNameWithoutExtension(), "IR file not found:\n" + irPath });
+            }
+        };
 
         if (path.isEmpty())
         {
@@ -944,6 +1153,7 @@ void AmpsurdProcessor::restoreState(const juce::ValueTree& tree, const juce::Fil
                     applyRig(CaptureAnalyzer::analyseRig(snapshot));
                 });
             }
+            restoreIr();
             continue;
         }
 
@@ -985,6 +1195,7 @@ void AmpsurdProcessor::restoreState(const juce::ValueTree& tree, const juce::Fil
                 applyRig(CaptureAnalyzer::analyseRig(snapshot));
             });
         }
+        restoreIr();
     }
 }
 

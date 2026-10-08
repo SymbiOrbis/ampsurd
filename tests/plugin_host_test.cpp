@@ -64,6 +64,9 @@ int main(int argc, char** argv)
         {
             const int idx = s->getIntAttribute("index") - 1;
             s->setAttribute("path", idx < numCaps ? juce::File(argv[7 + idx]).getFullPathName() : juce::String());
+            // AMPSURD_TEST_IR=<file>: cabinet IR for slot 1
+            const auto irPath = juce::SystemStats::getEnvironmentVariable("AMPSURD_TEST_IR", "");
+            if (idx == 0 && irPath.isNotEmpty()) s->setAttribute("irPath", juce::File(irPath).getFullPathName());
         }
     for (auto* p : xml->getChildIterator())
         if (p->hasTagName("PARAM"))

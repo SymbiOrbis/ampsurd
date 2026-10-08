@@ -62,6 +62,22 @@ public:
     static juce::String slotParamId(int slot, const char* name);                  // e.g. "s1_mix", "geq_eqOn"
     static juce::String bandParamId(int slot, int band, const char* name);        // e.g. "s1_b3_gain", "geq_b3_gain"
 
+    // EQ targets kIrEqBase + slot are the IR EQs (one per slot, applied after that slot's IR).
+    static constexpr int kIrEqBase = kGlobalEq + 1;
+    static constexpr int irEqTarget(int slot) { return kIrEqBase + slot; }
+
+    // --- cabinet IR per slot (message thread) ---
+    enum class IrState { none, loading, loaded, missing, error };
+    struct IrStatus
+    {
+        IrState state = IrState::none;
+        juce::String path, fileName, info;
+    };
+    IrStatus getIrStatus(int slot) const;
+    void loadIr(int slot, const juce::File& file);
+    void removeIr(int slot);
+    bool isIrOn(int slot) const { return slotParams[(size_t) slot].irOn->load() > 0.5f; }
+
     // --- Global EQ ---
     bool isGlobalEqOn() const { return globalEqParams.eqOn->load() > 0.5f; }
     std::array<ampsurd::EqBand, ampsurd::ParametricEq::kNumBands> getEqBands(int target) const; // any EQ target
@@ -140,6 +156,7 @@ private:
         std::atomic<float>* timeMs = nullptr;
         std::atomic<float>* phaseDeg = nullptr;
         std::atomic<float>* pan = nullptr;      // -100 (L) .. 0 .. +100 (R)
+        std::atomic<float>* irOn = nullptr;     // IR ON / BYPASS
         std::array<std::atomic<float>*, kNumBands> freq {}, gain {}, q {};
     };
     std::array<SlotParams, kNumSlots> slotParams;
@@ -149,6 +166,7 @@ private:
         std::array<std::atomic<float>*, kNumBands> freq {}, gain {}, q {};
     };
     EqParams globalEqParams;
+    std::array<EqParams, kNumSlots> irEqParams;
 
     // values derived from the measurements (written by loader/message thread, read by audio thread)
     struct Derived
@@ -166,6 +184,11 @@ private:
     // loader-thread jobs
     void loadJob(int slot, juce::File file, int generation, bool adjustMix);
     void remeasureJob(int generation);
+    void irJob(int slot, juce::File file, int generation);
+    void measureSlotJob(int slot);          // re-measure one slot (IR changed), from its cached render
+    std::shared_ptr<const ampsurd::CaptureAnalyzer::Measurement> measureWithIr(int slot, const std::vector<double>& raw, double sr);
+    void storeMeasurement(int slot, std::shared_ptr<const ampsurd::CaptureAnalyzer::Measurement> m, double gainDb);
+    void setIrStatus(int slot, const IrStatus& s);
     void applyRig(std::shared_ptr<const ampsurd::CaptureAnalyzer::RigAnalysis> rig); // any non-audio thread
     void updateCovariance(bool force);                                                // any non-audio thread
     void renormaliseMixAfterChange(int changedSlot, bool added);
@@ -207,6 +230,17 @@ private:
     std::array<double, 4 * kNumSlots + 4> lastCovKey {};
 
     std::array<std::atomic<int>, kNumSlots> slotGeneration {};
+
+    // cabinet IRs: the file's samples (for sample-rate changes) and the prepared IR at the current
+    // rate (for measuring) - guarded by configMutex. Cached raw capture renders (analysisMutex) let an
+    // IR change re-measure a slot without running the capture again.
+    struct IrSource { std::vector<double> samples; double rate = 48000.0; };
+    std::array<std::shared_ptr<const IrSource>, kNumSlots> irSources {};
+    std::array<std::shared_ptr<const std::vector<double>>, kNumSlots> irPrepared {};
+    std::array<std::shared_ptr<const std::vector<double>>, kNumSlots> rawRenders {};
+    std::array<std::atomic<int>, kNumSlots> irGeneration {};
+    std::array<IrStatus, kNumSlots> irStatus;
+    std::array<bool, kNumSlots> lastIrOn {};
     std::atomic<int> remeasureGeneration { 0 };
     std::atomic<bool> needsRemeasure { false };
     double inputGainChangedAt = 0.0;

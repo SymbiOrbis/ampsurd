@@ -155,6 +155,31 @@ int main(int argc, char** argv)
         setP(*proc, AmpsurdProcessor::slotParamId(0, "mute"), 0.0f);
     }
 
+    // Cabinet IR (file given in AMPSURD_TEST_IR)
+    const juce::File irFile(juce::SystemStats::getEnvironmentVariable("AMPSURD_TEST_IR", ""));
+    if (irFile.existsAsFile())
+    {
+        proc->setFrankenstein(false);
+        proc->loadIr(1, irFile);
+        for (int t = 0; t < 200 && proc->getIrStatus(1).state != AmpsurdProcessor::IrState::loaded; ++t) pump(20);
+        for (int b = 0; b < 20; ++b) { buf.clear(); proc->processBlock(buf, midi); }
+        const int T = AmpsurdProcessor::irEqTarget(1);
+        setP(*proc, AmpsurdProcessor::bandParamId(T, 0, "freq"), 70.0f);
+        setP(*proc, AmpsurdProcessor::bandParamId(T, 6, "gain"), -3.5f);
+        setP(*proc, AmpsurdProcessor::bandParamId(T, 9, "freq"), 7500.0f);
+        std::unique_ptr<juce::AudioProcessorEditor> ed(proc->createEditor());
+        auto* e = dynamic_cast<AmpsurdEditor*>(ed.get());
+        e->refreshAll();
+        save(*ed, out.getChildFile("13_slots_with_ir.png"));
+        e->showIr(1);
+        e->refreshAll();
+        save(*ed, out.getChildFile("14_ir_editor.png"));
+        e->showIr(3);
+        e->refreshAll();
+        save(*ed, out.getChildFile("15_ir_editor_empty.png"));
+        std::cout << "IR: " << proc->getIrStatus(1).info << "\n";
+    }
+
     // Global EQ
     {
         proc->setFrankenstein(false);
@@ -207,6 +232,11 @@ int main(int argc, char** argv)
     for (int i = 0; i < 5; ++i)
         slotsSame += proc->getSlotStatus(i).path == proc2->getSlotStatus(i).path
                      && proc->getSlotStatus(i).state == proc2->getSlotStatus(i).state;
+    for (int t = 0; t < 200 && proc2->getIrStatus(1).state == AmpsurdProcessor::IrState::loading; ++t) pump(20);
+    int irSame = 0;
+    for (int i = 0; i < 5; ++i)
+        irSame += proc->getIrStatus(i).path == proc2->getIrStatus(i).path && proc->getIrStatus(i).state == proc2->getIrStatus(i).state;
+    std::cout << "preset round trip: " << irSame << "/5 IR slots restored (slot 2 IR: '" << proc2->getIrStatus(1).fileName << "')\n";
     std::cout << "preset round trip: " << same << "/" << checked << " parameters, " << slotsSame << "/5 slots restored, name '"
               << proc2->getCurrentPresetName() << "'\n";
 
@@ -216,12 +246,16 @@ int main(int argc, char** argv)
         for (int i = xml->getNumChildElements() - 1; i >= 0; --i)
             if (xml->getChildElement(i)->getStringAttribute("id").startsWith("geq_"))
                 xml->removeChildElement(xml->getChildElement(i), true);
+        if (auto* slotsXml = xml->getChildByName("SLOTS"))
+            for (auto* sx : slotsXml->getChildIterator()) sx->removeAttribute("irPath"); // presets from before IRs
         const auto oldPreset = out.getChildFile("Old.ampsurd");
         xml->writeTo(oldPreset);
         proc2->loadPreset(oldPreset); // proc2 currently has the Global EQ ON from the round trip
         const bool on = proc2->isGlobalEqOn();
         const bool flat = ampsurd::ParametricEq::isFlat(proc2->getEqBands(AmpsurdProcessor::kGlobalEq));
         std::cout << "older preset without Global EQ: " << (!on && flat ? "Global EQ off and flat (ok)" : "UNEXPECTED") << "\n";
+        const bool noIr = proc2->getIrStatus(1).state == AmpsurdProcessor::IrState::none;
+        std::cout << "older preset without IR: " << (noIr ? "slot 2 has no IR (ok)" : "UNEXPECTED") << "\n";
         oldPreset.deleteFile();
     }
 

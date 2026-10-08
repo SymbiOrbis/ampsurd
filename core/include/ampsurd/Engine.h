@@ -2,7 +2,7 @@
 
 // Engine: AMPSURD's five fixed capture paths and the mixer.
 //
-//   in ─┬─ slot 1: capture → align (time/polarity/phase) → EQ → mix gain ─┐
+//   in ─┬─ slot 1: capture → [IR → IR EQ] → align (time/polarity/phase) → EQ → mix gain ─┐
 //       ├─ slot 2 ...                                                    ├─ Σ (blend or
 //       └─ slot 5 ...                                                    ┘   Frankenstein) → GLOBAL EQ → out L/R
 //
@@ -30,6 +30,7 @@
 
 #include "ampsurd/CaptureSlot.h"
 #include "ampsurd/Frankenstein.h"
+#include "ampsurd/IrSlot.h"
 #include "ampsurd/ParametricEq.h"
 #include "ampsurd/PathAligner.h"
 
@@ -50,6 +51,9 @@ struct SlotSettings
     double phaseRadians = 0.0;  // frequency-independent phase rotation
     double levelGain = 1.0;     // level match (from the capture's measured loudness), linear
     float pan = 0.0f;           // -1 = hard left, 0 = centre, +1 = hard right
+    bool irEnabled = true;      // IR ON / BYPASS (only matters when an IR is loaded)
+    bool irEqEnabled = true;    // the IR's own EQ (bypassed together with the IR)
+    std::array<EqBand, ParametricEq::kNumBands> irEq = ParametricEq::defaultBands();
 };
 
 struct EngineSettings
@@ -73,6 +77,7 @@ public:
     void prepare(double sampleRate, int maxBlockSize, double maxDelayMs);
 
     CaptureSlot& getSlot(int i) noexcept { return slots[(size_t) i]; }
+    IrSlot& getIrSlot(int i) noexcept { return irSlots[(size_t) i]; }
 
     // Any thread. C[i][j] = covariance of aligned capture outputs; valid[i] = slot i measured.
     void setCovariance(const std::array<std::array<double, kNumSlots>, kNumSlots>& C,
@@ -114,6 +119,8 @@ public:
 
 private:
     std::array<CaptureSlot, kNumSlots> slots;
+    std::array<IrSlot, kNumSlots> irSlots;
+    std::array<ParametricEq, kNumSlots> irEqs;
     std::array<PathAligner, kNumSlots> aligners;
     std::array<ParametricEq, kNumSlots> eqs;
     ParametricEq globalEq, globalEqR;

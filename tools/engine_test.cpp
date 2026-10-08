@@ -15,6 +15,7 @@
 
 #include "ampsurd/CaptureAnalyzer.h"
 #include "ampsurd/CaptureModel.h"
+#include "ampsurd/Convolver.h"
 #include "ampsurd/Engine.h"
 #include "ampsurd/ParametricEq.h"
 #include "ampsurd/PathAligner.h"
@@ -443,6 +444,57 @@ int main(int argc, char** argv)
         for (size_t i = 0; i < frc.L.size(); ++i) frankCentDiff = std::max(frankCentDiff, std::abs(frc.L[i] - frc.mono[i]) + std::abs(frc.R[i] - frc.mono[i]));
         check(frankCentDiff == 0.0 && std::abs(fe) < 2.0,
               "PAN + Frankenstein: centred = mono exactly; panned -60/+60 stereo loudness %+.2f dB vs single-capture level", fe);
+    }
+
+    // ---------------- 6e. Cabinet IR per slot ----------------
+    {
+        std::mt19937 rng(3);
+        std::normal_distribution<double> nd(0.0, 1.0);
+        std::vector<double> rawIr(3000);
+        double lp = 0;
+        for (size_t i = 0; i < rawIr.size(); ++i) { lp += 0.25 * (nd(rng) - lp); rawIr[i] = lp * std::exp(-(double) i / 500.0); }
+        const auto ir = prepareImpulseResponse(rawIr, sr, sr).samples;
+        auto irEq = ParametricEq::defaultBands();
+        irEq[0].freqHz = 120.0f; irEq[5].gainDb = -5.0f;
+
+        auto render = [&](bool withIr, bool irOn, bool irEqChanged) {
+            Engine eng;
+            eng.getSlot(0).submit(loadAt(argv[1]));
+            eng.prepare(sr, 256, 10.0);
+            if (withIr) eng.getIrSlot(0).submit(std::make_unique<Convolver>(ir));
+            EngineSettings s;
+            s.slots[0].irEnabled = irOn;
+            if (irEqChanged) s.slots[0].irEq = irEq;
+            std::vector<double> out(test.size());
+            for (size_t pos = 0; pos < test.size(); pos += 256)
+                eng.process(test.data() + pos, out.data() + pos, (int) std::min<size_t>(256, test.size() - pos), s);
+            return out;
+        };
+        const auto plain = render(false, true, false);
+        const auto withIr = render(true, true, false);
+        auto ref = plain; // everything after the IR is linear and time-invariant once settled
+        {
+            Convolver c(ir);
+            c.process(ref.data(), ref.data(), (int) ref.size());
+        }
+        double err = 0, peak = 0;
+        for (size_t i = 48000; i < ref.size(); ++i) { err = std::max(err, std::abs(withIr[i] - ref[i])); peak = std::max(peak, std::abs(ref[i])); }
+        check(err / peak < 1e-9, "IR: slot output = the capture through its cabinet IR (relative error %.1e)", err / peak);
+
+        check(render(false, true, true) == plain, "IR EQ without an IR: no effect at all (bit-identical)");
+        const auto bypassed = render(true, false, true);
+        check(std::equal(bypassed.begin() + 48000, bypassed.end(), plain.begin() + 48000),
+              "IR bypassed: IR and IR EQ both out -> bit-identical to no IR");
+
+        const auto withEq = render(true, true, true);
+        auto refEq = ref;
+        {
+            ParametricEq e; e.prepare(sr);
+            for (size_t pos = 0; pos < refEq.size(); pos += 256) { e.setBands(irEq); e.process(refEq.data() + pos, (int) std::min<size_t>(256, refEq.size() - pos)); }
+        }
+        double errEq = 0;
+        for (size_t i = 48000; i < refEq.size(); ++i) errEq = std::max(errEq, std::abs(withEq[i] - refEq[i]));
+        check(errEq / peak < 1e-6, "IR EQ: applied after the IR, matches the verified EQ (relative error %.1e)", errEq / peak);
     }
 
     // ---------------- 7. Percentages with mute / solo ----------------

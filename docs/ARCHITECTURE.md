@@ -18,6 +18,8 @@ core/  (ampsurd_core - plain C++20, no JUCE; reusable for the future single-capt
   Engine                5 fixed paths + mixer and mix law, Frankenstein, Global EQ
   Frankenstein          frequency-split blending (Linkwitz-Riley tree, perfect reconstruction)
   NoiseGate, PitchDetector   NS-2 style gate (key = DI), YIN tuner
+  Convolver             zero-latency non-uniform partitioned convolution (cabinet IRs), IR preparation
+  IrSlot                per-slot IR: lock-free hand-over, warm-up + crossfade, bypass, idle when unused
   PathAligner           fractional delay (TIME), polarity, phase rotation (PHASE)
   ParametricEq          low cut + 8 bells + high cut, Simper SVF, smoothed, bit-transparent when flat
                         (one per amp + the Global EQ)
@@ -30,7 +32,7 @@ tests/   plugin_host_test (hosts the built .vst3), ui_snapshot (renders the edit
 ## Signal flow
 
 ```
-DAW input ch 1 → INPUT gain ─┬→ slot 1: capture → align (time/polarity/phase) → EQ → p1·G·level1·PAN1 ─┐
+DAW input ch 1 → INPUT gain ─┬→ slot 1: capture → [cab IR → IR EQ] → align (time/polarity/phase) → EQ → p1·G·level1·PAN1 ─┐
                              ├→ slot 2 … slot 5 (same)                                            ├→ Σ
                              ├→ DI → gate detector, tuner                                         │
                              └→ dry delay line (for BYPASS)                                       │
@@ -40,6 +42,9 @@ DAW input ch 1 → INPUT gain ─┬→ slot 1: capture → align (time/polarity
 PAN: constant power, centre = 0 dB on both sides (centred amps: L and R identical to the former mono
 output), hard left/right = +3 dB on one side. Mix law G counts the power of both channels (BS.1770).
 Mono output bus: (L + R) / 2.
+Cabinet IR (optional, per slot): zero latency; level match, AUTO alignment and the mix law are measured
+on capture + IR (re-measured when the IR is loaded, replaced, removed or bypassed). IR EQ = the same
+10-band EQ, only active while the IR is on.
 ```
 
 Latency (reported to the DAW, constant while playing) = resampler latency (only when host rate

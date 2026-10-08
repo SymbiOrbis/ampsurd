@@ -114,7 +114,7 @@ juce::StringArray FilenameLayout::wrap(const juce::String& text, const juce::Fon
 
 void FilenameLayout::draw(juce::Graphics& g, const juce::String& text, juce::Rectangle<float> area, juce::Colour colour)
 {
-    const auto font = Fonts::get().medium(kFontSize);
+    const auto font = Fonts::get().semibold(kFontSize);
     const int maxLines = juce::jmin(kMaxLines, juce::jmax(1, (int) (area.getHeight() / kLineHeight)));
     bool truncated = false;
     const auto lines = wrap(text, font, area.getWidth(), maxLines, truncated);
@@ -220,8 +220,25 @@ void MixFader::mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDet
 // =============================================================================================
 SlotComponent::SlotComponent(AmpsurdProcessor& p, int s) : proc(p), slot(s), fader(p, s)
 {
-    for (auto* b : { &loadButton, &editButton, &soloButton, &muteButton })
+    for (auto* b : { &loadButton, &editButton, &irButton, &soloButton, &muteButton, &removeButton })
         addAndMakeVisible(*b);
+    irButton.onClick = [this] { if (onIrClicked) onIrClicked(slot); };
+    irButton.setTooltip("Cabinet IR for this amp: load, bypass, IR EQ");
+    removeButton.setTooltip("Remove the capture (and its IR) from this slot - click twice");
+    removeButton.onClick = [this] {
+        const double now = juce::Time::getMillisecondCounterHiRes();
+        if (removeArmedAt > 0.0 && now - removeArmedAt < 3000.0)
+        {
+            removeArmedAt = -1.0;
+            removeButton.setButtonText("REMOVE");
+            proc.unloadCapture(slot);
+        }
+        else
+        {
+            removeArmedAt = now;
+            removeButton.setButtonText("SURE?");
+        }
+    };
     addAndMakeVisible(fader);
     soloButton.setClickingTogglesState(true);
     muteButton.setClickingTogglesState(true);
@@ -247,28 +264,36 @@ SlotComponent::SlotComponent(AmpsurdProcessor& p, int s) : proc(p), slot(s), fad
 juce::Rectangle<int> SlotComponent::panArea() const
 {
     // one row under the filename, left of the fader
-    return { 14, getHeight() - 92 - 26, getWidth() - 14 - 14 - 44, 22 };
+    return { 14, getHeight() - 14 - 28 - 6 - 28 - 10 - 22, getWidth() - 14 - 14 - 44, 22 };
 }
 
 SlotComponent::~SlotComponent() = default;
 
+// Slot layout (300 px high): number + % / filename (+ IR line) and fader / PAN / two button rows.
 juce::Rectangle<int> SlotComponent::nameArea() const
 {
-    return { 14, 40, getWidth() - 14 - 14 - 44, getHeight() - 40 - 92 - 30 };
+    return { 14, 40, getWidth() - 14 - 14 - 44, 128 };
+}
+
+juce::Rectangle<int> SlotComponent::irLineArea() const
+{
+    return { 14, 170, getWidth() - 14 - 14 - 44, 16 };
 }
 
 void SlotComponent::resized()
 {
     auto r = getLocalBounds().reduced(14);
-    auto buttons = r.removeFromBottom(68);
-    auto row1 = buttons.removeFromTop(30), row2 = buttons.removeFromBottom(30);
-    const int bw = (row1.getWidth() - 8) / 2;
-    loadButton.setBounds(row1.removeFromLeft(bw));
-    editButton.setBounds(row1.removeFromRight(bw));
-    soloButton.setBounds(row2.removeFromLeft(bw));
-    muteButton.setBounds(row2.removeFromRight(bw));
-    r.removeFromBottom(12);
-    fader.setBounds(r.removeFromRight(40).withTrimmedTop(26));
+    auto buttons = r.removeFromBottom(62);
+    auto row1 = buttons.removeFromTop(28), row2 = buttons.removeFromBottom(28);
+    const int gap = 6, bw = (row1.getWidth() - 2 * gap) / 3;
+    auto place = [&](juce::Rectangle<int>& row, juce::Button& b, bool last) {
+        b.setBounds(last ? row : row.removeFromLeft(bw));
+        if (!last) row.removeFromLeft(gap);
+    };
+    place(row1, loadButton, false); place(row1, editButton, false); place(row1, irButton, true);
+    place(row2, soloButton, false); place(row2, muteButton, false); place(row2, removeButton, true);
+    r.removeFromBottom(10);
+    fader.setBounds(r.removeFromRight(40).withTrimmedTop(22));
     auto pa = panArea();
     pa.removeFromLeft(34);  // "PAN" label
     pa.removeFromRight(34); // value
@@ -287,7 +312,9 @@ void SlotComponent::paint(juce::Graphics& g)
     g.drawRoundedRectangle(bounds, 3.0f, selected ? 1.5f : 1.0f);
 
     // slot number + state
-    drawLabel(g, juce::String(slot + 1), { 14, 10, 40, 18 }, textFaint);
+    g.setColour(isLoadedState(status.state) ? text : textDim);
+    g.setFont(Fonts::get().semibold(20.0f));
+    g.drawText(juce::String(slot + 1), juce::Rectangle<int>(14, 7, 30, 26), juce::Justification::centredLeft, false);
     juce::String stateText;
     switch (status.state)
     {
@@ -298,7 +325,7 @@ void SlotComponent::paint(juce::Graphics& g)
         case AmpsurdProcessor::SlotState::loaded:  break;
     }
     if (stateText.isNotEmpty())
-        drawLabel(g, stateText, { 40, 10, getWidth() - 40 - 60, 18 }, textDim, juce::Justification::centred);
+        drawLabel(g, stateText, { 40, 11, getWidth() - 40 - 60, 18 }, textDim, juce::Justification::centred);
 
     // percentage = actual share of the blend (mute / solo aware)
     const bool loaded = isLoadedState(status.state);
@@ -306,7 +333,7 @@ void SlotComponent::paint(juce::Graphics& g)
     {
         g.setColour(audible ? text : textFaint);
         g.setFont(Fonts::get().medium(14.0f).withExtraKerningFactor(0.02f));
-        g.drawText(juce::String(juce::roundToInt(effective)) + "%", juce::Rectangle<int>(getWidth() - 14 - 52, 9, 52, 20),
+        g.drawText(juce::String(juce::roundToInt(effective)) + "%", juce::Rectangle<int>(getWidth() - 14 - 52, 10, 52, 20),
                    juce::Justification::centredRight, false);
     }
 
@@ -339,11 +366,32 @@ void SlotComponent::paint(juce::Graphics& g)
         const bool dim = !audible || status.state != AmpsurdProcessor::SlotState::loaded;
         FilenameLayout::draw(g, status.fileName, area, dim ? textFaint : text);
     }
+
+    // the cabinet IR, if any, in one quiet line under the capture name
+    if (irStatus.state != AmpsurdProcessor::IrState::none)
+    {
+        juce::String t;
+        switch (irStatus.state)
+        {
+            case AmpsurdProcessor::IrState::loading: t = "IR: loading..."; break;
+            case AmpsurdProcessor::IrState::missing: t = "IR file missing: " + irStatus.fileName; break;
+            case AmpsurdProcessor::IrState::error:   t = "IR cannot load: " + irStatus.fileName; break;
+            default: t = (irOn ? "+ IR  " : "IR off  ") + irStatus.fileName; break;
+        }
+        g.setColour(irOn && irStatus.state == AmpsurdProcessor::IrState::loaded ? textDim : textFaint);
+        g.setFont(Fonts::get().regular(12.0f));
+        g.drawFittedText(t, irLineArea(), juce::Justification::centred, 1, 0.9f);
+    }
 }
 
-void SlotComponent::refresh(bool isSelected)
+void SlotComponent::refresh(bool isSelected, bool irEditorOpen)
 {
     const auto st = proc.getSlotStatus(slot);
+    const auto ir = proc.getIrStatus(slot);
+    const bool on = proc.isIrOn(slot);
+    const bool irChanged = ir.state != irStatus.state || ir.path != irStatus.path || on != irOn;
+    irStatus = ir;
+    irOn = on;
     const float eff = proc.getEffectivePercent(slot);
     const bool aud = proc.isSlotAudible(slot);
     const bool changed = st.state != status.state || st.path != status.path || std::abs(eff - effective) > 0.05f
@@ -359,14 +407,40 @@ void SlotComponent::refresh(bool isSelected)
     muteButton.setEnabled(loaded);
     fader.setEnabled(loaded && !proc.isFrankensteinOn()); // Frankenstein replaces the fader blend
     panSlider.setEnabled(loaded);
-    editButton.setToggleState(selected, juce::dontSendNotification);
+    editButton.setToggleState(selected && !irEditorOpen, juce::dontSendNotification);
+
+    // IR button: ADD IR / IR (lit = loaded and on) / IR OFF / IR ?
+    juce::String irText = "ADD IR";
+    bool lit = false;
+    switch (ir.state)
+    {
+        case AmpsurdProcessor::IrState::none: break;
+        case AmpsurdProcessor::IrState::loading: irText = "IR..."; break;
+        case AmpsurdProcessor::IrState::loaded: irText = on ? "IR" : "IR OFF"; lit = on; break;
+        case AmpsurdProcessor::IrState::missing:
+        case AmpsurdProcessor::IrState::error: irText = "IR ?"; break;
+    }
+    if (irButton.getButtonText() != irText) irButton.setButtonText(irText);
+    if ((bool) irButton.getProperties().getWithDefault("lit", false) != lit)
+    {
+        irButton.getProperties().set("lit", lit);
+        irButton.repaint();
+    }
+    irButton.setEnabled(st.state != AmpsurdProcessor::SlotState::empty);
+    irButton.setToggleState(irEditorOpen && selected, juce::dontSendNotification); // open = filled, like EDIT
+    removeButton.setEnabled(st.state != AmpsurdProcessor::SlotState::empty);
+    if (removeArmedAt > 0.0 && juce::Time::getMillisecondCounterHiRes() - removeArmedAt > 3000.0)
+    {
+        removeArmedAt = -1.0;
+        removeButton.setButtonText("REMOVE");
+    }
 
     juce::String tip = st.state == AmpsurdProcessor::SlotState::empty ? juce::String("Empty slot") : st.info;
     if (st.state != AmpsurdProcessor::SlotState::empty) tip = st.path + "\n" + st.info.fromFirstOccurrenceOf("\n", false, false);
     if (tip != lastTooltip) { setTooltip(tip); lastTooltip = tip; }
 
     fader.repaint();
-    if (changed) repaint();
+    if (changed || irChanged) repaint();
 }
 
 void SlotComponent::chooseFile()
@@ -397,13 +471,21 @@ void SlotComponent::mouseUp(const juce::MouseEvent& e)
 
 bool SlotComponent::isInterestedInFileDrag(const juce::StringArray& files)
 {
-    return files.size() == 1 && files[0].endsWithIgnoreCase(".nam");
+    if (files.size() != 1) return false;
+    const juce::File f(files[0]);
+    return f.hasFileExtension(".nam")
+        || (f.hasFileExtension(".wav;.aif;.aiff;.flac") && proc.getSlotStatus(slot).state != AmpsurdProcessor::SlotState::empty);
 }
 
 void SlotComponent::filesDropped(const juce::StringArray& files, int, int)
 {
     dragHover = false;
-    if (!files.isEmpty()) proc.loadCapture(slot, juce::File(files[0]));
+    if (!files.isEmpty())
+    {
+        const juce::File f(files[0]);
+        if (f.hasFileExtension(".nam")) proc.loadCapture(slot, f);
+        else proc.loadIr(slot, f); // an audio file dropped on a slot = its cabinet IR
+    }
     repaint();
 }
 
@@ -517,7 +599,7 @@ void EqGraph::paint(juce::Graphics& g)
 
     // Global EQ, shown behind an AMP's EQ for information only (never drawn with points, never
     // hit-tested): what will additionally happen to the complete blend later in the chain.
-    if (slot != AmpsurdProcessor::kGlobalEq && proc.isGlobalEqOn())
+    if (slot < AmpsurdProcessor::kGlobalEq && proc.isGlobalEqOn())
     {
         const auto gb = proc.getEqBands(AmpsurdProcessor::kGlobalEq);
         if (!ampsurd::ParametricEq::isFlat(gb))
@@ -600,7 +682,8 @@ void EqGraph::paint(juce::Graphics& g)
     {
         g.setColour(textDim);
         g.setFont(Fonts::get().regular(12.0f));
-        g.drawText("Drag a point: left/right = frequency, up/down = gain.  Wheel = width (Q) of the nearest point.  Double-click = reset.",
+        g.drawText(r.getWidth() > 760 ? "Drag a point: left/right = frequency, up/down = gain.  Wheel = width (Q) of the nearest point.  Double-click = reset."
+                                      : "Drag: frequency / gain.  Wheel: Q.  Double-click: reset.",
                    r.reduced(10.0f, 6.0f).removeFromTop(16.0f).withTrimmedLeft(30.0f), juce::Justification::centredLeft, false);
     }
     if (!eqOn)
@@ -620,7 +703,7 @@ void EqGraph::refreshIfChanged()
     }
     now.back() = paramValue(proc, AmpsurdProcessor::slotParamId(slot, "eqOn"));
     bool changed = now != lastSeen;
-    if (slot != AmpsurdProcessor::kGlobalEq)
+    if (slot < AmpsurdProcessor::kGlobalEq)
     {
         // the background Global EQ curve can change too (automation, preset)
         std::array<float, 3 * ampsurd::ParametricEq::kNumBands + 1> g {};
@@ -863,6 +946,7 @@ EditPanel::EditPanel(AmpsurdProcessor& p) : proc(p), graph(p), align(p)
         }
     };
     removeButton.onClick = [this] { if (slot >= 0) proc.unloadCapture(slot); };
+    removeButton.setTooltip("Remove the capture (and its IR) from this slot");
     flatButton.setTooltip("Reset all ten bands of this amp's EQ");
     setSlot(-1);
 }
@@ -991,6 +1075,172 @@ void GlobalEqPanel::paint(juce::Graphics& g)
 void GlobalEqPanel::refresh()
 {
     graph.refreshIfChanged();
+}
+
+// =============================================================================================
+// IrPanel
+// =============================================================================================
+IrPanel::IrPanel(AmpsurdProcessor& p) : proc(p), graph(p)
+{
+    addAndMakeVisible(graph);
+    for (auto* b : { &loadButton, &irOnButton, &removeButton, &eqOnButton, &flatButton, &closeButton })
+        addAndMakeVisible(*b);
+    irOnButton.setClickingTogglesState(true);
+    eqOnButton.setClickingTogglesState(true);
+    loadButton.onClick = [this] { chooseFile(); };
+    removeButton.onClick = [this] { if (slot >= 0) proc.removeIr(slot); };
+    closeButton.onClick = [this] { if (onClose) onClose(); };
+    flatButton.onClick = [this] {
+        if (slot < 0) return;
+        const int t = AmpsurdProcessor::irEqTarget(slot);
+        const auto d = ampsurd::ParametricEq::defaultBands();
+        for (int b = 0; b < ampsurd::ParametricEq::kNumBands; ++b)
+        {
+            setParamValue(proc, AmpsurdProcessor::bandParamId(t, b, "gain"), 0.0f);
+            setParamValue(proc, AmpsurdProcessor::bandParamId(t, b, "freq"), d[(size_t) b].freqHz);
+            setParamValue(proc, AmpsurdProcessor::bandParamId(t, b, "q"), d[(size_t) b].q);
+        }
+    };
+    loadButton.setTooltip("Load a cabinet impulse response (WAV, AIFF or FLAC) - or drop the file here");
+    irOnButton.setTooltip("IR ON / bypass (bypassing the IR also bypasses its EQ)");
+    removeButton.setTooltip("Remove the IR from this amp");
+    eqOnButton.setTooltip("Switch this IR's EQ on or off");
+    flatButton.setTooltip("Reset all ten bands of this IR's EQ");
+    closeButton.setTooltip("Close the IR editor and return to the gate and tuner");
+    setSlot(-1);
+}
+
+void IrPanel::setSlot(int s)
+{
+    slot = s;
+    irOnAtt.reset();
+    eqOnAtt.reset();
+    graph.setSlot(s >= 0 ? AmpsurdProcessor::irEqTarget(s) : -1);
+    if (s >= 0)
+    {
+        irOnAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(proc.params, AmpsurdProcessor::slotParamId(s, "irOn"), irOnButton);
+        eqOnAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
+            proc.params, AmpsurdProcessor::slotParamId(AmpsurdProcessor::irEqTarget(s), "eqOn"), eqOnButton);
+    }
+    shown = {};
+    refresh();
+    repaint();
+}
+
+void IrPanel::resized()
+{
+    auto r = getLocalBounds().reduced(16, 12);
+    auto header = r.removeFromTop(26);
+    closeButton.setBounds(header.removeFromRight(72));
+    r.removeFromTop(10);
+    auto left = r.removeFromLeft(r.getWidth() / 2 - 12);
+    r.removeFromLeft(24);
+    // right: IR EQ
+    auto eqHeader = r.removeFromTop(26);
+    flatButton.setBounds(eqHeader.removeFromRight(64));
+    eqHeader.removeFromRight(8);
+    eqOnButton.setBounds(eqHeader.removeFromRight(64));
+    r.removeFromTop(8);
+    graph.setBounds(r);
+    // left: buttons at the bottom
+    auto buttons = left.removeFromBottom(28);
+    const int bw = (buttons.getWidth() - 16) / 3;
+    loadButton.setBounds(buttons.removeFromLeft(bw));
+    buttons.removeFromLeft(8);
+    irOnButton.setBounds(buttons.removeFromLeft(bw));
+    buttons.removeFromLeft(8);
+    removeButton.setBounds(buttons);
+}
+
+void IrPanel::paint(juce::Graphics& g)
+{
+    g.setColour(line);
+    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), 3.0f, 1.0f);
+    if (slot < 0) return;
+    auto r = getLocalBounds().reduced(16, 12);
+    auto header = r.removeFromTop(26);
+    drawLabel(g, "IR  /  AMP " + juce::String(slot + 1), header.removeFromLeft(130), text, juce::Justification::centredLeft, 11.0f);
+    g.setColour(textDim);
+    g.setFont(Fonts::get().regular(12.5f));
+    g.drawText(namName, header.withTrimmedRight(90), juce::Justification::centredLeft, true);
+    r.removeFromTop(10);
+    auto left = r.removeFromLeft(r.getWidth() / 2 - 12);
+    r.removeFromLeft(24);
+
+    // right header
+    const bool irActive = shown.state == AmpsurdProcessor::IrState::loaded && proc.isIrOn(slot);
+    drawLabel(g, "IR EQ", r.removeFromTop(26).withTrimmedRight(150), irActive ? text : textFaint, juce::Justification::centredLeft, 11.0f);
+
+    // left: the IR
+    left.removeFromBottom(28 + 14);
+    drawLabel(g, "CABINET IR", left.removeFromTop(18), textDim);
+    left.removeFromTop(8);
+    using S = AmpsurdProcessor::IrState;
+    if (shown.state == S::none)
+    {
+        g.setColour(textFaint);
+        g.setFont(Fonts::get().regular(13.0f));
+        g.drawFittedText("No IR loaded.\n\nFor captures of an amp WITHOUT its cabinet: load a cabinet impulse response "
+                         "(WAV, AIFF or FLAC), or drop the file here or on the slot.\nFull-rig captures need no IR.",
+                         left, juce::Justification::topLeft, 6);
+        return;
+    }
+    FilenameLayout::draw(g, shown.fileName, left.removeFromTop(64).toFloat(), shown.state == S::loaded && proc.isIrOn(slot) ? text : textFaint);
+    left.removeFromTop(8);
+    juce::String info = shown.info;
+    if (shown.state == S::missing) info = "File not found:\n" + shown.path + "\nLoad it again (or the file it was replaced by).";
+    if (shown.state == S::loaded && !proc.isIrOn(slot)) info = "BYPASSED (IR and IR EQ)\n" + info;
+    g.setColour(textDim);
+    g.setFont(Fonts::get().regular(12.5f));
+    g.drawFittedText(info, left, juce::Justification::topLeft, 6);
+}
+
+void IrPanel::refresh()
+{
+    if (slot < 0) return;
+    const auto st = proc.getIrStatus(slot);
+    const auto nam = proc.getSlotStatus(slot).fileName;
+    const bool on = proc.isIrOn(slot);
+    if (st.state != shown.state || st.path != shown.path || st.info != shown.info || nam != namName
+        || on != (bool) getProperties().getWithDefault("on", true))
+    {
+        shown = st;
+        namName = nam;
+        getProperties().set("on", on);
+        const bool has = st.state != AmpsurdProcessor::IrState::none;
+        loadButton.setButtonText(has ? "REPLACE IR" : "LOAD IR");
+        irOnButton.setEnabled(st.state == AmpsurdProcessor::IrState::loaded);
+        removeButton.setEnabled(has);
+        const bool eqUsable = st.state == AmpsurdProcessor::IrState::loaded && on;
+        eqOnButton.setEnabled(eqUsable);
+        flatButton.setEnabled(st.state == AmpsurdProcessor::IrState::loaded);
+        graph.setAlpha(eqUsable ? 1.0f : 0.45f);
+        repaint();
+    }
+    graph.refreshIfChanged();
+}
+
+void IrPanel::chooseFile()
+{
+    if (slot < 0) return;
+    auto start = juce::File(proc.getIrStatus(slot).path).getParentDirectory();
+    if (!start.isDirectory()) start = juce::File(proc.getSlotStatus(slot).path).getParentDirectory();
+    chooser = std::make_unique<juce::FileChooser>("Load cabinet IR for amp " + juce::String(slot + 1), start, "*.wav;*.aif;*.aiff;*.flac");
+    chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                         [this](const juce::FileChooser& fc) {
+                             const auto f = fc.getResult();
+                             if (f.existsAsFile() && slot >= 0) proc.loadIr(slot, f);
+                         });
+}
+
+bool IrPanel::isInterestedInFileDrag(const juce::StringArray& files)
+{
+    return slot >= 0 && files.size() == 1 && juce::File(files[0]).hasFileExtension(".wav;.aif;.aiff;.flac");
+}
+
+void IrPanel::filesDropped(const juce::StringArray& files, int, int)
+{
+    if (slot >= 0 && !files.isEmpty()) proc.loadIr(slot, juce::File(files[0]));
 }
 
 // ---------------------------------------------------------------------------------------------

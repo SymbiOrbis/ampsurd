@@ -13,11 +13,19 @@
 #include <vector>
 
 #include "ToolUtils.h"
+#include "ampsurd/CaptureAnalyzer.h"
 #include "ampsurd/CaptureModel.h"
 #include "ampsurd/CaptureSlot.h"
 
 int main(int argc, char** argv)
 {
+    // ampsurd_render --test-signal <out.wav> [rate]: writes AMPSURD's measurement test signal
+    if (argc >= 3 && !std::strcmp(argv[1], "--test-signal"))
+    {
+        const double rate = argc >= 4 ? std::atof(argv[3]) : 48000.0;
+        const auto t = ampsurd::CaptureAnalyzer::makeTestSignal(rate);
+        return tools::saveWav(argv[2], std::vector<float>(t.begin(), t.end()), rate) ? 0 : 1;
+    }
     if (argc < 4)
     {
         std::cerr << "Usage: ampsurd_render <model.nam> <input.wav> <output.wav> [--block N] [--normalise]\n";

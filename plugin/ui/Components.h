@@ -18,7 +18,7 @@ namespace ampsurd::ui
 // no hyphens are inserted. If it still does not fit, the last line is truncated with "...".
 struct FilenameLayout
 {
-    static constexpr float kFontSize = 22.0f;
+    static constexpr float kFontSize = 21.0f;
     static constexpr float kLineHeight = 27.0f;
     static constexpr int kMaxLines = 4;
 
@@ -68,8 +68,8 @@ public:
     void fileDragExit(const juce::StringArray&) override { dragHover = false; repaint(); }
     void filesDropped(const juce::StringArray&, int, int) override;
 
-    void refresh(bool isSelected);
-    std::function<void(int)> onEditClicked;
+    void refresh(bool isSelected, bool irEditorOpen = false);
+    std::function<void(int)> onEditClicked, onIrClicked;
 
 private:
     void chooseFile();
@@ -77,12 +77,17 @@ private:
 
     AmpsurdProcessor& proc;
     const int slot;
-    juce::TextButton loadButton { "LOAD NAM" }, editButton { "EDIT" }, soloButton { "SOLO" }, muteButton { "MUTE" };
+    juce::TextButton loadButton { "LOAD NAM" }, editButton { "EDIT" }, irButton { "ADD IR" },
+                     soloButton { "SOLO" }, muteButton { "MUTE" }, removeButton { "REMOVE" };
+    double removeArmedAt = -1.0; // REMOVE needs a second click within 3 s
+    AmpsurdProcessor::IrStatus irStatus;
+    bool irOn = true;
     MixFader fader;
     juce::Slider panSlider;   // per-amp PAN (stereo width)
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> soloAtt, muteAtt;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> panAtt;
     juce::Rectangle<int> panArea() const;
+    juce::Rectangle<int> irLineArea() const;
     juce::String panText;
     std::unique_ptr<juce::FileChooser> chooser;
 
@@ -167,7 +172,7 @@ private:
     int slot = -1;
     EqGraph graph;
     AlignPanel align;
-    juce::TextButton eqOnButton { "EQ ON" }, flatButton { "FLAT" }, removeButton { "REMOVE NAM" }, closeButton { "CLOSE" };
+    juce::TextButton eqOnButton { "EQ ON" }, flatButton { "FLAT" }, removeButton { "REMOVE" }, closeButton { "CLOSE" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> eqOnAtt;
     juce::String title;
 };
@@ -188,6 +193,35 @@ private:
     EqGraph graph;
     juce::TextButton eqOnButton { "EQ ON" }, flatButton { "FLAT" }, closeButton { "CLOSE" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> eqOnAtt;
+};
+
+// IR editor for one slot: left = the cabinet IR (load / replace, IR ON, remove, file info),
+// right = the IR's own 10-band EQ (same EQ as everywhere else, drawn a bit smaller).
+class IrPanel final : public juce::Component, public juce::FileDragAndDropTarget
+{
+public:
+    explicit IrPanel(AmpsurdProcessor&);
+    void setSlot(int s);
+    int getSlot() const { return slot; }
+    void paint(juce::Graphics&) override;
+    void resized() override;
+    void refresh();
+    std::function<void()> onClose;
+
+    bool isInterestedInFileDrag(const juce::StringArray&) override;
+    void filesDropped(const juce::StringArray&, int, int) override;
+
+private:
+    void chooseFile();
+    AmpsurdProcessor& proc;
+    int slot = -1;
+    EqGraph graph;
+    juce::TextButton loadButton { "LOAD IR" }, irOnButton { "IR ON" }, removeButton { "REMOVE IR" },
+                     eqOnButton { "EQ ON" }, flatButton { "FLAT" }, closeButton { "CLOSE" };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> irOnAtt, eqOnAtt;
+    std::unique_ptr<juce::FileChooser> chooser;
+    AmpsurdProcessor::IrStatus shown;
+    juce::String namName;
 };
 
 // Vertical GLOBAL EQ button at the right of the centre area; lit while the Global EQ is on.

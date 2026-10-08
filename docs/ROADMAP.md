@@ -1,6 +1,6 @@
 # AMPSURD — Roadmap (agreed with the owner, 2026-10-07)
 
-Order (owner, 2026-10-07/08): 1 gate + tuner → 2 Frankenstein → 2b Global EQ → 3 per-amp pan → 4 release package.
+Order (owner, 2026-10-07/08): 1 gate + tuner → 2 Frankenstein → 2b Global EQ → 3 per-amp pan → 3b cabinet IRs → 4 release package.
 Each step is tested in REAPER before the next starts.
 
 ## 1. Noise gate + chromatic tuner (centre area) — IMPLEMENTED 2026-10-07, awaiting REAPER test
@@ -37,6 +37,11 @@ lit and reading "ON" while active. Subdued, non-editable Global EQ curve behind 
 - One PAN control per slot (centre by default), constant-power pan law, stereo output.
 - Amps stay mono (no extra CPU). No stereo input processing.
 - Centre = exactly as before; loudness compensation counts both channels; limiter stereo-linked.
+
+## 3b. Cabinet IR per slot + IR EQ + slot redesign — IMPLEMENTED 2026-10-08, awaiting REAPER test
+For amp-only captures. Capture → IR → IR EQ (same 10 bands, only while the IR is on) → amp EQ →
+alignment → blend. Level match / alignment measured including the IR. IR editor = fourth view of
+the lower panel. Slots shorter, six buttons (REMOVE = whole slot, click twice). IR path in presets.
 
 ## 4. Public release package
 - Code signing (SignPath Foundation, free for OSI-licensed open source) so Windows Smart App Control

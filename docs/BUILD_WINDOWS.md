@@ -113,6 +113,12 @@ REAPER picks up the new version.
     (drag; double-click = centre). Does the sound get wide, and does the loudness stay about the
     same? Centred, everything should sound exactly as before. Also try PAN with Frankenstein on.
 
+15. Cabinet IR: load an amp-only capture (no cabinet), click **ADD IR** under it and load a cab IR
+    (WAV) - or drop the WAV onto the slot. The button lights up ("IR") and the IR name appears under
+    the capture name. Is the level about the same as your full-rig captures? Switch **IR ON** off
+    and on, REPLACE the IR and REMOVE it while playing: any click? Shape it with the IR EQ on the
+    right. Save a preset, reload it: IR and IR EQ back? REMOVE in a slot needs two clicks.
+
 Expected latency shown by REAPER: 104 samples at 48 kHz, 123 at 44.1 kHz.
 
 Optional measurements (in Developer PowerShell):

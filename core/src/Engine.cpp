@@ -27,6 +27,8 @@ void Engine::prepare(double sr, int maxBlockSize, double maxDelayMs)
     for (int i = 0; i < kNumSlots; ++i)
     {
         slots[(size_t) i].prepare(sr, maxBlock);
+        irSlots[(size_t) i].prepare(sr, maxBlock);
+        irEqs[(size_t) i].prepare(sr);
         aligners[(size_t) i].prepare(sr, maxDelay);
         eqs[(size_t) i].prepare(sr);
         gains[(size_t) i] = 0.0;
@@ -192,6 +194,14 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
         const auto& ss = s.slots[(size_t) i];
         double* buf = scratch.data() + (size_t) i * (size_t) stride;
         effectivePercent[(size_t) i].store((float) (100.0 * p[(size_t) i]), std::memory_order_relaxed);
+
+        // cabinet IR and its own EQ (both bypassed together; no CPU without an IR)
+        auto& ir = irSlots[(size_t) i];
+        ir.process(buf, n, ss.irEnabled);
+        const bool irEqActive = ir.hasIr() && ss.irEnabled && ss.irEqEnabled;
+        auto& ieq = irEqs[(size_t) i];
+        ieq.setBands(irEqActive ? ss.irEq : ParametricEq::neutralised(ss.irEq));
+        ieq.process(buf, n);
 
         auto& al = aligners[(size_t) i];
         al.setTargets(ss.delaySamples, ss.polarity, ss.phaseRadians, rotationMix);

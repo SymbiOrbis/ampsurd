@@ -24,3 +24,6 @@ target_link_libraries(gate_tuner_test PRIVATE ampsurd_core)
 
 add_executable(frankenstein_test frankenstein_test.cpp)
 target_link_libraries(frankenstein_test PRIVATE ampsurd_core)
+
+add_executable(ir_test ir_test.cpp)
+target_link_libraries(ir_test PRIVATE ampsurd_core)

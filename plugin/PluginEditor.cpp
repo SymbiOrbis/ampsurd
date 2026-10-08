@@ -2,7 +2,7 @@
 
 using namespace ampsurd::ui;
 
-AmpsurdEditor::Content::Content(AmpsurdProcessor& p) : header(p), edit(p), centre(p), frankenstein(p), globalEq(p), globalEqButton(p), master(p)
+AmpsurdEditor::Content::Content(AmpsurdProcessor& p) : header(p), edit(p), ir(p), centre(p), frankenstein(p), globalEq(p), globalEqButton(p), master(p)
 {
     addAndMakeVisible(header);
     for (int s = 0; s < AmpsurdProcessor::kNumSlots; ++s)
@@ -11,6 +11,7 @@ AmpsurdEditor::Content::Content(AmpsurdProcessor& p) : header(p), edit(p), centr
         addAndMakeVisible(*slots[(size_t) s]);
     }
     addChildComponent(edit);   // EDIT replaces the gate + tuner in the centre area
+    addChildComponent(ir);     // so does the IR editor
     addAndMakeVisible(centre);
     addChildComponent(frankenstein); // replaces the gate + tuner while Create Frankenstein is on
     addChildComponent(globalEq);     // replaces them while the Global EQ is open
@@ -31,7 +32,7 @@ void AmpsurdEditor::Content::resized()
     footer.setBounds(r.removeFromBottom(40));
     r = r.reduced(24, 0);
     r.removeFromTop(8);
-    auto slotRow = r.removeFromTop(340);
+    auto slotRow = r.removeFromTop(300);
     const int gap = 12;
     const int w = (slotRow.getWidth() - gap * (AmpsurdProcessor::kNumSlots - 1)) / AmpsurdProcessor::kNumSlots;
     for (int s = 0; s < AmpsurdProcessor::kNumSlots; ++s)
@@ -44,6 +45,7 @@ void AmpsurdEditor::Content::resized()
     master.setBounds(r.removeFromBottom(52));
     r.removeFromBottom(14);
     edit.setBounds(r);
+    ir.setBounds(r);
     globalEq.setBounds(r);
     auto withButton = r;
     globalEqButton.setBounds(withButton.removeFromRight(40));
@@ -58,8 +60,14 @@ AmpsurdEditor::AmpsurdEditor(AmpsurdProcessor& p) : AudioProcessorEditor(&p), pr
     content.setLookAndFeel(&lnf);
     addAndMakeVisible(content);
     for (int s = 0; s < AmpsurdProcessor::kNumSlots; ++s)
-        content.slots[(size_t) s]->onEditClicked = [this](int slot) { selectSlot(selected == slot ? -1 : slot); };
+    {
+        content.slots[(size_t) s]->onEditClicked = [this](int slot) {
+            selectSlot(selected == slot && content.ir.getSlot() < 0 ? -1 : slot);
+        };
+        content.slots[(size_t) s]->onIrClicked = [this](int slot) { showIr(content.ir.getSlot() == slot ? -1 : slot); };
+    }
     content.edit.onClose = [this] { selectSlot(-1); };
+    content.ir.onClose = [this] { showIr(-1); };
     content.globalEq.onClose = [this] { showGlobalEq(false); };
     content.globalEqButton.onClick = [this] { showGlobalEq(true); };
 
@@ -93,33 +101,58 @@ void AmpsurdEditor::resized()
     content.setTransform(juce::AffineTransform::scale(scale));
 }
 
+// The lower panel shows one view at a time: amp EDIT, IR editor, Global EQ, or (default) the gate +
+// tuner / Frankenstein. Opening one closes the others.
 void AmpsurdEditor::showGlobalEq(bool show)
 {
     globalEqOpen = show;
-    if (show) { selected = -1; content.edit.setSlot(-1); }
+    if (show)
+    {
+        selected = -1;
+        content.edit.setSlot(-1);
+        content.ir.setSlot(-1);
+    }
     timerCallback();
 }
 
 void AmpsurdEditor::selectSlot(int slot)
 {
     selected = slot;
-    if (slot >= 0) globalEqOpen = false;
+    if (slot >= 0)
+    {
+        globalEqOpen = false;
+        content.ir.setSlot(-1);
+    }
     content.edit.setSlot(slot);
+    timerCallback();
+}
+
+void AmpsurdEditor::showIr(int slot)
+{
+    content.edit.setSlot(-1);
+    globalEqOpen = false;
+    selected = slot;
+    content.ir.setSlot(slot);
     timerCallback();
 }
 
 void AmpsurdEditor::timerCallback()
 {
-    if (selected >= 0 && content.edit.getSlot() < 0)
+    if (content.ir.getSlot() >= 0 && proc.getSlotStatus(content.ir.getSlot()).state == AmpsurdProcessor::SlotState::empty)
+        content.ir.setSlot(-1); // the slot was emptied
+    if (selected >= 0 && content.edit.getSlot() < 0 && content.ir.getSlot() < 0)
         selected = -1; // the edited capture was removed
+    const bool irOpen = content.ir.getSlot() >= 0;
     for (int s = 0; s < AmpsurdProcessor::kNumSlots; ++s)
-        content.slots[(size_t) s]->refresh(s == selected);
+        content.slots[(size_t) s]->refresh(s == selected, irOpen);
     content.edit.refresh();
-    const bool editing = content.edit.getSlot() >= 0;
+    content.ir.setVisible(irOpen);
+    if (irOpen) content.ir.refresh();
+    const bool editing = content.edit.getSlot() >= 0 || irOpen;
     const bool global = !editing && globalEqOpen;
     const bool frank = !editing && !global && proc.isFrankensteinOn();
     const bool centre = !editing && !global && !frank;
-    content.edit.setVisible(editing);
+    content.edit.setVisible(content.edit.getSlot() >= 0);
     content.globalEq.setVisible(global);
     content.frankenstein.setVisible(frank);
     content.centre.setVisible(centre);

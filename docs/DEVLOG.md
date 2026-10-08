@@ -6,6 +6,40 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-08 — Session 2g: cabinet IR per slot, IR EQ, slot redesign — Claude (Opus 5.5)
+
+- Owner's decisions (2026-10-08): IR per slot for amp-only captures; IR EQ = the same 10-band EQ
+  (low cut, 8 bells, high cut), only for that IR, saved with presets; REMOVE empties the whole slot
+  (NAM + IR), click twice, also kept in EDIT; square-ish slots, bold capture name, bigger numbers,
+  six buttons; IR editor as a fourth view of the lower panel; muted slots keep running.
+- core: `Convolver` — zero-latency non-uniformly partitioned convolution (64-tap direct head,
+  64-sample FFT partitions up to 4096, 2048-sample partitions beyond with all work - FFT passes,
+  products, inverse FFT passes - spread evenly over the following block). `prepareImpulseResponse`
+  (leading silence trimmed, Kaiser-sinc resampling to the session rate, max 1 s with fade-out, unit
+  energy). `IrSlot` (lock-free hand-over like CaptureSlot; new / re-enabled IRs warm up silently for
+  up to 2048 samples, then 20 ms crossfade; bypassed or without IR the convolver does not run).
+  Engine: capture → IR → IR EQ → alignment → EQ → … (IR EQ neutralised unless IR loaded and on).
+- plugin: per slot `s1_irOn`, `s1_ir_eqOn`, `s1_ir_b1..10_freq/gain/q` (401 parameters). IR loaded on
+  the loader thread (WAV/AIFF/FLAC, first channel), info string; `irPath` stored per slot in presets
+  (sibling lookup, missing-file state). Measurement now = capture + IR; capture renders are cached
+  so an IR change / bypass re-measures that slot in a fraction of a second. Sample-rate change
+  rebuilds the IRs. REMOVE (unloadCapture) also removes the IR.
+- UI: slots 300 px (was 340; lower panel taller): number 20 px semibold, bold capture name, quiet
+  "+ IR name" line, PAN row, buttons LOAD NAM | EDIT | ADD IR / SOLO | MUTE | REMOVE. IR button:
+  ADD IR / IR (lit) / IR OFF / IR ?; filled while the IR editor is open. Audio files dropped on a
+  slot load as its IR. IR editor: left = IR name, file info, LOAD/REPLACE IR, IR ON, REMOVE IR
+  (drop target); right = IR EQ (EQ ON / FLAT), dimmed while there is no active IR.
+- Tested: `ir_test` (new, in CI) — convolver = direct convolution for 1..48000-sample IRs with
+  random blocks (error 1e-14), zero latency, 1 s IR ≈ 2 % of a core with no block typically above
+  ~4 % of its time; resampled IR keeps its response within 0.04 dB; slot: no IR / bypassed =
+  bit-identical and idle, IR on = exact convolution, load / replace / bypass / remove while playing
+  click-free. `engine_test`: slot = capture through its IR (6e-16), IR EQ after the IR exact, IR EQ
+  without IR and bypassed IR bit-identical. VST3: level match with IR -17.84 vs -17.93 dB without
+  (target -18; without level match this IR would be +5.8 dB). Presets 401/401 + 5/5 IRs; older
+  presets load without IR. Regression unchanged (bit-identical, -1.00 dBFS, bypass identical).
+
+---
+
 ## 2026-10-08 — Session 2f: per-amp PAN (stereo output) — Claude (Opus 5.5)
 
 - Engine: stereo output. PAN per amp, constant power with the centre at exactly 0 dB on both sides
