@@ -179,10 +179,56 @@ private:
 
 // ---------------------------------------------------------------------------------------------
 // Global EQ: same EQ as the amps, applied to the complete blend. Replaces the gate + tuner while open.
+// Effects after the gate: selector (DELAY 1 / DELAY 2 / REVERB / FLANGER, lit while on) and the
+// controls of the selected effect. Every value can be typed (click it).
+class FxSection final : public juce::Component
+{
+public:
+    explicit FxSection(AmpsurdProcessor&);
+    void paint(juce::Graphics&) override;
+    void resized() override;
+    void refresh();
+    void select(int which);
+    int getSelected() const { return selected; }
+
+private:
+    struct Row
+    {
+        juce::String label;
+        std::unique_ptr<juce::Slider> slider;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> att;
+    };
+    Row makeRow(const juce::String& label, const juce::String& paramId);
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> attachButton(juce::Button&, const juce::String& id);
+    void tap();
+
+    AmpsurdProcessor& proc;
+    int selected = 0;
+    std::array<juce::TextButton, 4> selector;
+    // delay 1 / 2
+    std::array<juce::TextButton, 2> dOn, dSync, dPing;
+    std::array<juce::ComboBox, 2> dNote;
+    std::array<std::array<Row, 4>, 2> dRows;   // TIME, FEEDBACK, LEVEL, TONE
+    Row tempoRow;
+    juce::TextButton tapButton { "TAP" };
+    std::vector<double> taps;
+    // reverb
+    juce::TextButton rOn { "ON" };
+    std::array<juce::TextButton, 5> rType;
+    std::array<Row, 4> rRows;                   // DECAY, PRE-DELAY, TONE, LEVEL
+    // flanger
+    juce::TextButton fOn { "ON" };
+    std::array<Row, 4> fRows;                   // RATE, DEPTH, FEEDBACK, MIX
+    std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>> buttonAtts;
+    std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>, 2> noteAtts;
+    juce::String syncInfo;
+};
+
 class GlobalEqPanel final : public juce::Component
 {
 public:
     explicit GlobalEqPanel(AmpsurdProcessor&);
+    void selectFx(int which) { fx.select(which); }
     void paint(juce::Graphics&) override;
     void resized() override;
     void refresh();
@@ -191,6 +237,7 @@ public:
 private:
     AmpsurdProcessor& proc;
     EqGraph graph;
+    FxSection fx;
     juce::TextButton eqOnButton { "EQ ON" }, flatButton { "FLAT" }, closeButton { "CLOSE" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> eqOnAtt;
 };
@@ -239,6 +286,7 @@ public:
 private:
     AmpsurdProcessor& proc;
     bool shownOn = false, shownFlat = true;
+    juce::String shownFx;
 };
 
 // ---------------------------------------------------------------------------------------------

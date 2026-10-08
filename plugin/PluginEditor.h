@@ -26,6 +26,7 @@ public:
     void selectSlot(int slot);
     void showGlobalEq(bool show);
     void showIr(int slot);   // -1 closes the IR editor
+    void showFxPage(int which) { content.globalEq.selectFx(which); } // tests / screenshots
     void refreshAll() { timerCallback(); }
 
 private:

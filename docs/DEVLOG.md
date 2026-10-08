@@ -6,6 +6,37 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-08 — Session 2h: effects (2 delays, reverb, flanger) — Claude (Opus 5.5)
+
+- Owner's decisions: two parallel delays with exact times (e.g. 500 and 756 ms), optional SYNC;
+  reverb types Room, Hall, Plate, Cathedral, Ambience (no Spring); flanger; all in presets; panel =
+  Global EQ panel extended. Player / recorder: standalone app only (next), live guitar audible while
+  the recording plays back, one-button BOUNCE (backing + recording become the new backing track).
+- core `Effects`: `Delay` (Hermite-interpolated line, exact time incl. fractions, a time change
+  crossfades old -> new time over 50 ms, repeats filtered (TONE high cut + 80 Hz low cut), MONO/stereo
+  or PING-PONG, spill-over: OFF stops feeding, repeats ring out, then idle). `Reverb` (8-line FDN,
+  Householder matrix, 4 input allpasses per side, modulated lines, in-loop damping, early
+  reflections with separate L/R times, decay gains from RT60, pre-delay changes crossfade, type change
+  ducks 15 ms and fades the guitar back in). `Flanger` (stereo, LFOs 90 deg apart, feedback fades with
+  the effect, line kept filled while off). S-shaped fades everywhere. Order: gate -> flanger -> delays
+  (parallel) -> reverb -> OUTPUT -> limiter.
+- plugin: 28 parameters (429 total) incl. TEMPO (used when the host has no tempo; TAP in the UI);
+  SYNC uses the host tempo in a DAW. Values can be typed (e.g. "756", "7.5k").
+- UI: GLOBAL EQ / FX panel = EQ left, effects right (selector DELAY 1 / DELAY 2 / REVERB / FLANGER, lit
+  while on). Vertical button reads e.g. "EQ / FX   EQ + DLY + REV".
+- Found during testing: linear fade corners and a cold flanger line produced small clicks (up to
+  -77 dBFS above 4 kHz); S-shaped fades, warm line and crossfaded pre-delay brought every change down
+  to the level of steady playing. A test-print bug (argument evaluation order) was fixed too.
+- Tested: `fx_test` (new, in CI): all off bit-identical; delay echoes at exactly sample 24000 / 36288
+  (500 / 756 ms), 756.3 ms between samples; feedback ratio 0.495; ping-pong sides; repeats ring out
+  after OFF, then idle and bit-transparent; RT60 measured within 12 % of DECAY for all five types
+  (1 s and 3 s); stereo correlation -0.00; cathedral 12 s stable; all changes while playing click-free
+  (content above 4 kHz within 3 dB of steady playing); CPU all effects 2.4-4 % of a core. Sanitizers
+  (ASan/UBSan) clean on effects and IR code. VST3 with everything at maximum feedback, OUTPUT +12 dB:
+  -1.00 dBFS. Regression unchanged; presets 429/429.
+
+---
+
 ## 2026-10-08 — Session 2g: cabinet IR per slot, IR EQ, slot redesign — Claude (Opus 5.5)
 
 - Owner's decisions (2026-10-08): IR per slot for amp-only captures; IR EQ = the same 10-band EQ

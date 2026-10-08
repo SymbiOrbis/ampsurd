@@ -1021,11 +1021,256 @@ void EditPanel::refresh()
 }
 
 // =============================================================================================
+// FxSection: delays, reverb, flanger
+// =============================================================================================
+FxSection::Row FxSection::makeRow(const juce::String& label, const juce::String& paramId)
+{
+    Row r;
+    r.label = label;
+    r.slider = std::make_unique<juce::Slider>(juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight);
+    r.slider->setTextBoxStyle(juce::Slider::TextBoxRight, false, 86, 22);
+    r.slider->setTextBoxIsEditable(true); // click the value and type it, e.g. 756
+    r.slider->setTooltip(label + ": drag, or click the value and type it");
+    addChildComponent(*r.slider);
+    r.att = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(proc.params, paramId, *r.slider);
+    return r;
+}
+
+std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> FxSection::attachButton(juce::Button& b, const juce::String& id)
+{
+    b.setClickingTogglesState(true);
+    addChildComponent(b);
+    return std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(proc.params, id, b);
+}
+
+FxSection::FxSection(AmpsurdProcessor& p) : proc(p)
+{
+    const char* names[4] = { "DELAY 1", "DELAY 2", "REVERB", "FLANGER" };
+    for (int i = 0; i < 4; ++i)
+    {
+        selector[(size_t) i].setButtonText(names[i]);
+        selector[(size_t) i].onClick = [this, i] { select(i); };
+        selector[(size_t) i].setTooltip("Show this effect's controls (lit = the effect is on)");
+        addAndMakeVisible(selector[(size_t) i]);
+    }
+    for (int d = 0; d < 2; ++d)
+    {
+        const juce::String id = "fxD" + juce::String(d + 1);
+        dOn[(size_t) d].setButtonText("ON");
+        dSync[(size_t) d].setButtonText("SYNC");
+        dPing[(size_t) d].setButtonText("PING-PONG");
+        buttonAtts.push_back(attachButton(dOn[(size_t) d], id + "On"));
+        buttonAtts.push_back(attachButton(dSync[(size_t) d], id + "Sync"));
+        buttonAtts.push_back(attachButton(dPing[(size_t) d], id + "PingPong"));
+        dSync[(size_t) d].setTooltip("SYNC: delay time as a note value of the tempo");
+        dPing[(size_t) d].setTooltip("PING-PONG: repeats alternate left / right");
+        dNote[(size_t) d].addItemList(AmpsurdProcessor::delayNoteNames(), 1);
+        addChildComponent(dNote[(size_t) d]);
+        noteAtts[(size_t) d] = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(proc.params, id + "Note", dNote[(size_t) d]);
+        dRows[(size_t) d][0] = makeRow("TIME", id + "Time");
+        dRows[(size_t) d][1] = makeRow("FEEDBACK", id + "Feedback");
+        dRows[(size_t) d][2] = makeRow("LEVEL", id + "Level");
+        dRows[(size_t) d][3] = makeRow("TONE", id + "Tone");
+    }
+    tempoRow = makeRow("TEMPO", "tempo");
+    tapButton.onClick = [this] { tap(); };
+    tapButton.setTooltip("Tap the tempo (at least two taps)");
+    addChildComponent(tapButton);
+
+    rOn.setButtonText("ON");
+    buttonAtts.push_back(attachButton(rOn, "fxRevOn"));
+    for (int t = 0; t < ampsurd::kNumReverbTypes; ++t)
+    {
+        rType[(size_t) t].setButtonText(ampsurd::reverbTypeName((ampsurd::ReverbType) t));
+        rType[(size_t) t].onClick = [this, t] {
+            // a type sets its typical decay, pre-delay and tone (all adjustable afterwards)
+            setParamValue(proc, "fxRevType", (float) t);
+            const auto d = ampsurd::reverbTypeDefaults((ampsurd::ReverbType) t);
+            setParamValue(proc, "fxRevDecay", d.decaySeconds);
+            setParamValue(proc, "fxRevPreDelay", d.preDelayMs);
+            setParamValue(proc, "fxRevTone", d.toneHz);
+        };
+        addChildComponent(rType[(size_t) t]);
+    }
+    rRows[0] = makeRow("DECAY", "fxRevDecay");
+    rRows[1] = makeRow("PRE-DELAY", "fxRevPreDelay");
+    rRows[2] = makeRow("TONE", "fxRevTone");
+    rRows[3] = makeRow("LEVEL", "fxRevLevel");
+
+    fOn.setButtonText("ON");
+    buttonAtts.push_back(attachButton(fOn, "fxFlOn"));
+    fRows[0] = makeRow("RATE", "fxFlRate");
+    fRows[1] = makeRow("DEPTH", "fxFlDepth");
+    fRows[2] = makeRow("FEEDBACK", "fxFlFeedback");
+    fRows[3] = makeRow("MIX", "fxFlMix");
+    select(0);
+}
+
+void FxSection::tap()
+{
+    const double now = juce::Time::getMillisecondCounterHiRes();
+    if (!taps.empty() && now - taps.back() > 2000.0) taps.clear();
+    taps.push_back(now);
+    if (taps.size() > 5) taps.erase(taps.begin());
+    if (taps.size() >= 2)
+    {
+        const double avg = (taps.back() - taps.front()) / (double) (taps.size() - 1);
+        setParamValue(proc, "tempo", (float) juce::jlimit(40.0, 240.0, 60000.0 / avg));
+    }
+}
+
+void FxSection::select(int which)
+{
+    selected = which;
+    for (int i = 0; i < 4; ++i) selector[(size_t) i].setToggleState(i == which, juce::dontSendNotification);
+    for (int d = 0; d < 2; ++d)
+    {
+        const bool v = which == d;
+        for (juce::Component* c : { (juce::Component*) &dOn[(size_t) d], (juce::Component*) &dSync[(size_t) d],
+                                    (juce::Component*) &dPing[(size_t) d], (juce::Component*) &dNote[(size_t) d] })
+            c->setVisible(v);
+        for (auto& r : dRows[(size_t) d]) r.slider->setVisible(v);
+    }
+    tempoRow.slider->setVisible(which < 2);
+    tapButton.setVisible(which < 2);
+    rOn.setVisible(which == 2);
+    for (auto& b : rType) b.setVisible(which == 2);
+    for (auto& r : rRows) r.slider->setVisible(which == 2);
+    fOn.setVisible(which == 3);
+    for (auto& r : fRows) r.slider->setVisible(which == 3);
+    resized();
+    refresh();
+    repaint();
+}
+
+void FxSection::resized()
+{
+    auto r = getLocalBounds();
+    auto sel = r.removeFromTop(26);
+    const int sw = (sel.getWidth() - 3 * 6) / 4;
+    for (int i = 0; i < 4; ++i)
+    {
+        selector[(size_t) i].setBounds(i == 3 ? sel : sel.removeFromLeft(sw));
+        if (i < 3) sel.removeFromLeft(6);
+    }
+    r.removeFromTop(10);
+    auto ctl = r.removeFromTop(26);
+    r.removeFromTop(8);
+    auto placeRows = [&](auto& rows, juce::Rectangle<int> area) {
+        for (auto& row : rows)
+        {
+            auto line = area.removeFromTop(24);
+            area.removeFromTop(6);
+            row.slider->setBounds(line.withTrimmedLeft(84));
+        }
+    };
+    if (selected < 2)
+    {
+        const int d = selected;
+        auto c = ctl;
+        dOn[(size_t) d].setBounds(c.removeFromLeft(56));
+        c.removeFromLeft(8);
+        dPing[(size_t) d].setBounds(c.removeFromLeft(96));
+        c.removeFromLeft(8);
+        dSync[(size_t) d].setBounds(c.removeFromLeft(60));
+        c.removeFromLeft(8);
+        dNote[(size_t) d].setBounds(c.removeFromLeft(118));
+        placeRows(dRows[(size_t) d], r);
+        auto t = r.withTrimmedTop(4 * 30).removeFromTop(24);
+        tapButton.setBounds(t.removeFromRight(48));
+        t.removeFromRight(8);
+        tempoRow.slider->setBounds(t.withTrimmedLeft(84));
+    }
+    else if (selected == 2)
+    {
+        auto c = ctl;
+        rOn.setBounds(c.removeFromLeft(56));
+        c.removeFromLeft(8);
+        const int bw = (c.getWidth() - 4 * 4) / 5;
+        for (int t = 0; t < 5; ++t)
+        {
+            rType[(size_t) t].setBounds(t == 4 ? c : c.removeFromLeft(bw));
+            if (t < 4) c.removeFromLeft(4);
+        }
+        placeRows(rRows, r);
+    }
+    else
+    {
+        fOn.setBounds(ctl.removeFromLeft(56));
+        placeRows(fRows, r);
+    }
+}
+
+void FxSection::paint(juce::Graphics& g)
+{
+    auto drawRowLabels = [&](auto& rows, bool enabled) {
+        for (auto& row : rows)
+            if (row.slider->isVisible())
+                drawLabel(g, row.label, { 0, row.slider->getY(), 82, row.slider->getHeight() }, enabled ? textDim : textFaint);
+    };
+    if (selected < 2)
+    {
+        const bool on = proc.isFxActive(selected);
+        drawRowLabels(dRows[(size_t) selected], on);
+        drawLabel(g, "TEMPO", { 0, tempoRow.slider->getY(), 82, 24 }, textDim);
+        if (syncInfo.isNotEmpty())
+        {
+            g.setColour(textDim);
+            g.setFont(Fonts::get().regular(12.0f));
+            g.drawText(syncInfo, dNote[(size_t) selected].getBounds().withX(dNote[(size_t) selected].getRight() + 8).withRight(getWidth()),
+                       juce::Justification::centredLeft, true);
+        }
+    }
+    else if (selected == 2) drawRowLabels(rRows, proc.isFxActive(2));
+    else drawRowLabels(fRows, proc.isFxActive(3));
+}
+
+void FxSection::refresh()
+{
+    for (int i = 0; i < 4; ++i)
+    {
+        const bool on = proc.isFxActive(i);
+        if ((bool) selector[(size_t) i].getProperties().getWithDefault("lit", false) != on)
+        {
+            selector[(size_t) i].getProperties().set("lit", on);
+            selector[(size_t) i].repaint();
+            repaint();
+        }
+    }
+    if (selected < 2)
+    {
+        const int d = selected;
+        const bool sync = paramValue(proc, "fxD" + juce::String(d + 1) + "Sync") > 0.5f;
+        dRows[(size_t) d][0].slider->setEnabled(!sync);
+        dNote[(size_t) d].setEnabled(sync);
+        const bool host = proc.hostProvidesTempo();
+        tempoRow.slider->setEnabled(!host);
+        tapButton.setEnabled(!host);
+        juce::String info;
+        if (sync)
+        {
+            const double ms = 60000.0 / proc.getTempoBpm()
+                            * AmpsurdProcessor::delayNoteBeats((int) paramValue(proc, "fxD" + juce::String(d + 1) + "Note"));
+            info = "= " + juce::String(ms, 1) + " ms" + (host ? "  (host tempo " + juce::String(proc.getTempoBpm(), 1) + ")" : juce::String());
+        }
+        else if (host)
+            info = "host tempo " + juce::String(proc.getTempoBpm(), 1) + " BPM";
+        if (info != syncInfo) { syncInfo = info; repaint(); }
+    }
+    else if (selected == 2)
+    {
+        const int type = (int) paramValue(proc, "fxRevType");
+        for (int t = 0; t < 5; ++t) rType[(size_t) t].setToggleState(t == type, juce::dontSendNotification);
+    }
+}
+
+// =============================================================================================
 // GlobalEqPanel: the same EQ as the amps, on the complete blend; no alignment.
 // =============================================================================================
-GlobalEqPanel::GlobalEqPanel(AmpsurdProcessor& p) : proc(p), graph(p)
+GlobalEqPanel::GlobalEqPanel(AmpsurdProcessor& p) : proc(p), graph(p), fx(p)
 {
     addAndMakeVisible(graph);
+    addAndMakeVisible(fx);
     graph.setSlot(AmpsurdProcessor::kGlobalEq);
     for (auto* b : { &eqOnButton, &flatButton, &closeButton })
         addAndMakeVisible(*b);
@@ -1052,29 +1297,37 @@ void GlobalEqPanel::resized()
     auto r = getLocalBounds().reduced(16, 12);
     auto header = r.removeFromTop(26);
     closeButton.setBounds(header.removeFromRight(72));
-    header.removeFromRight(8);
-    flatButton.setBounds(header.removeFromRight(64));
-    header.removeFromRight(8);
-    eqOnButton.setBounds(header.removeFromRight(64));
     r.removeFromTop(10);
-    graph.setBounds(r);
+    auto left = r.removeFromLeft((int) (r.getWidth() * 0.54f));
+    r.removeFromLeft(24);
+    fx.setBounds(r);
+    auto eqHeader = left.removeFromTop(26);
+    flatButton.setBounds(eqHeader.removeFromRight(64));
+    eqHeader.removeFromRight(8);
+    eqOnButton.setBounds(eqHeader.removeFromRight(64));
+    left.removeFromTop(8);
+    graph.setBounds(left);
 }
 
 void GlobalEqPanel::paint(juce::Graphics& g)
 {
     g.setColour(line);
     g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), 3.0f, 1.0f);
-    auto header = getLocalBounds().reduced(16, 12).removeFromTop(26);
-    drawLabel(g, "GLOBAL EQ", header.removeFromLeft(110), text, juce::Justification::centredLeft, 11.0f);
+    auto r = getLocalBounds().reduced(16, 12);
+    auto header = r.removeFromTop(26);
+    drawLabel(g, "GLOBAL EQ / FX", header.removeFromLeft(140), text, juce::Justification::centredLeft, 11.0f);
     g.setColour(textDim);
     g.setFont(Fonts::get().regular(12.5f));
-    g.drawText("Shapes the complete sound: after the blend / Frankenstein, before OUTPUT and the limiter",
-               header.withTrimmedRight(240), juce::Justification::centredLeft, true);
+    g.drawText("For the complete sound:  blend  >  EQ  >  gate  >  flanger  >  delays  >  reverb  >  OUTPUT",
+               header.withTrimmedRight(90), juce::Justification::centredLeft, true);
+    r.removeFromTop(10);
+    drawLabel(g, "EQ", r.removeFromTop(26).removeFromLeft(60), proc.isGlobalEqOn() ? text : textFaint);
 }
 
 void GlobalEqPanel::refresh()
 {
     graph.refreshIfChanged();
+    fx.refresh();
 }
 
 // =============================================================================================
@@ -1247,14 +1500,21 @@ void IrPanel::filesDropped(const juce::StringArray& files, int, int)
 GlobalEqButton::GlobalEqButton(AmpsurdProcessor& p) : proc(p)
 {
     setMouseCursor(juce::MouseCursor::PointingHandCursor);
-    setTooltip("Open the Global EQ (final tone shaping of the complete sound)");
+    setTooltip("Open the Global EQ and the effects (delays, reverb, flanger) for the complete sound");
 }
 
 void GlobalEqButton::refresh()
 {
-    const bool on = proc.isGlobalEqOn();
+    const bool eq = proc.isGlobalEqOn();
     const bool flat = ampsurd::ParametricEq::isFlat(proc.getEqBands(AmpsurdProcessor::kGlobalEq));
-    if (on != shownOn || flat != shownFlat) { shownOn = on; shownFlat = flat; repaint(); }
+    juce::StringArray parts;
+    if (eq) parts.add(flat ? "EQ (FLAT)" : "EQ");
+    if (proc.isFxActive(3)) parts.add("FLG");
+    if (proc.isFxActive(0) || proc.isFxActive(1)) parts.add("DLY");
+    if (proc.isFxActive(2)) parts.add("REV");
+    const auto fxText = parts.joinIntoString(" + ");
+    const bool on = !parts.isEmpty();
+    if (on != shownOn || flat != shownFlat || fxText != shownFx) { shownOn = on; shownFlat = flat; shownFx = fxText; repaint(); }
 }
 
 void GlobalEqButton::paint(juce::Graphics& g)
@@ -1284,7 +1544,7 @@ void GlobalEqButton::paint(juce::Graphics& g)
     else g.drawEllipse(cx - 4.0f, r.getY() + 12.0f, 8.0f, 8.0f, 1.2f);
 
     // vertical text, reading bottom to top
-    const juce::String label = juce::String("GLOBAL EQ   ") + (shownOn ? (shownFlat ? "ON (FLAT)" : "ON") : "OFF");
+    const juce::String label = juce::String("EQ / FX   ") + (shownOn ? shownFx : juce::String("OFF"));
     const auto area = r.withTrimmedTop(28.0f).reduced(0.0f, 8.0f);
     juce::Graphics::ScopedSaveState ss(g);
     g.addTransform(juce::AffineTransform::rotation(-juce::MathConstants<float>::halfPi, area.getCentreX(), area.getCentreY()));

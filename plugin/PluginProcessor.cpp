@@ -76,6 +76,34 @@ std::array<ampsurd::EqBand, ampsurd::ParametricEq::kNumBands> AmpsurdProcessor::
     return b;
 }
 
+juce::StringArray AmpsurdProcessor::delayNoteNames()
+{
+    return { "1/1", "1/2", "1/2 dotted", "1/2 triplet", "1/4", "1/4 dotted", "1/4 triplet",
+             "1/8", "1/8 dotted", "1/8 triplet", "1/16", "1/16 dotted", "1/16 triplet" };
+}
+
+double AmpsurdProcessor::delayNoteBeats(int i)
+{
+    static constexpr double beats[] = { 4.0, 2.0, 3.0, 4.0 / 3.0, 1.0, 1.5, 2.0 / 3.0, 0.5, 0.75, 1.0 / 3.0, 0.25, 0.375, 1.0 / 6.0 };
+    return beats[juce::jlimit(0, 12, i)];
+}
+
+namespace
+{
+// parameter text with units; typed values may include the unit ("756 ms", "7.5k")
+juce::AudioParameterFloatAttributes unitAttr(const juce::String& unit, int decimals)
+{
+    return juce::AudioParameterFloatAttributes()
+        .withLabel(unit)
+        .withStringFromValueFunction([unit, decimals](float v, int) { return juce::String(v, decimals) + " " + unit; })
+        .withValueFromStringFunction([](const juce::String& t) {
+            auto x = t.trim().toLowerCase();
+            const bool k = x.containsChar('k') && !x.contains("ms");
+            return (float) (x.getDoubleValue() * (k ? 1000.0 : 1.0));
+        });
+}
+} // namespace
+
 // The ten EQ bands (same ranges for every amp and for the Global EQ).
 static void addEqBandParams(juce::AudioProcessorParameterGroup& group, int target, const juce::String& namePrefix)
 {
@@ -186,6 +214,62 @@ juce::AudioProcessorValueTreeState::ParameterLayout AmpsurdProcessor::createLayo
         addEqBandParams(*group, kGlobalEq, "Global ");
         layout.add(std::move(group));
     }
+
+    // Effects after the gate: two delays, reverb, flanger (+ tempo for SYNC without a host tempo)
+    {
+        auto group = std::make_unique<AudioProcessorParameterGroup>("fx", "Effects", " | ");
+        auto pct = [](float v, int) { return juce::String(juce::roundToInt(v)) + " %"; };
+        auto pctAttr = AudioParameterFloatAttributes().withLabel("%").withStringFromValueFunction(pct);
+        for (int d = 0; d < 2; ++d)
+        {
+            const String id = "fxD" + String(d + 1), nm = "Delay " + String(d + 1) + " ";
+            group->addChild(std::make_unique<AudioParameterBool>(ParameterID { id + "On", 1 }, nm + "On", false));
+            group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { id + "Time", 1 }, nm + "Time",
+                                                                  NormalisableRange<float>(1.0f, 2000.0f, 0.1f, 0.5f), d == 0 ? 500.0f : 750.0f, unitAttr("ms", 1)));
+            group->addChild(std::make_unique<AudioParameterBool>(ParameterID { id + "Sync", 1 }, nm + "Sync", false));
+            group->addChild(std::make_unique<AudioParameterChoice>(ParameterID { id + "Note", 1 }, nm + "Note", delayNoteNames(), d == 0 ? 4 : 5));
+            group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { id + "Feedback", 1 }, nm + "Feedback",
+                                                                  NormalisableRange<float>(0.0f, 95.0f, 0.1f), 30.0f, pctAttr));
+            group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { id + "Level", 1 }, nm + "Level",
+                                                                  NormalisableRange<float>(0.0f, 100.0f, 0.1f), 30.0f, pctAttr));
+            NormalisableRange<float> tr(500.0f, 20000.0f, 1.0f);
+            tr.setSkewForCentre(4000.0f);
+            group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { id + "Tone", 1 }, nm + "Tone", tr, 6000.0f, unitAttr("Hz", 0)));
+            group->addChild(std::make_unique<AudioParameterBool>(ParameterID { id + "PingPong", 1 }, nm + "Ping-Pong", false));
+        }
+        group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { "tempo", 1 }, "Tempo",
+                                                              NormalisableRange<float>(40.0f, 240.0f, 0.1f), 120.0f, unitAttr("BPM", 1)));
+        group->addChild(std::make_unique<AudioParameterBool>(ParameterID { "fxRevOn", 1 }, "Reverb On", false));
+        group->addChild(std::make_unique<AudioParameterChoice>(ParameterID { "fxRevType", 1 }, "Reverb Type",
+                                                               StringArray { "Room", "Hall", "Plate", "Cathedral", "Ambience" }, 1));
+        {
+            NormalisableRange<float> dr(0.2f, 12.0f, 0.01f);
+            dr.setSkewForCentre(2.0f);
+            group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { "fxRevDecay", 1 }, "Reverb Decay", dr, 2.2f, unitAttr("s", 2)));
+        }
+        group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { "fxRevPreDelay", 1 }, "Reverb Pre-Delay",
+                                                              NormalisableRange<float>(0.0f, 250.0f, 0.1f), 20.0f, unitAttr("ms", 1)));
+        {
+            NormalisableRange<float> tr(500.0f, 20000.0f, 1.0f);
+            tr.setSkewForCentre(4000.0f);
+            group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { "fxRevTone", 1 }, "Reverb Tone", tr, 7000.0f, unitAttr("Hz", 0)));
+        }
+        group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { "fxRevLevel", 1 }, "Reverb Level",
+                                                              NormalisableRange<float>(0.0f, 100.0f, 0.1f), 25.0f, pctAttr));
+        group->addChild(std::make_unique<AudioParameterBool>(ParameterID { "fxFlOn", 1 }, "Flanger On", false));
+        {
+            NormalisableRange<float> rr(0.05f, 5.0f, 0.01f);
+            rr.setSkewForCentre(0.5f);
+            group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { "fxFlRate", 1 }, "Flanger Rate", rr, 0.25f, unitAttr("Hz", 2)));
+        }
+        group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { "fxFlDepth", 1 }, "Flanger Depth",
+                                                              NormalisableRange<float>(0.0f, 100.0f, 0.1f), 70.0f, pctAttr));
+        group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { "fxFlFeedback", 1 }, "Flanger Feedback",
+                                                              NormalisableRange<float>(-90.0f, 90.0f, 0.1f), 50.0f, pctAttr));
+        group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { "fxFlMix", 1 }, "Flanger Mix",
+                                                              NormalisableRange<float>(0.0f, 100.0f, 0.1f), 50.0f, pctAttr));
+        layout.add(std::move(group));
+    }
     return layout;
 }
 
@@ -238,6 +322,32 @@ AmpsurdProcessor::AmpsurdProcessor()
             sp.q[(size_t) b] = params.getRawParameterValue(bandParamId(s, b, "q"));
         }
     }
+
+    for (int d = 0; d < 2; ++d)
+    {
+        const juce::String id = "fxD" + juce::String(d + 1);
+        auto& dp = delayParams[(size_t) d];
+        dp.on = params.getRawParameterValue(id + "On");
+        dp.time = params.getRawParameterValue(id + "Time");
+        dp.sync = params.getRawParameterValue(id + "Sync");
+        dp.note = params.getRawParameterValue(id + "Note");
+        dp.feedback = params.getRawParameterValue(id + "Feedback");
+        dp.level = params.getRawParameterValue(id + "Level");
+        dp.tone = params.getRawParameterValue(id + "Tone");
+        dp.pingPong = params.getRawParameterValue(id + "PingPong");
+    }
+    tempoParam = params.getRawParameterValue("tempo");
+    revOn = params.getRawParameterValue("fxRevOn");
+    revType = params.getRawParameterValue("fxRevType");
+    revDecay = params.getRawParameterValue("fxRevDecay");
+    revPre = params.getRawParameterValue("fxRevPreDelay");
+    revTone = params.getRawParameterValue("fxRevTone");
+    revLevel = params.getRawParameterValue("fxRevLevel");
+    flOn = params.getRawParameterValue("fxFlOn");
+    flRate = params.getRawParameterValue("fxFlRate");
+    flDepth = params.getRawParameterValue("fxFlDepth");
+    flFeedback = params.getRawParameterValue("fxFlFeedback");
+    flMix = params.getRawParameterValue("fxFlMix");
 
     globalEqParams.eqOn = params.getRawParameterValue(slotParamId(kGlobalEq, "eqOn"));
     for (int b = 0; b < kNumBands; ++b)
@@ -293,6 +403,7 @@ void AmpsurdProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     rawBuffer.assign((size_t) maxBlock, 0.0f);
     gate.prepare(sampleRate);
     tuner.prepare(sampleRate);
+    fx.prepare(sampleRate, maxBlock);
     dryDelay.assign((size_t) (sampleRate * 0.1) + 1, 0.0f); // up to 100 ms of latency
     dryDelayPos = 0;
     inputGain.reset(sampleRate, 0.02);
@@ -373,6 +484,18 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
     }
     settings.rotationActive = rotation;
     settings.frankenstein = readFrankenstein();
+
+    // tempo for delay SYNC: the host's, or the TEMPO parameter (standalone / no host tempo)
+    {
+        double bpm = tempoParam->load();
+        bool fromHost = false;
+        if (auto* ph = getPlayHead())
+            if (auto pos = ph->getPosition())
+                if (auto b = pos->getBpm(); b.hasValue() && *b > 1.0) { bpm = *b; fromHost = true; }
+        tempoBpm.store(juce::jlimit(20.0, 400.0, bpm), std::memory_order_relaxed);
+        hostTempo.store(fromHost, std::memory_order_relaxed);
+    }
+    const auto fxSettings = readFx();
     settings.globalEqEnabled = isGlobalEqOn();
     settings.globalEq = getEqBands(kGlobalEq);
 
@@ -408,6 +531,7 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         double* R = outBufferR.data();
         engine.process(inBuffer.data(), L, R, n, settings);
         gate.process(inBuffer.data(), L, n, R); // NS-2 style: listen to the DI, silence after the amps
+        fx.process(L, R, n, fxSettings);           // flanger, delays, reverb: after the gate, so tails ring out
 
         for (int i = 0; i < n; ++i)
         {
@@ -906,6 +1030,47 @@ void AmpsurdProcessor::endMixGesture(int)
 // ---------------------------------------------------------------------------------------------
 // Create Frankenstein (message thread)
 // ---------------------------------------------------------------------------------------------
+ampsurd::FxSettings AmpsurdProcessor::readFx() const noexcept
+{
+    ampsurd::FxSettings f;
+    const double bpm = tempoBpm.load(std::memory_order_relaxed);
+    for (int d = 0; d < 2; ++d)
+    {
+        const auto& dp = delayParams[(size_t) d];
+        auto& ds = f.delay[(size_t) d];
+        ds.on = dp.on->load() > 0.5f;
+        ds.timeMs = dp.sync->load() > 0.5f ? 60000.0 / bpm * delayNoteBeats((int) dp.note->load()) : (double) dp.time->load();
+        ds.feedback = dp.feedback->load() / 100.0f;
+        ds.level = dp.level->load() / 100.0f;
+        ds.toneHz = dp.tone->load();
+        ds.pingPong = dp.pingPong->load() > 0.5f;
+    }
+    f.reverb.on = revOn->load() > 0.5f;
+    f.reverb.type = (ampsurd::ReverbType) juce::jlimit(0, ampsurd::kNumReverbTypes - 1, (int) revType->load());
+    f.reverb.decaySeconds = revDecay->load();
+    f.reverb.preDelayMs = revPre->load();
+    f.reverb.toneHz = revTone->load();
+    f.reverb.level = revLevel->load() / 100.0f;
+    f.flanger.on = flOn->load() > 0.5f;
+    f.flanger.rateHz = flRate->load();
+    f.flanger.depth = flDepth->load() / 100.0f;
+    f.flanger.feedback = flFeedback->load() / 100.0f;
+    f.flanger.mix = flMix->load() / 100.0f;
+    return f;
+}
+
+bool AmpsurdProcessor::isFxActive(int which) const
+{
+    switch (which)
+    {
+        case 0: return delayParams[0].on->load() > 0.5f;
+        case 1: return delayParams[1].on->load() > 0.5f;
+        case 2: return revOn->load() > 0.5f;
+        case 3: return flOn->load() > 0.5f;
+        default: return false;
+    }
+}
+
 ampsurd::FrankensteinSettings AmpsurdProcessor::readFrankenstein() const noexcept
 {
     ampsurd::FrankensteinSettings f;

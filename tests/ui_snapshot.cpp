@@ -205,6 +205,26 @@ int main(int argc, char** argv)
         e->selectSlot(1);
         e->refreshAll();
         save(*ed, out.getChildFile("12_edit_with_global_eq.png"));
+        // effects
+        setP(*proc, "fxD1On", 1.0f);
+        setP(*proc, "fxD1Time", 500.0f);
+        setP(*proc, "fxD2On", 1.0f);
+        setP(*proc, "fxD2Time", 756.0f);
+        setP(*proc, "fxD2PingPong", 1.0f);
+        setP(*proc, "fxRevOn", 1.0f);
+        e->showGlobalEq(true);
+        e->showFxPage(1);
+        e->refreshAll();
+        save(*ed, out.getChildFile("16_fx_delay.png"));
+        setP(*proc, "fxRevType", 3.0f);
+        setP(*proc, "fxRevDecay", 5.5f);
+        setP(*proc, "fxRevPreDelay", 45.0f);
+        e->showFxPage(2);
+        e->refreshAll();
+        save(*ed, out.getChildFile("17_fx_reverb.png"));
+        e->showGlobalEq(false);
+        e->refreshAll();
+        save(*ed, out.getChildFile("18_fx_button.png"));
     }
 
     // 3. preset round trip

@@ -20,6 +20,7 @@ core/  (ampsurd_core - plain C++20, no JUCE; reusable for the future single-capt
   NoiseGate, PitchDetector   NS-2 style gate (key = DI), YIN tuner
   Convolver             zero-latency non-uniform partitioned convolution (cabinet IRs), IR preparation
   IrSlot                per-slot IR: lock-free hand-over, warm-up + crossfade, bypass, idle when unused
+  Effects               FxChain: flanger, 2 parallel delays (exact ms or SYNC), FDN reverb (5 types)
   PathAligner           fractional delay (TIME), polarity, phase rotation (PHASE)
   ParametricEq          low cut + 8 bells + high cut, Simper SVF, smoothed, bit-transparent when flat
                         (one per amp + the Global EQ)
@@ -37,7 +38,8 @@ DAW input ch 1 → INPUT gain ─┬→ slot 1: capture → [cab IR → IR EQ] �
                              ├→ DI → gate detector, tuner                                         │
                              └→ dry delay line (for BYPASS)                                       │
 Σ left / Σ right (fader blend, or Frankenstein frequency split) → GLOBAL EQ (L, R)
-  → gate (opens/closes from the DI, same gain on L and R) → OUTPUT gain
+  → gate (opens/closes from the DI, same gain on L and R)
+  → FLANGER → DELAY 1 + DELAY 2 (parallel) → REVERB (after the gate, so tails ring out) → OUTPUT gain
   → safety limiter (≤ -1 dBFS, stereo-linked) → (crossfade with dry when BYPASS) → output L / R
 PAN: constant power, centre = 0 dB on both sides (centred amps: L and R identical to the former mono
 output), hard left/right = +3 dB on one side. Mix law G counts the power of both channels (BS.1770).

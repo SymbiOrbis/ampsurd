@@ -10,6 +10,7 @@
 
 #include "ampsurd/CaptureAnalyzer.h"
 #include "ampsurd/CaptureModel.h"
+#include "ampsurd/Effects.h"
 #include "ampsurd/Engine.h"
 #include "ampsurd/NoiseGate.h"
 #include "ampsurd/PitchDetector.h"
@@ -77,6 +78,13 @@ public:
     void loadIr(int slot, const juce::File& file);
     void removeIr(int slot);
     bool isIrOn(int slot) const { return slotParams[(size_t) slot].irOn->load() > 0.5f; }
+
+    // --- effects after the gate (Global EQ / FX panel) ---
+    static juce::StringArray delayNoteNames();
+    static double delayNoteBeats(int index);            // length of a note value in quarter notes
+    double getTempoBpm() const { return tempoBpm.load(); }   // host tempo, or the TEMPO parameter
+    bool hostProvidesTempo() const { return hostTempo.load(); }
+    bool isFxActive(int which) const;                   // 0 delay 1, 1 delay 2, 2 reverb, 3 flanger (ON switch)
 
     // --- Global EQ ---
     bool isGlobalEqOn() const { return globalEqParams.eqOn->load() > 0.5f; }
@@ -215,6 +223,15 @@ private:
     std::array<std::atomic<float>*, 5> frankAmpParam {};
     std::array<std::atomic<float>*, 4> frankDivParam {};
     ampsurd::FrankensteinSettings readFrankenstein() const noexcept;
+    ampsurd::FxSettings readFx() const noexcept;
+    ampsurd::FxChain fx;
+    struct DelayParams { std::atomic<float>* on, *time, *sync, *note, *feedback, *level, *tone, *pingPong; };
+    std::array<DelayParams, 2> delayParams {};
+    std::atomic<float>* revOn = nullptr, *revType = nullptr, *revDecay = nullptr, *revPre = nullptr, *revTone = nullptr, *revLevel = nullptr;
+    std::atomic<float>* flOn = nullptr, *flRate = nullptr, *flDepth = nullptr, *flFeedback = nullptr, *flMix = nullptr;
+    std::atomic<float>* tempoParam = nullptr;
+    std::atomic<double> tempoBpm { 120.0 };
+    std::atomic<bool> hostTempo { false };
 
     std::mutex configMutex; // sample rate / block size; never taken by the audio thread
     std::atomic<double> currentSampleRate { 48000.0 };

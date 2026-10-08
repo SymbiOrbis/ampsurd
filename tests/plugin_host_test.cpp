@@ -80,6 +80,10 @@ int main(int argc, char** argv)
                 p->setAttribute("value", 1.0);
             for (int i = 0; i < 5; ++i)
                 if (id == "s" + juce::String(i + 1) + "_mix") p->setAttribute("value", i < numCaps ? 100.0 / numCaps : 0.0);
+            // AMPSURD_TEST_PARAMS="id=value,id=value": any parameter
+            for (auto kv : juce::StringArray::fromTokens(juce::SystemStats::getEnvironmentVariable("AMPSURD_TEST_PARAMS", ""), ",", ""))
+                if (kv.upToFirstOccurrenceOf("=", false, false).trim() == id)
+                    p->setAttribute("value", kv.fromFirstOccurrenceOf("=", false, false).getDoubleValue());
             // AMPSURD_TEST_PAN="-100,100,..." sets the PAN of slots 1, 2, ...
             const auto pans = juce::StringArray::fromTokens(juce::SystemStats::getEnvironmentVariable("AMPSURD_TEST_PAN", ""), ",", "");
             for (int i = 0; i < pans.size() && i < 5; ++i)

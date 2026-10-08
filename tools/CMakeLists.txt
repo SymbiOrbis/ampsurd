@@ -27,3 +27,6 @@ target_link_libraries(frankenstein_test PRIVATE ampsurd_core)
 
 add_executable(ir_test ir_test.cpp)
 target_link_libraries(ir_test PRIVATE ampsurd_core)
+
+add_executable(fx_test fx_test.cpp)
+target_link_libraries(fx_test PRIVATE ampsurd_core)

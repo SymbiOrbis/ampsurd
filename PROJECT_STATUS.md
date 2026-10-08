@@ -37,7 +37,7 @@ EQ bands 1/10 as low/high cut, mouse wheel adjusts the nearest EQ point.
 | FREE: TIME (fractional delay ±1 ms), PHASE (rotation ±180°), RESET | done | delay accurate to 0.2°, rotation flat ±0.7° from 30 Hz–18 kHz; mix law holds with rotation |
 | Master: INPUT, OUTPUT, meters, BYPASS (time-aligned dry) | done | bypass output = dry input delayed by latency, sample-identical |
 | No digital clipping (−1 dBFS safety limiter) | done | 5 captures, OUTPUT +12 dB, 44.1/48 kHz → peak −1.00 / −1.28 dBFS |
-| Complete-rig presets: PRESET menu, SAVE, SAVE AS, DAW project state | done | round trip 401/401 parameters + IR files (older presets: new parameters at defaults) + 5/5 slots; missing capture → FILE MISSING, no crash |
+| Complete-rig presets: PRESET menu, SAVE, SAVE AS, DAW project state | done | round trip 429/429 parameters + IR files (older presets: new parameters at defaults) + 5/5 slots; missing capture → FILE MISSING, no crash |
 | Fixed five-slot layout, fixed-size filename typography with wrapping | done | screenshots in `docs/screenshots/` (filenames shown character-exact, e.g. "4x12") |
 | Branding footer with three equal logo areas | placeholders | real logos: drop files into `plugin/assets/logos/` (see README there) |
 | Resizable window (scales whole UI, fixed aspect) | done | rendered at 1200x800 and 1800x1200 |
@@ -48,6 +48,7 @@ EQ bands 1/10 as low/high cut, mouse wheel adjusts the nearest EQ point.
 | Global EQ on the complete sound (same 10 bands as the amps), GLOBAL EQ button with ON/OFF state, grey Global EQ curve behind an amp's EQ | done, awaiting REAPER test | `engine_test`: OFF bit-identical, ON = verified EQ curve exactly, on/off click-free; presets 236/236; older presets load with it off |
 | Per-amp PAN, stereo output (constant power, centre unchanged), stereo-linked limiter | done, awaiting REAPER test | centred: L = R bit-identical to before; hard left = +3.01 dB left, silence right; loudness on target for any panning (≤ 0.06 dB); 5 panned captures +12 dB → −1.00 dBFS |
 | Cabinet IR per slot (zero latency, WAV/AIFF/FLAC, any rate), IR EQ (10 bands), IR editor, IR in presets; slot redesign with six buttons | done, awaiting REAPER test | `ir_test`: exact convolution, zero latency, ~2 % CPU for a 1 s IR, click-free load/replace/bypass/remove; level match includes the IR (−17.84 vs −17.93 dB); presets 401/401 + IRs |
+| Effects after the gate: 2 parallel delays (exact ms / SYNC, ping-pong), reverb (Room, Hall, Plate, Cathedral, Ambience), flanger; GLOBAL EQ / FX panel | done, awaiting REAPER test | `fx_test`: echoes exact to the sample, RT60 within 12 %, all changes click-free, all off bit-identical; worst case -1.00 dBFS; presets 429/429 |
 
 Latency: 104 samples (2.17 ms) at 48 kHz, 123 at 44.1 kHz (constant; includes 1 ms limiter
 look-ahead and 1 ms alignment reserve). CPU: five A2 Full captures ≈ 40–48 % of one 2.8 GHz cloud
@@ -83,12 +84,12 @@ Renamed everything to AMPSURD. New: `core/{Engine,PathAligner,ParametricEq,Captu
 ## Build & test
 
 - Windows: `docs/BUILD_WINDOWS.md` (or download the CI build once GitHub is set up).
-- Tests (any platform): `limiter_test`, `gate_tuner_test`, `frankenstein_test`, `ir_test`, `engine_test <a.nam> <b.nam>`, `mix_experiment <2-5 .nam>`,
+- Tests (any platform): `limiter_test`, `gate_tuner_test`, `frankenstein_test`, `ir_test`, `fx_test`, `engine_test <a.nam> <b.nam>`, `mix_experiment <2-5 .nam>`,
   `compat_test.py`, `plugin_host_test`, `ui_snapshot` — see `docs/DEVLOG.md`.
 
 ## Roadmap
 
-See `docs/ROADMAP.md`: gate + tuner (done) → Create Frankenstein (done) → Global EQ (done) → per-amp pan (done) → cabinet IRs (done) → release package.
+See `docs/ROADMAP.md`: gate + tuner (done) → Create Frankenstein (done) → Global EQ (done) → per-amp pan (done) → cabinet IRs (done) → effects (done) → standalone + player/recorder → release package.
 
 ## Next concrete step
 

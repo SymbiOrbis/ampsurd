@@ -1,6 +1,6 @@
 # AMPSURD — Roadmap (agreed with the owner, 2026-10-07)
 
-Order (owner, 2026-10-07/08): 1 gate + tuner → 2 Frankenstein → 2b Global EQ → 3 per-amp pan → 3b cabinet IRs → 4 release package.
+Order (owner, 2026-10-07/08): 1 gate + tuner → 2 Frankenstein → 2b Global EQ → 3 per-amp pan → 3b cabinet IRs → 3c effects → 3d standalone app + player/recorder → 4 release package.
 Each step is tested in REAPER before the next starts.
 
 ## 1. Noise gate + chromatic tuner (centre area) — IMPLEMENTED 2026-10-07, awaiting REAPER test
@@ -42,6 +42,16 @@ lit and reading "ON" while active. Subdued, non-editable Global EQ curve behind 
 For amp-only captures. Capture → IR → IR EQ (same 10 bands, only while the IR is on) → amp EQ →
 alignment → blend. Level match / alignment measured including the IR. IR editor = fourth view of
 the lower panel. Slots shorter, six buttons (REMOVE = whole slot, click twice). IR path in presets.
+
+## 3c. Effects (Global EQ / FX panel) — IMPLEMENTED 2026-10-08, awaiting REAPER test
+Two parallel delays (exact ms or SYNC, feedback, level, tone, ping-pong), reverb (Room, Hall, Plate,
+Cathedral, Ambience: decay, pre-delay, tone, level), flanger (rate, depth, feedback, mix). After the
+gate, so tails ring out. All in presets.
+
+## 3d. Standalone app + player / recorder (standalone only)
+Backing track (WAV/FLAC/MP3/OGG) + guitar recording of AMPSURD's output, live guitar audible during
+playback, latency compensation + offset, export guitar alone or mixed (WAV 16/24/32f, FLAC; 44.1/48/96
+kHz; default 16-bit/44.1), BOUNCE: backing + recording become the new backing track (layers).
 
 ## 4. Public release package
 - Code signing (SignPath Foundation, free for OSI-licensed open source) so Windows Smart App Control

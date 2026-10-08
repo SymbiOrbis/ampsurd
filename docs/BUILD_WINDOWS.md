@@ -119,6 +119,11 @@ REAPER picks up the new version.
     and on, REPLACE the IR and REMOVE it while playing: any click? Shape it with the IR EQ on the
     right. Save a preset, reload it: IR and IR EQ back? REMOVE in a slot needs two clicks.
 
+16. Effects: open **EQ / FX** (vertical button). Choose DELAY 1, switch ON, click the TIME value and
+    type 500; DELAY 2: ON, type 756. Try PING-PONG and SYNC (follows REAPER's tempo). REVERB: try the
+    five types (CATHEDRAL!), DECAY, PRE-DELAY. FLANGER. Change values while playing: any click?
+    Switch a delay or the reverb OFF while it rings: the tail should fade out naturally.
+
 Expected latency shown by REAPER: 104 samples at 48 kHz, 123 at 44.1 kHz.
 
 Optional measurements (in Developer PowerShell):
