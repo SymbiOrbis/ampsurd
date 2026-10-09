@@ -246,7 +246,17 @@ void PlayerRecorder::process(double* L, double* R, int n, int ampsurdLatency, bo
                 }
                 const float* ptrs[2] = { a, b };
                 const juce::ScopedLock sl(writerLock);
-                if (writer) writer->write(ptrs, count);
+                if (writer)
+                {
+                    // real time: the 2.7 s write-ahead buffer is always enough. Offline (faster than real
+                    // time: tests, bounces) wait for the disk instead of dropping audio.
+                    bool ok = writer->write(ptrs, count);
+                    for (int tries = 0; !ok && offline && tries < 2000; ++tries)
+                    {
+                        juce::Thread::sleep(1);
+                        ok = writer->write(ptrs, count);
+                    }
+                }
             }
         }
 
