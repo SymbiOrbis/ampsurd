@@ -26,24 +26,28 @@ jobs:
       - name: Smoke test (load NAM Core example A2 model, hot-swap stress)
         shell: pwsh
         run: |
-          ./build/tools/Release/limiter_test.exe
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          ./build/tools/Release/gate_tuner_test.exe
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          ./build/tools/Release/frankenstein_test.exe
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          ./build/tools/Release/ir_test.exe
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          ./build/tools/Release/fx_test.exe
-          if ($LASTEXITCODE -ne 0) { exit 1 }
+          # runs a test; on failure its [FAIL] lines become annotations (readable without the log)
+          function Run-Test([string]$exe, [string[]]$testArgs) {
+            $out = & $exe @testArgs 2>&1
+            $out | Write-Output
+            if ($LASTEXITCODE -ne 0) {
+              $name = Split-Path $exe -Leaf
+              $fails = $out | Select-String -SimpleMatch "FAIL"
+              if (-not $fails) { $fails = $out | Select-Object -Last 5 }
+              $fails | ForEach-Object { Write-Output "::error title=$name::$_" }
+              exit 1
+            }
+          }
+          Run-Test ./build/tools/Release/limiter_test.exe @()
+          Run-Test ./build/tools/Release/gate_tuner_test.exe @()
+          Run-Test ./build/tools/Release/frankenstein_test.exe @()
+          Run-Test ./build/tools/Release/ir_test.exe @()
+          Run-Test ./build/tools/Release/fx_test.exe @()
           $env:AMPSURD_FORCE_PLAYER = "1"
-          ./build/Release/recorder_test.exe
-          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Run-Test ./build/Release/recorder_test.exe @()
           $env:AMPSURD_FORCE_PLAYER = "0"
-          ./build/Release/tone_test.exe build/_deps/namcore-src/example_models/A2.nam 48000 128 12
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          ./build/tools/Release/engine_test.exe build/_deps/namcore-src/example_models/A2.nam build/_deps/namcore-src/example_models/wavenet_a1_standard.nam
-          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Run-Test ./build/Release/tone_test.exe @("build/_deps/namcore-src/example_models/A2.nam", "48000", "128", "12")
+          Run-Test ./build/tools/Release/engine_test.exe @("build/_deps/namcore-src/example_models/A2.nam", "build/_deps/namcore-src/example_models/wavenet_a1_standard.nam")
           $m = "build/_deps/namcore-src/example_models/A2.nam"
           ./build/tools/Release/ampsurd_bench.exe $m --stress --seconds 5 build/_deps/namcore-src/example_models/lstm.nam
           ./build/tools/Release/ampsurd_render.exe $m build/_deps/namcore-src/example_audio/input.wav render.wav
