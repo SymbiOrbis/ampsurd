@@ -652,7 +652,7 @@ juce::String PlayerRecorder::renderComposite(const std::vector<Clip>& list, juce
 
     const auto folder = getRecordingsFolder().getChildFile("Takes");
     folder.createDirectory();
-    result = folder.getNonexistentChildFile("Track " + timestamp(), ".wav");
+    result = folder.getNonexistentChildFile("Track " + timestamp() + " " + juce::String(renderGeneration.load()), ".wav");
     std::unique_ptr<juce::OutputStream> os = result.createOutputStream();
     if (!os) return "Cannot write " + result.getFullPathName();
     juce::WavAudioFormat wav;
