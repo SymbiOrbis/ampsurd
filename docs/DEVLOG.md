@@ -33,6 +33,10 @@ seamless, pop-free joins.
   -> correction heard from 0.7 s; moved later -> original until 1.3 s; UNDO twice / three times
   restores the previous edge / the original take; PLAY without REC leaves nothing behind. Screenshot
   of the panel rendered from the test (RECORDER_SNAPSHOT=dir).
+- Found by Windows CI (intermittent click in the composite): JUCE's ThreadedWriter drops audio when its
+  buffer is full, which happens when processing runs much faster than real time (tests, offline
+  renders). Offline processing now waits for the disk; real time keeps the 2.7 s write-ahead. CI now
+  turns failing test lines into annotations (readable without downloading the log). Two CI runs green.
 
 ## 2026-10-08 — Session 2k: CPU — silent amps sleep, several cores — Claude (Opus 5.5)
 
