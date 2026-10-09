@@ -31,7 +31,8 @@ bit-identical (tone_test), fast tanh like the official plugin, input calibration
 smoother gate, Frankenstein NOTES mode + note band, divider fix, averaged CPU meter. Session 2k:
 silent amps no longer use CPU; amp paths run on several cores (>= 4-core computers). Awaiting
 re-test (BUILD_WINDOWS.md checklist 18-20). Frankenstein "FOLLOW" (route the whole note by detected
-pitch) proposed, postponed by the owner.
+pitch) proposed, postponed by the owner. Session 2l (2026-10-09): recorder timeline with waveforms,
+zoom, navigation, punch-in corrections with movable edges and crossfaded joins, undo.
 
 ## Implemented and tested
 
@@ -110,5 +111,4 @@ See `docs/ROADMAP.md`: gate + tuner (done) → Create Frankenstein (done) → Gl
 1. Done: repository https://github.com/SymbiOrbis/ampsurd, Windows CI build green.
 2. Owner: download the VST3 from GitHub Actions (BUILD_WINDOWS.md, top), then the REAPER checklist in `docs/BUILD_WINDOWS.md` Part D with real captures; send notes.
 3. Owner: provide the three logo files; decide on EQ band types.
-4. Claude: fix whatever the re-test finds; then recorder timeline (ROADMAP 3f), shareable presets
-   (3g), release package (4).
+4. Claude: fix whatever the re-test finds; then shareable presets (ROADMAP 3g), release package (4).

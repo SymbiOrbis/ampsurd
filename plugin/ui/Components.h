@@ -437,6 +437,45 @@ private:
 
 // ---------------------------------------------------------------------------------------------
 // Player / recorder (standalone app only): backing track, guitar take, transport, save, bounce.
+// Timeline of the player / recorder: backing track waveform above the guitar track waveform, a ruler,
+// the playhead and the clips (recorded corrections) with draggable start / end edges.
+// Click = go there, mouse wheel = zoom around the mouse, Shift + wheel (or horizontal) = scroll.
+class Timeline final : public juce::Component
+{
+public:
+    explicit Timeline(PlayerRecorder&);
+    void paint(juce::Graphics&) override;
+    void mouseMove(const juce::MouseEvent&) override;
+    void mouseDown(const juce::MouseEvent&) override;
+    void mouseDrag(const juce::MouseEvent&) override;
+    void mouseUp(const juce::MouseEvent&) override;
+    void mouseExit(const juce::MouseEvent&) override;
+    void mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+    void zoom(double factor, double aroundSeconds);
+    void zoomIn() { zoom(0.5, centreSeconds()); }
+    void zoomOut() { zoom(2.0, centreSeconds()); }
+    void fit();
+    void followPlayhead();
+
+private:
+    struct EdgeHit { int clip = -1; bool start = true; };
+    EdgeHit hitEdge(juce::Point<int>) const;
+    double xToTime(float x) const { return viewStart + (double) (x - (float) laneArea().getX()) * secondsPerPixel; }
+    float timeToX(double t) const { return (float) laneArea().getX() + (float) ((t - viewStart) / secondsPerPixel); }
+    double centreSeconds() const { return viewStart + 0.5 * secondsPerPixel * laneArea().getWidth(); }
+    juce::Rectangle<int> laneArea() const { return getLocalBounds().withTrimmedLeft(64); }
+    juce::Rectangle<int> rulerArea() const { return laneArea().removeFromTop(16); }
+    juce::Rectangle<int> backingLane() const;
+    juce::Rectangle<int> guitarLane() const;
+    void clampView();
+
+    PlayerRecorder& player;
+    double viewStart = 0.0, secondsPerPixel = 0.02;
+    bool fitted = false;
+    EdgeHit hover, drag;
+    double dragTime = 0.0;
+};
+
 class PlayerPanel final : public juce::Component
 {
 public:
@@ -450,20 +489,21 @@ private:
     void loadBacking();
     void saveAs();
     void setStatus(const juce::String& s) { status = s; repaint(); }
-    juce::Rectangle<int> column(int i) const;
 
     AmpsurdProcessor& proc;
     PlayerRecorder& player;
+    Timeline timeline;
     juce::TextButton startButton { "|<" }, playButton { "PLAY" }, pauseButton { "PAUSE" }, stopButton { "STOP" }, recButton { "REC" },
+                     undoButton { "UNDO" }, clearButton { "CLEAR TAKE" }, zoomOutButton { "-" }, zoomInButton { "+" }, fitButton { "FIT" },
                      loadButton { "LOAD BACKING" }, removeButton { "REMOVE" }, saveButton { "SAVE AS..." }, bounceButton { "BOUNCE" },
                      closeButton { "CLOSE" };
     juce::Slider backVol, takeVol, offset;
     juce::ComboBox formatBox, rateBox, contentBox;
     std::unique_ptr<juce::FileChooser> chooser;
     juce::String status;
-    double recArmedAt = -1.0;
+    double clearArmedAt = -1.0;
     float backLevel = 0.0f, takeLevel = 0.0f;
-    juce::String shownTime;
+    juce::Rectangle<int> backMeter, takeMeter, statusArea, infoArea;
 };
 
 // ---------------------------------------------------------------------------------------------

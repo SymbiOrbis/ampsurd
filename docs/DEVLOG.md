@@ -6,6 +6,34 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-09 — Session 2l: recorder timeline, punch-in corrections — Claude (Opus 5.5)
+
+Owner's spec: one guitar track; waveform of the take with the backing above it; zoom; navigate;
+record while the backing plays; a correction's start can be grabbed and moved in any direction with
+seamless, pop-free joins.
+
+- PlayerRecorder: the guitar track is a list of clips (recorded passes). First REC = the take. With a
+  take, every PLAY pass is recorded in the background; REC = punch in at the playhead (the old take
+  goes quiet from there), REC again / STOP = punch out; un-punched passes are deleted. Clip edges
+  (in / out) can be moved anywhere inside the recorded pass (so also before the punch-in point);
+  removeClip, UNDO (50 steps), CLEAR TAKE. The clips are rendered in the background into one
+  composite take (32-bit float) with 10 ms equal-power crossfades at every edge (centred on the edge
+  when audio exists on both sides); playback / export / bounce use the composite. PAUSE keeps the
+  pass (seamless continue); moving the playhead ends the pass. Positions are rescaled if the sample
+  rate changes. STOP returns to where playback started; |< = start of the song.
+- UI: new Timeline (ruler, BACKING lane, GUITAR lane from juce::AudioThumbnail, live waveform of the
+  recording, playhead, numbered correction boxes with draggable edges + time readout, right-click =
+  remove), zoom - / + / FIT, mouse wheel zoom around the mouse, Shift + wheel scroll, click = go
+  there, view follows the playhead. UNDO, CLEAR TAKE (click twice), REC shows PUNCH OUT. The three
+  columns became two compact rows (backing / volumes / offset; save options).
+- Tests (`recorder_test`, all PASS): all earlier recorder tests (alignment exact to the sample,
+  exports, pause, bounce + layers, no clipping, 44.1 kHz backing) + new: take 220 Hz, correction
+  punched 1.0-2.0 s while playing 330 Hz -> 220 / 330 / 220 Hz heard; largest sample step 0.0102
+  (smooth crossfade; a hard cut would be ~0.4); start edge moved 0.3 s earlier (before the punch-in)
+  -> correction heard from 0.7 s; moved later -> original until 1.3 s; UNDO twice / three times
+  restores the previous edge / the original take; PLAY without REC leaves nothing behind. Screenshot
+  of the panel rendered from the test (RECORDER_SNAPSHOT=dir).
+
 ## 2026-10-08 — Session 2k: CPU — silent amps sleep, several cores — Claude (Opus 5.5)
 
 Owner: "the more CPU is used, the more clicking"; crackles disappear after restarting the app.

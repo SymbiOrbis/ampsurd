@@ -6,6 +6,7 @@
 #include <cmath>
 #include <iostream>
 
+#include "../plugin/PluginEditor.h"
 #include "../plugin/PluginProcessor.h"
 
 static int failures = 0;
@@ -127,6 +128,7 @@ int main()
     });
     (void) recStartClock;
     pl->stop();
+    pl->renderNow();
     check(pl->hasTake(), "RECORD: take recorded (" + juce::String(pl->getTakeLengthSeconds(), 2) + " s), shift "
                          + juce::String(pl->getCompensationMs(), 2) + " ms = AMPSURD latency + device latency + limiter");
     juce::AudioBuffer<float> guitar;
@@ -185,6 +187,8 @@ int main()
     // 5. pause / resume while recording: one seamless take
     pl->stop();
     pl->removeBacking();
+    pl->clearTake();
+    pl->renderNow();
     pl->record();
     run(1.0, [](juce::int64 t) { return 0.1f * (float) std::sin(t * 0.05); });
     pl->pause();
@@ -192,11 +196,14 @@ int main()
     pl->pause(); // resume
     run(1.0, [](juce::int64 t) { return 0.1f * (float) std::sin(t * 0.05); });
     pl->stop();
+    pl->renderNow();
     check(std::abs(pl->getTakeLengthSeconds() - 2.0) < 0.02, "PAUSE: recording paused and resumed -> one take of "
                                                               + juce::String(pl->getTakeLengthSeconds(), 3) + " s (2 s played)");
 
     // 6. BOUNCE: backing + take become the new backing; a new take layers on top
     pl->loadBacking(back48);
+    pl->clearTake();
+    pl->renderNow();
     pl->record();
     songZero = -1;
     run(2.0, [&](juce::int64 clock) {
@@ -205,6 +212,7 @@ int main()
         return (heardAt > 0 && heardAt % 24000 == 0) ? 0.2f : 0.0f;
     });
     pl->stop();
+    pl->renderNow();
     const auto berr = pl->bounceNow();
     check(berr.isEmpty() && pl->hasBacking() && !pl->hasTake() && pl->getBackingName().startsWith("Bounce"),
           "BOUNCE: backing + take became the new backing track '" + pl->getBackingName() + "' " + berr);
@@ -216,6 +224,7 @@ int main()
         return (heardAt > 0 && heardAt % 24000 == 0) ? 0.15f : 0.0f;
     });
     pl->stop();
+    pl->renderNow();
     juce::AudioBuffer<float> mix;
     pl->renderMix(true, mix, startOff);
     const float layered = mix.getSample(0, 24000);
@@ -252,6 +261,104 @@ int main()
         const int live = pk.empty() ? -1 : pk[0] - limLat, exported = pm.empty() ? -1 : pm[0];
         check(exported >= 23999 && exported <= 24001 && std::abs(live - exported) <= 4,
               "44.1 kHz BACKING: click at sample " + juce::String(exported) + " in the export, " + juce::String(live) + " live (expected 24000)");
+    }
+
+    // 9. corrections: punch in / out while the take plays, crossfades, moving the start edge, undo
+    {
+        pl->stop();
+        pl->removeBacking();
+        pl->setTakeGainDb(0.0f);
+        pl->clearTake();
+        pl->renderNow();
+        auto sine = [&](double f) { return [f, sr](juce::int64 t) { return 0.2f * (float) std::sin(2 * juce::MathConstants<double>::pi * f * (double) t / sr); }; };
+        pl->toStart();
+        pl->record(); // first take: 220 Hz for 3 s
+        run(3.0, sine(220.0));
+        pl->stop();
+        pl->renderNow();
+        // correction: play from the start, punch in at 1.0 s, out at 2.0 s, playing 330 Hz all along
+        pl->toStart();
+        pl->play();
+        run(1.0, sine(330.0));
+        pl->record();          // punch in
+        run(1.0, sine(330.0));
+        pl->record();          // punch out (playback goes on)
+        run(0.5, sine(330.0));
+        pl->stop();
+        pl->renderNow();
+
+        auto freqAt = [&](double seconds) {
+            juce::AudioBuffer<float> g;
+            int off = 0;
+            pl->renderMix(false, g, off);
+            const int a = (int) (seconds * sr) - off, len = (int) (0.1 * sr);
+            int zc = 0;
+            for (int i = a + 1; i < a + len && i < g.getNumSamples(); ++i)
+                if ((g.getSample(0, i - 1) < 0.0f) != (g.getSample(0, i) < 0.0f)) ++zc;
+            return zc * 5.0; // crossings per 0.1 s -> Hz
+        };
+        auto smooth = [&] {
+            juce::AudioBuffer<float> g;
+            int off = 0;
+            pl->renderMix(false, g, off);
+            float worst = 0.0f;
+            for (int i = 1; i < g.getNumSamples(); ++i) worst = std::max(worst, std::abs(g.getSample(0, i) - g.getSample(0, i - 1)));
+            return worst;
+        };
+        const float maxStep = 1.15f * (float) (2 * juce::MathConstants<double>::pi * 330.0 / sr * 0.2 * std::sqrt(2.0));
+        const auto& cl = pl->getClips();
+        const double inS = cl.size() == 2 ? (double) cl[1].in / sr : -1, outS = cl.size() == 2 ? (double) cl[1].out / sr : -1;
+        const double f05 = freqAt(0.5), f15 = freqAt(1.5), f25 = freqAt(2.5);
+        check(cl.size() == 2 && std::abs(f05 - 220) < 15 && std::abs(f15 - 330) < 15 && std::abs(f25 - 220) < 15,
+              "PUNCH: correction recorded " + juce::String(inS, 3) + "-" + juce::String(outS, 3) + " s; heard: "
+                  + juce::String(f05, 0) + " Hz / " + juce::String(f15, 0) + " Hz / " + juce::String(f25, 0) + " Hz (220 / 330 / 220)");
+        const float st1 = smooth();
+        check(st1 <= maxStep, "PUNCH: crossfades without a click (largest sample step " + juce::String(st1, 4) + " <= "
+                                  + juce::String(maxStep, 4) + " = a smooth 330 Hz crossfade)");
+
+        // drag the correction's start 0.3 s earlier: the pass was recorded from 0 s, so that audio exists
+        if (cl.size() == 2) pl->setClipEdges(1, cl[1].in - (juce::int64) (0.3 * sr), cl[1].out);
+        pl->renderNow();
+        const double fEarly = freqAt(0.8);
+        check(std::abs(fEarly - 330) < 15 && smooth() <= maxStep,
+              "EDGE: start moved 0.3 s earlier (before the punch-in point) -> the correction is heard from 0.7 s (" + juce::String(fEarly, 0) + " Hz at 0.8 s), still smooth");
+        const auto edgesEarly = pl->getClips()[1];
+        if (const char* dir = std::getenv("RECORDER_SNAPSHOT")) // picture of the timeline (2 clips, backing loaded)
+        {
+            pl->loadBacking(back48);
+            pl->setPositionSeconds(1.2);
+            std::unique_ptr<juce::AudioProcessorEditor> ed(proc->createEditor());
+            auto* e = dynamic_cast<AmpsurdEditor*>(ed.get());
+            e->showPlayer(true);
+            for (int k = 0; k < 20; ++k) { juce::Thread::sleep(100); e->refreshAll(); }
+            auto img = ed->createComponentSnapshot(ed->getLocalBounds(), true, 1.0f);
+            juce::File out(juce::String(dir) + "/player_timeline.png");
+            out.deleteFile();
+            juce::FileOutputStream os(out);
+            juce::PNGImageFormat().writeImageToStream(img, os);
+            ed.reset();
+            pl->removeBacking();
+        }
+        pl->setClipEdges(1, edgesEarly.in + (juce::int64) (0.6 * sr), edgesEarly.out);
+        pl->renderNow();
+        const double fLate = freqAt(1.1);
+        check(std::abs(fLate - 220) < 15 && smooth() <= maxStep,
+              "EDGE: start moved later -> the original take plays until 1.3 s (" + juce::String(fLate, 0) + " Hz at 1.1 s), still smooth");
+        pl->undo();
+        pl->renderNow();
+        check(pl->getClips()[1].in == edgesEarly.in && std::abs(freqAt(0.8) - 330) < 15, "UNDO: the previous edge position is back");
+        pl->undo();
+        pl->undo();
+        pl->renderNow();
+        check(pl->getClips().size() == 1 && std::abs(freqAt(1.5) - 220) < 15, "UNDO: undoing the correction restores the original take");
+        // a plain playback pass leaves no clip and no file behind
+        const int files = pl->getRecordingsFolder().getChildFile("Takes").getNumberOfChildFiles(juce::File::findFiles);
+        pl->toStart();
+        pl->play();
+        run(0.5, sine(330.0));
+        pl->stop();
+        check(pl->getClips().size() == 1 && pl->getRecordingsFolder().getChildFile("Takes").getNumberOfChildFiles(juce::File::findFiles) == files,
+              "PLAY without REC: nothing is added (the pass recording is discarded)");
     }
 
     proc.reset();

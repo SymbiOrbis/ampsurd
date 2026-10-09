@@ -92,6 +92,7 @@ PlayerRecorder::~PlayerRecorder()
 {
     alive->store(false);
     jobs.removeAllJobs(true, 30000);
+    renderJobs.removeAllJobs(true, 30000);
     std::unique_ptr<juce::AudioFormatWriter::ThreadedWriter> old;
     {
         const juce::ScopedLock sl(writerLock);
@@ -112,6 +113,23 @@ juce::File PlayerRecorder::getRecordingsFolder() const
 void PlayerRecorder::prepare(double sr, int block)
 {
     const bool rateChanged = std::abs(sr - sampleRate) > 0.5;
+    if (rateChanged)
+    {
+        // clip positions are session samples: keep them at the same times
+        const double k = sr / sampleRate;
+        auto scale = [k](std::vector<Clip>& list) {
+            for (auto& c : list)
+            {
+                c.fileStart = (juce::int64) std::llround((double) c.fileStart * k);
+                c.fileLength = (juce::int64) std::llround((double) c.fileLength * k);
+                c.in = (juce::int64) std::llround((double) c.in * k);
+                c.out = (juce::int64) std::llround((double) c.out * k);
+            }
+        };
+        scale(clips);
+        for (auto& u : undoStack) scale(u);
+        takeStart.store((juce::int64) std::llround((double) takeStart.load() * k));
+    }
     sampleRate = sr;
     maxBlock = std::max(1, block);
     bufA.setSize(2, maxBlock);
@@ -120,6 +138,8 @@ void PlayerRecorder::prepare(double sr, int block)
     limiter.prepare(sr);
     if (rateChanged || backing || take)
     {
+        closePunch();
+        endPass();
         state.store((int) State::stopped);
         songPos.store(0);
         if (backingReady.load()) loadBacking(backingFile);
@@ -202,14 +222,15 @@ void PlayerRecorder::process(double* L, double* R, int n, int ampsurdLatency, bo
     {
         const juce::int64 pos = songPos.load(std::memory_order_relaxed);
 
-        // 1. record the guitar exactly as AMPSURD outputs it (before the tracks are added)
-        if (st == State::recording)
+        // 1. record the guitar exactly as AMPSURD outputs it (before the tracks are added). Every pass
+        //    is recorded while a take exists (so a correction can be extended to before its punch-in).
+        if (passActive.load(std::memory_order_acquire))
         {
-            if (recordStartPending.exchange(false))
+            if (passStartPending.exchange(false))
             {
                 const juce::int64 start = pos - pendingCompensation.load();
                 recSkip = start < 0 ? -start : 0;
-                takeStart.store(std::max<juce::int64>(0, start));
+                passStart.store(std::max<juce::int64>(0, start));
             }
             int skip = (int) std::min<juce::int64>(recSkip, n);
             recSkip -= skip;
@@ -230,7 +251,9 @@ void PlayerRecorder::process(double* L, double* R, int n, int ampsurdLatency, bo
         }
 
         const double tB = backingReady.load() ? juce::Decibels::decibelsToGain((double) backingGainDb.load(), -100.0) : 0.0;
-        const double tT = juce::Decibels::decibelsToGain((double) takeGainDb.load(), -100.0);
+        // while a correction is being recorded, the old take is silent from the punch-in on
+        const bool muted = st == State::recording && pos >= muteTakeFrom.load(std::memory_order_relaxed);
+        const double tT = muted ? 0.0 : juce::Decibels::decibelsToGain((double) takeGainDb.load(), -100.0);
 
         const juce::ScopedLock tl(trackLock); // held only briefly by the message thread (swap / seek)
 
@@ -251,8 +274,8 @@ void PlayerRecorder::process(double* L, double* R, int n, int ampsurdLatency, bo
             if (pk > backingPeak.load(std::memory_order_relaxed)) backingPeak.store(pk, std::memory_order_relaxed);
         }
 
-        // 3. the take (playback only; while recording a new take the old one is not played)
-        if (st == State::playing && takeReady.load() && take)
+        // 3. the take (the composite of all clips)
+        if (takeReady.load() && take)
         {
             const juce::int64 ts = takeStart.load();
             const int off = (int) juce::jlimit<juce::int64>(0, n, ts - pos);
@@ -293,6 +316,7 @@ juce::String PlayerRecorder::loadBacking(const juce::File& f)
     backingFile = f;
     backingLength.store(len);
     backingReady.store(true);
+    backingThumb.setSource(new juce::FileInputSource(f));
     return {};
 }
 
@@ -302,6 +326,7 @@ void PlayerRecorder::removeBacking()
     swapTrack(backing, nullptr);
     backingFile = juce::File();
     backingLength.store(0);
+    backingThumb.clear();
 }
 
 void PlayerRecorder::positionTransports(juce::int64 pos)
@@ -310,12 +335,90 @@ void PlayerRecorder::positionTransports(juce::int64 pos)
     if (take) seek(*take, std::max<juce::int64>(0, pos - takeStart.load()));
 }
 
+juce::int64 PlayerRecorder::compensationSamples() const
+{
+    return (juce::int64) std::lround(getCompensationMs() * sampleRate / 1000.0);
+}
+
+void PlayerRecorder::startPass()
+{
+    if (passActive.load()) return;
+    const auto folder = getRecordingsFolder().getChildFile("Takes");
+    folder.createDirectory();
+    const auto file = folder.getNonexistentChildFile("Take " + timestamp(), ".wav");
+    std::unique_ptr<juce::OutputStream> os = file.createOutputStream();
+    if (!os) return;
+    juce::WavAudioFormat wav;
+    auto w = wav.createWriterFor(os, juce::AudioFormatWriterOptions {}.withSampleRate(sampleRate).withNumChannels(2).withBitsPerSample(32)
+                                         .withSampleFormat(juce::AudioFormatWriterOptions::SampleFormat::floatingPoint));
+    if (!w) return;
+    passThumb.reset(2, sampleRate);
+    auto tw = std::make_unique<juce::AudioFormatWriter::ThreadedWriter>(w.release(), writeThread, 1 << 17);
+    tw->setDataReceiver(&passThumb); // live waveform while recording
+    {
+        const juce::ScopedLock sl(writerLock);
+        writer = std::move(tw);
+    }
+    passFile = file;
+    passPunches.clear();
+    punchIn = -1;
+    pendingCompensation.store((int) compensationSamples());
+    passStart.store(std::max<juce::int64>(0, songPos.load() - pendingCompensation.load()));
+    passStartPending.store(true);
+    passActive.store(true, std::memory_order_release);
+}
+
+void PlayerRecorder::closePunch()
+{
+    if (getState() != State::recording && getState() != State::pausedRec) return;
+    const juce::int64 out = songPos.load() - compensationSamples();
+    passPunches.push_back({ punchIn, out });
+    punchIn = -1;
+    muteTakeFrom.store(std::numeric_limits<juce::int64>::max());
+}
+
+void PlayerRecorder::endPass()
+{
+    if (!passActive.exchange(false)) return;
+    std::unique_ptr<juce::AudioFormatWriter::ThreadedWriter> old;
+    {
+        const juce::ScopedLock sl(writerLock); // short: the audio thread only waits for a pointer swap
+        old = std::move(writer);
+    }
+    old.reset(); // flushes and closes the file, outside the lock
+
+    juce::int64 length = 0;
+    if (std::unique_ptr<juce::AudioFormatReader> r { formats.createReaderFor(passFile) })
+        length = r->lengthInSamples;
+    const juce::int64 fs = passStart.load();
+    std::vector<Clip> added;
+    const auto minLen = (juce::int64) (0.05 * sampleRate);
+    for (const auto& [pin, pout] : passPunches)
+    {
+        Clip c { passFile, fs, length, pin < 0 ? fs : pin, pout };
+        c.in = juce::jlimit(fs, fs + length, c.in);
+        c.out = juce::jlimit(fs, fs + length, c.out);
+        if (c.out - c.in >= minLen) added.push_back(c);
+    }
+    passPunches.clear();
+    if (added.empty())
+    {
+        passFile.deleteFile(); // nothing was punched in: the pass is not needed
+        return;
+    }
+    auto next = clips;
+    next.insert(next.end(), added.begin(), added.end());
+    commitClips(std::move(next));
+}
+
 void PlayerRecorder::play()
 {
     const auto st = getState();
-    if (st == State::recording || st == State::pausedRec || busy.load()) return;
-    if (st == State::playing) return;
+    if (st == State::recording || st == State::playing || busy.load()) return;
+    if (st == State::pausedRec) { pause(); return; } // CONTINUE
+    if (st == State::stopped) playStartPos = songPos.load();
     positionTransports(songPos.load());
+    if (takeReady.load() || !clips.empty()) startPass(); // a correction can be punched in at any moment
     state.store((int) State::playing, std::memory_order_release);
 }
 
@@ -324,13 +427,14 @@ void PlayerRecorder::pause()
     switch (getState())
     {
         case State::playing:
-            state.store((int) State::pausedPlay);
+            state.store((int) State::pausedPlay); // the pass keeps its file: CONTINUE goes on seamlessly
             break;
         case State::recording:
-            state.store((int) State::pausedRec); // the take stops growing; RESUME continues it seamlessly
+            state.store((int) State::pausedRec);
             break;
         case State::pausedPlay:
-            play();
+            positionTransports(songPos.load());
+            state.store((int) State::playing);
             break;
         case State::pausedRec:
             positionTransports(songPos.load());
@@ -342,19 +446,33 @@ void PlayerRecorder::pause()
 
 void PlayerRecorder::stop()
 {
-    const bool wasRecording = getState() == State::recording || getState() == State::pausedRec;
+    closePunch();
     state.store((int) State::stopped, std::memory_order_release);
-    if (wasRecording) finishRecording();
-    songPos.store(0);
-    positionTransports(0);
+    endPass();
+    songPos.store(playStartPos);
+    positionTransports(playStartPos);
 }
 
 void PlayerRecorder::toStart()
 {
+    setPositionSeconds(0.0);
+    playStartPos = 0;
+}
+
+void PlayerRecorder::setPositionSeconds(double seconds)
+{
     const auto st = getState();
     if (st == State::recording || st == State::pausedRec) return;
-    songPos.store(0);
-    positionTransports(0);
+    const auto pos = std::max<juce::int64>(0, (juce::int64) std::llround(seconds * sampleRate));
+    if (st == State::pausedPlay) endPass(); // the pass file would no longer match the timeline
+    if (st == State::stopped) playStartPos = pos;
+    songPos.store(pos);
+    positionTransports(pos);
+    if (st == State::playing)
+    {
+        endPass();
+        if (takeReady.load() || !clips.empty()) startPass();
+    }
 }
 
 double PlayerRecorder::getCompensationMs() const
@@ -366,42 +484,225 @@ double PlayerRecorder::getCompensationMs() const
 
 void PlayerRecorder::record()
 {
-    if (busy.load() || getState() == State::recording || getState() == State::pausedRec) return;
-    const auto folder = getRecordingsFolder().getChildFile("Takes");
-    folder.createDirectory();
-    const auto file = folder.getNonexistentChildFile("Take " + timestamp(), ".wav");
-    std::unique_ptr<juce::OutputStream> os = file.createOutputStream();
-    if (!os) return;
-    juce::WavAudioFormat wav;
-    auto w = wav.createWriterFor(os, juce::AudioFormatWriterOptions {}.withSampleRate(sampleRate).withNumChannels(2).withBitsPerSample(32)
-                                         .withSampleFormat(juce::AudioFormatWriterOptions::SampleFormat::floatingPoint));
-    if (!w) return;
-
-    // the old take is replaced (its file stays in the Takes folder)
-    takeReady.store(false);
-    swapTrack(take, nullptr);
-
-    auto tw = std::make_unique<juce::AudioFormatWriter::ThreadedWriter>(w.release(), writeThread, 1 << 17);
+    if (busy.load()) return;
+    switch (getState())
     {
-        const juce::ScopedLock sl(writerLock);
-        writer = std::move(tw);
+        case State::recording: // second press: punch out, playback continues
+            closePunch();
+            state.store((int) State::playing, std::memory_order_release);
+            return;
+        case State::pausedRec:
+            return;
+        case State::playing:
+            if (!passActive.load()) startPass();
+            break;
+        case State::pausedPlay:
+            positionTransports(songPos.load());
+            break;
+        case State::stopped:
+            playStartPos = songPos.load();
+            positionTransports(songPos.load());
+            startPass();
+            break;
     }
-    takeFile = file;
-    pendingCompensation.store((int) std::lround(getCompensationMs() * sampleRate / 1000.0));
-    recordStartPending.store(true);
-    positionTransports(songPos.load());
+    if (!passActive.load()) return;
+    const bool firstTake = clips.empty() && !takeReady.load();
+    punchIn = firstTake ? -1 : std::max<juce::int64>(0, songPos.load() - compensationSamples());
+    muteTakeFrom.store(songPos.load());
     state.store((int) State::recording, std::memory_order_release);
 }
 
-void PlayerRecorder::finishRecording()
+// ---------------------------------------------------------------------------------------------
+// Clips -> composite take
+// ---------------------------------------------------------------------------------------------
+void PlayerRecorder::commitClips(std::vector<Clip> next)
 {
-    std::unique_ptr<juce::AudioFormatWriter::ThreadedWriter> old;
+    undoStack.push_back(clips);
+    if (undoStack.size() > 50) undoStack.erase(undoStack.begin());
+    clips = std::move(next);
+    scheduleRender();
+}
+
+void PlayerRecorder::setClipEdges(int index, juce::int64 in, juce::int64 out)
+{
+    if (index < 0 || index >= (int) clips.size()) return;
+    auto next = clips;
+    auto& c = next[(size_t) index];
+    const auto minLen = (juce::int64) (0.05 * sampleRate);
+    c.in = juce::jlimit(c.fileStart, c.fileEnd() - minLen, in);
+    c.out = juce::jlimit(c.in + minLen, c.fileEnd(), out);
+    if (c.in == clips[(size_t) index].in && c.out == clips[(size_t) index].out) return;
+    commitClips(std::move(next));
+}
+
+void PlayerRecorder::removeClip(int index)
+{
+    if (index < 0 || index >= (int) clips.size()) return;
+    auto next = clips;
+    next.erase(next.begin() + index);
+    commitClips(std::move(next));
+}
+
+void PlayerRecorder::undo()
+{
+    if (undoStack.empty() || getState() == State::recording || getState() == State::pausedRec) return;
+    clips = undoStack.back();
+    undoStack.pop_back();
+    scheduleRender();
+}
+
+void PlayerRecorder::clearTake()
+{
+    const auto st = getState();
+    if (st == State::recording || st == State::pausedRec) return;
+    if (!clips.empty()) commitClips({});
+    else scheduleRender();
+}
+
+void PlayerRecorder::scheduleRender()
+{
+    const int gen = ++renderGeneration;
+    auto list = clips;
+    auto aliveFlag = alive;
+    renderJobs.addJob([this, gen, list, aliveFlag] {
+        juce::File f;
+        juce::int64 start = 0;
+        const auto err = aliveFlag->load() && gen == renderGeneration.load() ? renderComposite(list, f, start) : juce::String("skipped");
+        juce::MessageManager::callAsync([this, gen, f, start, err, aliveFlag] {
+            if (!aliveFlag->load()) return;
+            if (gen == renderGeneration.load()) // a newer edit replaces this result
+            {
+                if (err.isEmpty()) adoptComposite(f, start);
+                else if (err == "empty") adoptComposite({}, 0);
+                renderError = err.isEmpty() || err == "empty" ? juce::String() : err;
+                adoptedGeneration.store(gen);
+            }
+            else
+                f.deleteFile();
+        });
+    });
+}
+
+juce::String PlayerRecorder::renderNow()
+{
+    // blocking version (tests, no message loop): renders the current clips here; pending background
+    // renders see a newer generation and are dropped
+    ++renderGeneration;
+    renderJobs.removeAllJobs(false, 10000);
+    juce::File f;
+    juce::int64 start = 0;
+    const auto err = renderComposite(clips, f, start);
+    if (err.isEmpty()) adoptComposite(f, start);
+    else if (err == "empty") adoptComposite({}, 0);
+    adoptedGeneration.store(renderGeneration.load());
+    return err == "empty" ? juce::String() : err;
+}
+
+void PlayerRecorder::adoptComposite(const juce::File& f, juce::int64 start)
+{
+    const auto old = takeFile;
+    const bool oldIsComposite = old.getFileName().startsWith("Track ");
+    takeFile = f;
+    takeStart.store(start);
+    if (f.existsAsFile())
     {
-        const juce::ScopedLock sl(writerLock); // short: the audio thread only waits for a pointer swap
-        old = std::move(writer);
+        loadTakeForPlayback();
+        takeThumb.setSource(new juce::FileInputSource(f));
     }
-    old.reset(); // flushes and closes the file, outside the lock
-    loadTakeForPlayback();
+    else
+    {
+        takeReady.store(false);
+        swapTrack(take, nullptr);
+        takeLength.store(0);
+        takeThumb.clear();
+    }
+    if (oldIsComposite && old != f) old.deleteFile(); // composites are rebuilt from the clips at any time
+}
+
+juce::String PlayerRecorder::renderComposite(const std::vector<Clip>& list, juce::File& result, juce::int64& start)
+{
+    if (list.empty()) return "empty";
+    const auto X = (juce::int64) std::lround(kCrossfadeSeconds * sampleRate);
+    struct Fades { juce::int64 a0, a1, b0, b1; };
+    std::vector<Fades> fades;
+    juce::int64 t0 = std::numeric_limits<juce::int64>::max(), t1 = 0;
+    for (const auto& c : list)
+    {
+        Fades f {};
+        // centred on the edge when the recording extends beyond it, otherwise just inside
+        if (c.in - X / 2 >= c.fileStart) { f.a0 = c.in - X / 2; f.a1 = f.a0 + X; }
+        else { f.a0 = c.in; f.a1 = c.in + X; }
+        if (c.out + X / 2 <= c.fileEnd()) { f.b1 = c.out + X / 2; f.b0 = f.b1 - X; }
+        else { f.b1 = c.out; f.b0 = c.out - X; }
+        f.b0 = std::max(f.b0, f.a1);
+        fades.push_back(f);
+        t0 = std::min(t0, f.a0);
+        t1 = std::max(t1, f.b1);
+    }
+    t0 = std::max<juce::int64>(0, t0);
+
+    struct Source { std::unique_ptr<SessionStream> s; juce::int64 next; };
+    std::vector<Source> src;
+    for (const auto& c : list)
+    {
+        auto st = std::make_unique<SessionStream>(formats, c.file, sampleRate);
+        if (!st->ok()) return "A recording is missing: " + c.file.getFileName();
+        src.push_back({ std::move(st), c.fileStart });
+    }
+
+    const auto folder = getRecordingsFolder().getChildFile("Takes");
+    folder.createDirectory();
+    result = folder.getNonexistentChildFile("Track " + timestamp(), ".wav");
+    std::unique_ptr<juce::OutputStream> os = result.createOutputStream();
+    if (!os) return "Cannot write " + result.getFullPathName();
+    juce::WavAudioFormat wav;
+    auto w = wav.createWriterFor(os, juce::AudioFormatWriterOptions {}.withSampleRate(sampleRate).withNumChannels(2).withBitsPerSample(32)
+                                         .withSampleFormat(juce::AudioFormatWriterOptions::SampleFormat::floatingPoint));
+    if (!w) return "Cannot write the track.";
+
+    const int chunk = 32768;
+    std::vector<float> accL(chunk), accR(chunk), xl(chunk), xr(chunk), skipBuf(chunk);
+    const double halfPi = juce::MathConstants<double>::halfPi;
+    for (juce::int64 pos = t0; pos < t1; pos += chunk)
+    {
+        if (!alive->load()) return "Cancelled.";
+        const int n = (int) std::min<juce::int64>(chunk, t1 - pos);
+        std::fill(accL.begin(), accL.begin() + n, 0.0f);
+        std::fill(accR.begin(), accR.begin() + n, 0.0f);
+        for (size_t k = 0; k < list.size(); ++k)
+        {
+            const auto& f = fades[k];
+            const juce::int64 from = std::max(pos, f.a0), to = std::min(pos + n, f.b1);
+            if (from >= to) continue;
+            auto& sk = src[k];
+            while (sk.next < from) // skip forward in the file (sequential reading)
+            {
+                const int m = (int) std::min<juce::int64>(chunk, from - sk.next);
+                sk.s->read(skipBuf.data(), skipBuf.data(), m);
+                sk.next += m;
+            }
+            const int m = (int) (to - from);
+            sk.s->read(xl.data(), xr.data(), m);
+            sk.next += m;
+            for (int i = 0; i < m; ++i)
+            {
+                const juce::int64 t = from + i;
+                double wgt = 1.0;
+                if (t < f.a1) wgt = (double) (t - f.a0 + 0.5) / (double) (f.a1 - f.a0);
+                else if (t >= f.b0) wgt = (double) (f.b1 - t - 0.5) / (double) (f.b1 - f.b0);
+                wgt = juce::jlimit(0.0, 1.0, wgt);
+                const auto gIn = (float) std::sin(wgt * halfPi), gOut = (float) std::cos(wgt * halfPi); // equal power
+                const size_t o = (size_t) (t - pos);
+                accL[o] = accL[o] * gOut + xl[(size_t) i] * gIn;
+                accR[o] = accR[o] * gOut + xr[(size_t) i] * gIn;
+            }
+        }
+        const float* p[2] = { accL.data(), accR.data() };
+        if (!w->writeFromFloatArrays(p, 2, n)) return "Writing failed (disk full?)";
+    }
+    w.reset();
+    start = t0;
+    return {};
 }
 
 void PlayerRecorder::loadTakeForPlayback()
@@ -420,8 +721,11 @@ void PlayerRecorder::loadTakeForPlayback()
 
 void PlayerRecorder::poll()
 {
-    if (getState() == State::playing && songPos.load() >= (juce::int64) (getLengthSeconds() * sampleRate) + (juce::int64) (0.2 * sampleRate))
-        stop(); // end of the material
+    const auto st = getState();
+    if (st == State::playing && !passActive.load() && songPos.load() >= (juce::int64) (getLengthSeconds() * sampleRate) + (juce::int64) (0.2 * sampleRate))
+        stop(); // end of the material (playback only; while a pass is recorded you can play on)
+    if (st == State::playing && passActive.load() && songPos.load() >= (juce::int64) (getLengthSeconds() * sampleRate) + (juce::int64) (2.0 * sampleRate))
+        stop();
 }
 
 double PlayerRecorder::getPositionSeconds() const { return (double) songPos.load() / sampleRate; }
@@ -429,7 +733,10 @@ double PlayerRecorder::getBackingLengthSeconds() const { return backingReady.loa
 double PlayerRecorder::getTakeLengthSeconds() const { return takeReady.load() ? (double) takeLength.load() / sampleRate : 0.0; }
 double PlayerRecorder::getLengthSeconds() const
 {
-    const double t = takeReady.load() ? (double) (takeStart.load() + takeLength.load()) / sampleRate : 0.0;
+    double t = takeReady.load() ? (double) (takeStart.load() + takeLength.load()) / sampleRate : 0.0;
+    const auto st = getState();
+    if (st == State::recording || st == State::pausedRec)
+        t = std::max(t, getPositionSeconds());
     return std::max(getBackingLengthSeconds(), t);
 }
 
@@ -607,8 +914,12 @@ juce::String PlayerRecorder::adoptBounce(const juce::File& file)
 {
     stop();
     // the bounce becomes the backing track; the take is now part of it
+    ++renderGeneration;
+    clips.clear();
+    undoStack.clear();
     takeReady.store(false);
     swapTrack(take, nullptr);
+    takeThumb.clear();
     backingGainDb.store(0.0f);
     return loadBacking(file);
 }

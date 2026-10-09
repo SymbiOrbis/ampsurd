@@ -59,12 +59,12 @@ gate re-open, Frankenstein NOTES mode (split before the amps) + note band.
 
 ## 3e+. CPU: silent amps sleep, several cores — IMPLEMENTED 2026-10-08, awaiting test
 
-## 3f. Recorder timeline (next)
+## 3f. Recorder timeline — IMPLEMENTED 2026-10-09, awaiting test
 Waveform of the take with the backing track's waveform above it, zoom, click to navigate, punch-in
 recording while the backing plays, draggable start edge of a correction (automatic crossfades, no
 pops), undo. One guitar track (no multitrack).
 
-## 3g. Shareable presets (after 3f)
+## 3g. Shareable presets (next)
 `.ampsurd` (settings only; captures / IRs found again by file name in the capture folders) and
 `.ampsurdpack` (zip: preset + the .nam / IR files it uses, with a licence reminder).
 

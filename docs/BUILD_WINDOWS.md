@@ -133,12 +133,18 @@ REAPER picks up the new version.
     Switch a delay or the reverb OFF while it rings: the tail should fade out naturally.
 
 17. Standalone app, PLAYER / REC (button at the top): LOAD BACKING (a song or click track, WAV /
-    MP3 / FLAC). PLAY: does it play, can you hear your guitar on top? REC: play along, STOP, PLAY:
-    does your take sit exactly in time with the backing? If it is consistently early or late,
-    note by how much and set OFFSET (ms) - please tell me the value, it tells me how accurately
-    your interface reports its latency. Try PAUSE / CONTINUE while recording. SAVE AS: CD quality
-    (WAV 16-bit 44.1 kHz), guitar alone and with backing; open the files in REAPER - do they line
-    up? BOUNCE, then record a second layer on top.
+    MP3 / FLAC) - its waveform appears in the BACKING lane. **REC** records the take (GUITAR lane).
+    STOP, PLAY: does your take sit exactly in time with the backing? If it is consistently early or
+    late, set OFFSET (ms) and tell me the value.
+    **Corrections:** click in the timeline a few seconds before a mistake, PLAY, and press **REC**
+    just before the mistake (punch in) - the old take goes quiet, play the part again - press REC
+    again after it (PUNCH OUT) or STOP. The correction appears as a numbered box. Drag its left or
+    right edge to move where it starts / ends (also earlier than where you pressed REC, because the
+    whole pass was recorded). Listen to the joins: no click? **UNDO** goes back one step; right-click
+    a correction to remove it; CLEAR TAKE (twice) removes the whole guitar track.
+    Mouse wheel over the timeline = zoom, Shift + wheel = scroll, FIT = whole song, click = go there.
+    SAVE AS: CD quality (WAV 16-bit 44.1 kHz), guitar alone and with backing; BOUNCE, then record a
+    second layer on top.
 
 18. Tone vs. another NAM player (same .nam, same sample rate and buffer): first switch **Level match
     off** (settings icon) and match the loudness with OUTPUT - a louder sound always seems fuller.

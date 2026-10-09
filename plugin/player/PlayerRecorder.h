@@ -11,16 +11,27 @@
 // The live guitar is always audible (also while the take plays back). BOUNCE renders backing + take
 // into a new backing track, so further takes can be layered on top.
 //
+// The guitar track = a list of CLIPS (recorded passes), later ones on top of earlier ones:
+//   - the first REC records the take; REC while a take exists = PUNCH-IN (a correction) from the
+//     current position, REC again (or STOP / PAUSE...CONTINUE keeps it running) = PUNCH-OUT;
+//   - every pass is recorded from the moment PLAY starts, so a correction's start edge can later be
+//     dragged earlier (to before the punch-in point) or later (to cut a quiet start);
+//   - the clips are rendered into one composite take in the background with 10 ms equal-power
+//     crossfades at every edge, so the joins never click. UNDO restores the previous clip list.
+//
 // Threads: process() = audio thread (no allocation; short locks shared with transport changes, as in
 // JUCE's own transport/recorder classes). Everything else = message thread; exports and bounces run
 // on a background thread.
 
 #include <atomic>
+#include <limits>
+#include <vector>
 #include <functional>
 #include <memory>
 
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_audio_formats/juce_audio_formats.h>
+#include <juce_audio_utils/juce_audio_utils.h>
 
 #include "ampsurd/SafetyLimiter.h"
 
@@ -55,8 +66,9 @@ public:
     void play();
     void pause();   // pause / resume
     void stop();    // stop; a running recording is finished; back to the start
-    void record();  // record a new take from the current position (replaces the current take)
+    void record();  // no take: record it; take: punch in (or out, while recording) at the current position
     void toStart();
+    void setPositionSeconds(double s); // navigate (not while recording)
     void poll();    // ~30 Hz: stops at the end of the material
 
     State getState() const { return (State) state.load(); }
@@ -68,6 +80,38 @@ public:
     double getBackingLengthSeconds() const;
     double getTakeLengthSeconds() const;
     juce::File getTakeFile() const { return takeFile; }
+    double getTakeStartSeconds() const { return (double) takeStart.load() / sampleRate; }
+    double getSampleRate() const { return sampleRate; }
+
+    // --- the guitar track's clips (message thread). Positions in session samples on the timeline. ---
+    struct Clip
+    {
+        juce::File file;             // the recorded pass (32-bit float WAV, session rate)
+        juce::int64 fileStart = 0;   // timeline position of the file's first sample
+        juce::int64 fileLength = 0;  // samples in the file
+        juce::int64 in = 0, out = 0; // the part that is heard: [in, out)
+        juce::int64 fileEnd() const { return fileStart + fileLength; }
+    };
+    const std::vector<Clip>& getClips() const { return clips; }
+    // moves the edges of clip `index` (clamped to the recorded audio, at least 50 ms long); re-renders
+    void setClipEdges(int index, juce::int64 in, juce::int64 out);
+    void removeClip(int index);
+    bool canUndo() const { return !undoStack.empty(); }
+    void undo();
+    void clearTake();                  // remove the whole guitar track (files stay in Recordings/Takes)
+    bool isRendering() const { return adoptedGeneration.load() != renderGeneration.load(); }
+    juce::String getRenderError() const { return renderError; }
+    juce::String renderNow();          // blocking (tests): waits for the composite
+    static constexpr double kCrossfadeSeconds = 0.010;
+
+    // live recording: where the current pass starts and where the punch-in is (timeline samples, -1 = none)
+    juce::int64 getPassStart() const { return passActive.load() ? passStart.load() : -1; }
+    juce::int64 getPunchIn() const { return getState() == State::recording ? punchIn : -1; }
+
+    // waveforms (message thread)
+    juce::AudioThumbnail& getBackingThumbnail() { return backingThumb; }
+    juce::AudioThumbnail& getTakeThumbnail() { return takeThumb; }
+    juce::AudioThumbnail& getPassThumbnail() { return passThumb; }
 
     void setBackingGainDb(float db) { backingGainDb.store(db); }
     void setTakeGainDb(float db) { takeGainDb.store(db); }
@@ -94,7 +138,14 @@ public:
     juce::String renderMix(bool withBacking, juce::AudioBuffer<float>& out, int& startOffset);
 
 private:
-    void finishRecording();
+    void startPass();
+    void endPass();                     // closes the pass file and adds its punched parts as clips
+    void closePunch();
+    void commitClips(std::vector<Clip> next); // undo point + render
+    void scheduleRender();
+    juce::String renderComposite(const std::vector<Clip>& list, juce::File& result, juce::int64& start);
+    void adoptComposite(const juce::File& f, juce::int64 start);
+    juce::int64 compensationSamples() const;
     void loadTakeForPlayback();
     void positionTransports(juce::int64 pos);
     juce::String runExport(const juce::File& dest, ExportOptions o);
@@ -130,9 +181,27 @@ private:
 
     std::atomic<int> state { (int) State::stopped };
     std::atomic<juce::int64> songPos { 0 };
-    std::atomic<bool> recordStartPending { false };
+    juce::int64 playStartPos = 0;       // STOP returns here
+
+    // the pass being recorded
+    std::atomic<bool> passActive { false }, passStartPending { false };
+    std::atomic<juce::int64> passStart { 0 };       // timeline position of the pass file's first sample
     std::atomic<int> pendingCompensation { 0 };
     juce::int64 recSkip = 0;
+    juce::File passFile;
+    juce::int64 punchIn = -1;                        // timeline; -1 = from the pass start (first take)
+    std::vector<std::pair<juce::int64, juce::int64>> passPunches;
+    std::atomic<juce::int64> muteTakeFrom { std::numeric_limits<juce::int64>::max() }; // song position
+
+    // clips + composite
+    std::vector<Clip> clips;
+    std::vector<std::vector<Clip>> undoStack;
+    std::atomic<int> renderGeneration { 0 }, adoptedGeneration { 0 };
+    juce::String renderError;
+    juce::ThreadPool renderJobs { juce::ThreadPoolOptions {}.withThreadName("AMPSURD composite").withNumberOfThreads(1) };
+
+    juce::AudioThumbnailCache thumbCache { 8 };
+    juce::AudioThumbnail backingThumb { 256, formats, thumbCache }, takeThumb { 256, formats, thumbCache }, passThumb { 256, formats, thumbCache };
 
     std::function<int()> deviceLatency;
     std::atomic<float> offsetMs { 0.0f }, backingGainDb { 0.0f }, takeGainDb { 0.0f };
