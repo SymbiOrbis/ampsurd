@@ -166,6 +166,20 @@ REAPER picks up the new version.
     taking over. **TONE** = the previous mode (every note, split by its frequency content). The thin
     band under the graph shows where the note you play sits.
 
+21. PITCH (GLOBAL EQ / FX -> PITCH): press D -2 and play: does it feel like a guitar tuned to D standard?
+    Low power chords and single notes - any warble, and is the extra delay noticeable? Switch ON / OFF
+    while playing: no click?
+
+22. EQ bands: in an EQ choose 4 BANDS - only low cut, two bells, high cut remain. AUTO LEVEL: boost a band
+    by +12 dB - the sound changes colour but not loudness (the readout shows how much the EQ turned
+    itself down).
+
+23. ECO (in a slot, only for A2 captures that contain a Lite model): switch it on - the CPU value drops,
+    the tone stays close.
+
+24. Standalone keys: Space = play / stop, R = record / punch in / out, W or Home = back to the start.
+    The wide bar under the guitar track scrolls through the song.
+
 Expected latency shown by REAPER: 104 samples at 48 kHz, 123 at 44.1 kHz.
 
 Optional measurements (in Developer PowerShell):

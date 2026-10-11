@@ -101,7 +101,7 @@ void CaptureModel::setFastTanh(bool on)
     else nam::activations::Activation::disable_fast_tanh();
 }
 
-CaptureModel::LoadResult CaptureModel::load(const std::filesystem::path& file, double hostSampleRate, int maxBlockSize)
+CaptureModel::LoadResult CaptureModel::load(const std::filesystem::path& file, double hostSampleRate, int maxBlockSize, bool eco)
 {
     LoadResult result;
     // Same activation as the official NAM plugin (it enables NAM Core's fast tanh at start-up), so a
@@ -159,11 +159,12 @@ CaptureModel::LoadResult CaptureModel::load(const std::filesystem::path& file, d
         info.hasInputLevel = model->dsp->HasInputLevel();
         info.inputLevelDbu = info.hasInputLevel ? model->dsp->GetInputLevel() : 0.0;
 
-        // 3. Slimmable files (A2 Full + Lite in one file): always run at full size.
+        // 3. Slimmable files (A2 Full + Lite in one file): full size, or Lite in ECO mode.
         if (auto* slim = dynamic_cast<nam::SlimmableModel*>(model->dsp.get()))
         {
             info.slimmable = true;
-            slim->SetSlimmableSize(1.0);
+            info.ecoActive = eco;
+            slim->SetSlimmableSize(eco ? 0.0 : 1.0); // ECO: the smallest (Lite) model, else the full one
         }
 
         model->normalisationGain = info.hasLoudness

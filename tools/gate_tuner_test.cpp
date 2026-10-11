@@ -108,6 +108,11 @@ int main()
         check(openAt >= 0 && openAt < 56,
               "GATE: fully open (99 %%) %.2f ms after the next note starts - before the amp signal arrives (1.17 ms), so no attack is cut",
               openAt * 1000.0 / sr);
+        // the opening is an S-curve: it starts and ends gently (largest change of slope per sample)
+        double worstCurve = 0;
+        for (int i = note + tail + 1; i < note + tail + 80; ++i)
+            worstCurve = std::max(worstCurve, std::abs(target[(size_t) i + 1] - 2 * target[(size_t) i] + target[(size_t) i - 1]));
+        check(worstCurve < 0.01, "GATE: opens with a smooth S-curve (largest slope change %.4f per sample; an exponential snap would be ~0.1)", worstCurve);
 
         NoiseGate off;
         off.prepare(sr);

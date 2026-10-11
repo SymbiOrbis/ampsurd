@@ -91,8 +91,50 @@ AmpsurdEditor::AmpsurdEditor(AmpsurdProcessor& p) : AudioProcessorEditor(&p), pr
         c->setFixedAspectRatio((double) kWidth / (double) kHeight);
     setSize(kWidth, kHeight);
 
+    // Buttons, boxes and sliders never keep the keyboard focus: Space / R / W reach the player
+    // shortcuts (standalone), and in a DAW Space keeps working as the DAW's transport.
+    std::function<void(juce::Component&)> noFocus = [&](juce::Component& c) {
+        for (auto* ch : c.getChildren())
+        {
+            if (dynamic_cast<juce::Button*>(ch) || dynamic_cast<juce::ComboBox*>(ch) || dynamic_cast<juce::Slider*>(ch))
+            {
+                ch->setWantsKeyboardFocus(false);
+                ch->setMouseClickGrabsKeyboardFocus(false);
+            }
+            noFocus(*ch);
+        }
+    };
+    noFocus(content);
+    setWantsKeyboardFocus(proc.getPlayer() != nullptr);
+
     timerCallback();
     startTimerHz(30);
+}
+
+bool AmpsurdEditor::keyPressed(const juce::KeyPress& key)
+{
+    auto* pl = proc.getPlayer();
+    if (pl == nullptr) return false;
+    using S = PlayerRecorder::State;
+    const auto st = pl->getState();
+    if (key == juce::KeyPress::spaceKey)
+    {
+        if (st == S::playing || st == S::recording) pl->stop();
+        else pl->play(); // also CONTINUE after a pause
+        return true;
+    }
+    const auto c = juce::CharacterFunctions::toLowerCase(key.getTextCharacter());
+    if (c == 'r' && !key.getModifiers().isAnyModifierKeyDown())
+    {
+        pl->record(); // record the take / punch in / punch out
+        return true;
+    }
+    if ((c == 'w' && !key.getModifiers().isAnyModifierKeyDown()) || key == juce::KeyPress::homeKey)
+    {
+        pl->toStart();
+        return true;
+    }
+    return false;
 }
 
 AmpsurdEditor::~AmpsurdEditor()
@@ -230,4 +272,7 @@ void AmpsurdEditor::timerCallback()
     }
     content.master.refresh();
     content.header.refresh();
+    // standalone: take the keyboard focus whenever nothing else has it (typing a value keeps it)
+    if (proc.getPlayer() != nullptr && isShowing() && juce::Component::getCurrentlyFocusedComponent() == nullptr)
+        grabKeyboardFocus();
 }

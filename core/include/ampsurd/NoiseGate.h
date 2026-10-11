@@ -41,6 +41,7 @@ private:
     double gain = 1.0, attackCoef = 0.0, decayCoef = 0.0, releaseToOneCoef = 0.0;
     double reopenCoef = 0.0;  // re-opening while a note still sounds: smooth, not a snap (no click)
     bool fastOpen = true;
+    double rampFrom = 0.0; int rampPos = 0, rampSamples = 43; // S-shaped opening on a new note
     double shaped = 1.0, shapeCoef = 0.0; // the gain actually applied (second smoothing stage)
     double meanSquareSlow = 0.0, slowCoef = 0.0; // 30 ms average: tells a new pick attack from a fading note
     int holdSamples = 0, holdCounter = 0;

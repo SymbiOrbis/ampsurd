@@ -30,3 +30,6 @@ target_link_libraries(ir_test PRIVATE ampsurd_core)
 
 add_executable(fx_test fx_test.cpp)
 target_link_libraries(fx_test PRIVATE ampsurd_core)
+
+add_executable(pitch_test pitch_test.cpp)
+target_link_libraries(pitch_test PRIVATE ampsurd_core)

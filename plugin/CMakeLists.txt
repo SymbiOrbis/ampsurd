@@ -13,7 +13,10 @@ juce_add_plugin(Ampsurd
   # Do not copy into C:\Program Files\Common Files\VST3 (needs admin rights).
   # REAPER is pointed at the build output folder instead - see docs/BUILD_WINDOWS.md.
   COPY_PLUGIN_AFTER_BUILD   FALSE
-  VST3_CATEGORIES           Fx Distortion)
+  VST3_CATEGORIES           Fx Distortion
+  # app icon: AMP over SURD, blood red on the AMPSURD background (assets/icon, made by script)
+  ICON_BIG                  "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon/icon_1024.png"
+  ICON_SMALL                "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon/icon_256.png")
 
 target_sources(Ampsurd PRIVATE
   PluginProcessor.cpp

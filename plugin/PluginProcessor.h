@@ -17,6 +17,7 @@
 #include "ampsurd/NoiseGate.h"
 #include "ampsurd/PitchDetector.h"
 #include "ampsurd/SafetyLimiter.h"
+#include "ampsurd/PitchShifter.h"
 #include "player/PlayerRecorder.h"
 
 // AMPSURD: one guitar DI -> five fixed NAM capture slots in parallel -> blended into one tone.
@@ -69,6 +70,11 @@ public:
     // EQ targets kIrEqBase + slot are the IR EQs (one per slot, applied after that slot's IR).
     static constexpr int kIrEqBase = kGlobalEq + 1;
     static constexpr int irEqTarget(int slot) { return kIrEqBase + slot; }
+    static constexpr int kNumEqTargets = kIrEqBase + kNumSlots;
+    // how many bands an EQ shows (2 = low + high cut only ... 10 = all); hidden bells are flat
+    int getEqBandCount(int target) const;
+    bool isEqBandVisible(int target, int band) const;
+    void setEqBandCount(int target, int count); // message thread
 
     // --- cabinet IR per slot (message thread) ---
     enum class IrState { none, loading, loaded, missing, error };
@@ -90,7 +96,7 @@ public:
     static double delayNoteBeats(int index);            // length of a note value in quarter notes
     double getTempoBpm() const { return tempoBpm.load(); }   // host tempo, or the TEMPO parameter
     bool hostProvidesTempo() const { return hostTempo.load(); }
-    bool isFxActive(int which) const;                   // 0 delay 1, 1 delay 2, 2 reverb, 3 flanger (ON switch)
+    bool isFxActive(int which) const;                   // 0 delay 1, 1 delay 2, 2 reverb, 3 flanger, 4 pitch (ON switch)
 
     // --- Global EQ ---
     bool isGlobalEqOn() const { return globalEqParams.eqOn->load() > 0.5f; }
@@ -104,6 +110,8 @@ public:
         juce::String path;      // full path of the .nam file (also kept when missing)
         juce::String fileName;  // file name without .nam - THE identity shown in the UI
         juce::String info;      // details for tooltips / diagnostics
+        bool canEco = false;    // the file contains an A2 Lite model (ECO button available)
+        bool ecoActive = false; // the Lite model is running
     };
     SlotStatus getSlotStatus(int slot) const;
     void loadCapture(int slot, const juce::File& file);
@@ -193,6 +201,7 @@ private:
         std::atomic<float>* mute = nullptr;
         std::atomic<float>* solo = nullptr;
         std::atomic<float>* eqOn = nullptr;
+        std::atomic<float>* eco = nullptr;       // ECO: run the A2 Lite model of slimmable files
         std::atomic<float>* alignMode = nullptr; // 0 AUTO, 1 FREE
         std::atomic<float>* timeMs = nullptr;
         std::atomic<float>* phaseDeg = nullptr;
@@ -207,6 +216,8 @@ private:
         std::array<std::atomic<float>*, kNumBands> freq {}, gain {}, q {};
     };
     EqParams globalEqParams;
+    std::array<std::atomic<float>*, kNumEqTargets> bandCountParams {};
+    float paramValueRaw(const juce::String& id) const;
     std::array<EqParams, kNumSlots> irEqParams;
 
     // values derived from the measurements (written by loader/message thread, read by audio thread)
@@ -241,6 +252,8 @@ private:
     ampsurd::Engine engine;
     ampsurd::SafetyLimiter limiter;
     ampsurd::NoiseGate gate;
+    ampsurd::PitchShifter pitch;
+    std::atomic<float>* pitchOnParam = nullptr, *pitchSemiParam = nullptr, *pitchCentsParam = nullptr;
     ampsurd::PitchDetector tuner;
     std::vector<float> rawBuffer;
     std::atomic<bool> tunerVisible { false };
@@ -296,6 +309,7 @@ private:
     std::array<std::atomic<int>, kNumSlots> irGeneration {};
     std::array<IrStatus, kNumSlots> irStatus;
     std::array<bool, kNumSlots> lastIrOn {};
+    std::array<bool, kNumSlots> lastEco {};
     std::atomic<int> remeasureGeneration { 0 };
     std::atomic<bool> needsRemeasure { false };
     double inputGainChangedAt = 0.0;

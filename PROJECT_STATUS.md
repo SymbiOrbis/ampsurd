@@ -33,6 +33,10 @@ silent amps no longer use CPU; amp paths run on several cores (>= 4-core compute
 re-test (BUILD_WINDOWS.md checklist 18-20). Frankenstein "FOLLOW" (route the whole note by detected
 pitch) proposed, postponed by the owner. Session 2l (2026-10-09): recorder timeline with waveforms,
 zoom, navigation, punch-in corrections with movable edges and crossfaded joins, undo.
+Owner 2026-10-11: AMPSURD no longer sounds worse than TONE3000 (after re-capturing). Session 2m:
+visual polish (red accent, 2 px outlines, icon), smoother gate opening, INPUT -30...+15, EQ band
+count per EQ + AUTO LEVEL, ECO per slot, timeline scrollbar, keyboard shortcuts, PITCH (tuning before
+the amps, ~5 ms).
 
 ## Implemented and tested
 

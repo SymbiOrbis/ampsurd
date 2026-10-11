@@ -6,6 +6,41 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-11 — Session 2m: owner's polish list + PITCH — Claude (Opus 5.5)
+
+Owner (tone now on par with TONE3000 after re-capturing; buffer question postponed) asked for:
+- Look: thicker outlines (2 px) of the main sections (slots, centre area, master row); light blood
+  red (#D23C42, theme `accent`) for AMPSURD, the slot numbers and the title of the open panel
+  (EDIT / AMP n, IR / AMP n, GLOBAL EQ / FX, PLAYER / RECORDER, NOISE GATE, TUNER, FRANKENSTEIN);
+  footer "BROUGHT TO YOU BY" + names in the light text colour; "DARK MATTERS".
+- App icon: AMP over SURD, Inter SemiBold, accent red on the AMPSURD background
+  (plugin/assets/icon, JUCE ICON_BIG / ICON_SMALL).
+- Gate: a new note opens with a raised-cosine S-curve (0.9 ms, still before the amp attack arrives)
+  instead of an exponential snap (largest slope change 0.0027 vs ~0.1).
+- INPUT range -30 ... +15 dB.
+- EQ: each EQ (amps, IR EQs, Global EQ) has its own band count 2 ... 10 (parameter `*_bands`,
+  default 10, 2 = low + high cut only); hidden bells are flat; bells nobody used are spread over
+  80 Hz ... 8 kHz when the count changes. AUTO LEVEL always on (core ParametricEq): output gain =
+  -(average power gain of the curve over a guitar spectrum, 30 Hz-16 kHz, band-pass weighted),
+  limited +12 / -18 dB, recomputed only when the bands change, smoothed; flat EQ untouched. Test:
+  +9 / -9 / +12 / -12 dB bands change pink "cab" noise by +0.1 / +0.1 / +0.5 / +0.1 dB.
+- ECO per slot (owner: active only where an A2 Lite exists): `s{n}_eco`; slimmable files (A2 Full +
+  Lite in one file, e.g. NAM Core's A2.nam example) reload with SetSlimmableSize(0) (not real-time
+  safe -> reloaded off the audio thread and crossfaded like any capture swap, re-measured); the ECO
+  button is disabled for other captures; tooltip shows "ECO available" / "ECO running".
+- Recorder: wide horizontal scrollbar under the guitar lane; keyboard shortcuts in the standalone
+  app: Space = play / stop, R = record / punch in / punch out, W or Home = to the start (buttons and
+  boxes no longer keep the keyboard focus, so Space also stays the DAW's transport in a DAW).
+- PITCH (new, owner: as little delay as possible, before the amps): core PitchShifter - delay line
+  read at 2^(semitones/12), jumps by one pitch period (autocorrelation on a 12 kHz copy every 256
+  samples, top of the correlation peak + parabola, then the best-matching fractional splice point)
+  with raised-cosine crossfades. -12...+12 semitones + cents, quick buttons Eb / D / C# / C.
+  Tests (pitch_test): pitch within 2.1 cents (82 / 110 / 330 Hz, -12...+12 st); a shifted sine's
+  artefacts 51.8 dB below the note; A + E chord shifted exactly; delay of a note's start <= 6.9 ms
+  (82 Hz and 330 Hz), low power chord 8.6 ms; ON/OFF without a click; OFF bit-identical; 1.6 % CPU.
+  Reported latency +5 ms while on. The tuner keeps showing the real strings.
+- All tests PASS (core, engine incl. ECO + AUTO LEVEL, compat, tone_test, recorder_test incl. keys).
+
 ## 2026-10-09 — Session 2l: recorder timeline, punch-in corrections — Claude (Opus 5.5)
 
 Owner's spec: one guitar track; waveform of the take with the backing above it; zoom; navigate;

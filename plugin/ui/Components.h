@@ -78,7 +78,8 @@ private:
     AmpsurdProcessor& proc;
     const int slot;
     juce::TextButton loadButton { "LOAD NAM" }, editButton { "EDIT" }, irButton { "ADD IR" },
-                     soloButton { "SOLO" }, muteButton { "MUTE" }, removeButton { "REMOVE" };
+                     soloButton { "SOLO" }, muteButton { "MUTE" }, removeButton { "REMOVE" }, ecoButton { "ECO" };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> ecoAtt;
     double removeArmedAt = -1.0; // REMOVE needs a second click within 3 s
     AmpsurdProcessor::IrStatus irStatus;
     bool irOn = true;
@@ -104,8 +105,9 @@ class EqGraph final : public juce::Component
 {
 public:
     explicit EqGraph(AmpsurdProcessor&);
-    void setSlot(int s) { slot = s; activeBand = -1; repaint(); }
+    void setSlot(int s);
     void paint(juce::Graphics&) override;
+    void resized() override;
     void mouseMove(const juce::MouseEvent&) override;
     void mouseExit(const juce::MouseEvent&) override;
     void mouseDown(const juce::MouseEvent&) override;
@@ -133,7 +135,9 @@ private:
     AmpsurdProcessor& proc;
     int slot = -1;
     int hoverBand = -1, activeBand = -1;
-    std::array<float, 3 * ampsurd::ParametricEq::kNumBands + 1> lastSeen {}, lastGlobal {};
+    std::array<float, 3 * ampsurd::ParametricEq::kNumBands + 2> lastSeen {};
+    std::array<float, 3 * ampsurd::ParametricEq::kNumBands + 1> lastGlobal {};
+    juce::ComboBox bandsBox; // how many bands this EQ shows (2 ... 10)
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -204,7 +208,7 @@ private:
 
     AmpsurdProcessor& proc;
     int selected = 0;
-    std::array<juce::TextButton, 4> selector;
+    std::array<juce::TextButton, 5> selector;
     // delay 1 / 2
     std::array<juce::TextButton, 2> dOn, dSync, dPing;
     std::array<juce::ComboBox, 2> dNote;
@@ -219,6 +223,10 @@ private:
     // flanger
     juce::TextButton fOn { "ON" };
     std::array<Row, 4> fRows;                   // RATE, DEPTH, FEEDBACK, MIX
+    // pitch (tunes the guitar before the amps)
+    juce::TextButton pOn { "ON" };
+    std::array<Row, 2> pRows;                   // SEMITONES, CENTS
+    std::array<juce::TextButton, 4> pPreset;    // quick tunings
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>> buttonAtts;
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>, 2> noteAtts;
     juce::String syncInfo;
@@ -440,11 +448,12 @@ private:
 // Timeline of the player / recorder: backing track waveform above the guitar track waveform, a ruler,
 // the playhead and the clips (recorded corrections) with draggable start / end edges.
 // Click = go there, mouse wheel = zoom around the mouse, Shift + wheel (or horizontal) = scroll.
-class Timeline final : public juce::Component
+class Timeline final : public juce::Component, private juce::ScrollBar::Listener
 {
 public:
     explicit Timeline(PlayerRecorder&);
     void paint(juce::Graphics&) override;
+    void resized() override;
     void mouseMove(const juce::MouseEvent&) override;
     void mouseDown(const juce::MouseEvent&) override;
     void mouseDrag(const juce::MouseEvent&) override;
@@ -463,13 +472,17 @@ private:
     double xToTime(float x) const { return viewStart + (double) (x - (float) laneArea().getX()) * secondsPerPixel; }
     float timeToX(double t) const { return (float) laneArea().getX() + (float) ((t - viewStart) / secondsPerPixel); }
     double centreSeconds() const { return viewStart + 0.5 * secondsPerPixel * laneArea().getWidth(); }
-    juce::Rectangle<int> laneArea() const { return getLocalBounds().withTrimmedLeft(64); }
+    juce::Rectangle<int> laneArea() const { return getLocalBounds().withTrimmedLeft(64).withTrimmedBottom(kScrollH + 4); }
+    static constexpr int kScrollH = 16;
+    void scrollBarMoved(juce::ScrollBar*, double newRangeStart) override;
+    void updateScrollBar();
     juce::Rectangle<int> rulerArea() const { return laneArea().removeFromTop(16); }
     juce::Rectangle<int> backingLane() const;
     juce::Rectangle<int> guitarLane() const;
     void clampView();
 
     PlayerRecorder& player;
+    juce::ScrollBar scroll { false }; // wide horizontal bar under the guitar track: drag to move along the song
     double viewStart = 0.0, secondsPerPixel = 0.02;
     bool fitted = false;
     EdgeHit hover, drag;

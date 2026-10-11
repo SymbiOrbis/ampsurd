@@ -23,6 +23,8 @@ inline const juce::Colour textFaint  { 0xff8f9195 }; // least important text, st
 inline const juce::Colour onFill     { 0xffe8e8e6 }; // "on" buttons: light fill, dark text
 inline const juce::Colour onText     { 0xff1d1e20 };
 inline const juce::Colour warning    { 0xffe8e8e6 }; // warnings are shown with text, not colour
+inline const juce::Colour accent     { 0xffd23c42 }; // light blood red: AMPSURD, slot numbers, the open panel's title
+inline constexpr float sectionBorder = 2.0f;           // outline of the main sections (slots, centre area, master row)
 } // namespace colours
 
 // Embedded Inter (SIL Open Font License 1.1), so text and filename wrapping look the same on

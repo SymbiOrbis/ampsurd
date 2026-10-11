@@ -251,6 +251,12 @@ SlotComponent::SlotComponent(AmpsurdProcessor& p, int s) : proc(p), slot(s), fad
     soloButton.setTooltip("Hear only the soloed amps");
     muteButton.setTooltip("Silence this amp (its mix share is kept)");
     editButton.setTooltip("Open EQ and alignment for this amp");
+    // ECO: run the A2 Lite model (less CPU) - only for captures that contain one
+    addAndMakeVisible(ecoButton);
+    ecoButton.setClickingTogglesState(true);
+    ecoAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.params, AmpsurdProcessor::slotParamId(s, "eco"), ecoButton);
+    ecoButton.setTooltip("ECO: play the A2 Lite version of this capture - less CPU, slightly less detail. "
+                         "Available only for captures that contain a Lite model (slimmable A2).");
 
     panSlider.setSliderStyle(juce::Slider::LinearHorizontal);
     panSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
@@ -295,6 +301,7 @@ void SlotComponent::resized()
     place(row2, soloButton, false); place(row2, muteButton, false); place(row2, removeButton, true);
     r.removeFromBottom(10);
     fader.setBounds(r.removeFromRight(40).withTrimmedTop(22));
+    ecoButton.setBounds(40, 10, 44, 20);
     auto pa = panArea();
     pa.removeFromLeft(34);  // "PAN" label
     pa.removeFromRight(34); // value
@@ -303,17 +310,17 @@ void SlotComponent::resized()
 
 void SlotComponent::paint(juce::Graphics& g)
 {
-    const auto bounds = getLocalBounds().toFloat().reduced(0.5f);
+    const auto bounds = getLocalBounds().toFloat().reduced(sectionBorder * 0.5f + 0.25f);
     if (selected)
     {
         g.setColour(raised);
         g.fillRoundedRectangle(bounds, 3.0f);
     }
     g.setColour(selected ? lineStrong : (dragHover ? textDim : line));
-    g.drawRoundedRectangle(bounds, 3.0f, selected ? 1.5f : 1.0f);
+    g.drawRoundedRectangle(bounds, 3.0f, selected ? sectionBorder + 0.5f : sectionBorder);
 
     // slot number + state
-    g.setColour(isLoadedState(status.state) ? text : textDim);
+    g.setColour(isLoadedState(status.state) ? accent : accent.withAlpha(0.6f));
     g.setFont(Fonts::get().semibold(20.0f));
     g.drawText(juce::String(slot + 1), juce::Rectangle<int>(14, 7, 30, 26), juce::Justification::centredLeft, false);
     juce::String stateText;
@@ -326,7 +333,7 @@ void SlotComponent::paint(juce::Graphics& g)
         case AmpsurdProcessor::SlotState::loaded:  break;
     }
     if (stateText.isNotEmpty())
-        drawLabel(g, stateText, { 40, 11, getWidth() - 40 - 60, 18 }, textDim, juce::Justification::centred);
+        drawLabel(g, stateText, { 88, 11, getWidth() - 88 - 60, 18 }, textDim, juce::Justification::centred);
 
     // percentage = actual share of the blend (mute / solo aware)
     const bool loaded = isLoadedState(status.state);
@@ -404,6 +411,8 @@ void SlotComponent::refresh(bool isSelected, bool irEditorOpen)
 
     const bool loaded = isLoadedState(st.state);
     editButton.setEnabled(loaded);
+    ecoButton.setEnabled(st.state == AmpsurdProcessor::SlotState::loaded && st.canEco);
+    ecoButton.setVisible(st.state != AmpsurdProcessor::SlotState::empty);
     soloButton.setEnabled(loaded);
     muteButton.setEnabled(loaded);
     fader.setEnabled(loaded && !proc.isFrankensteinOn()); // Frankenstein replaces the fader blend
@@ -498,7 +507,33 @@ namespace
 constexpr float kGraphMinF = 20.0f, kGraphMaxF = 20000.0f, kGraphRangeDb = 20.0f;
 }
 
-EqGraph::EqGraph(AmpsurdProcessor& p) : proc(p) {}
+EqGraph::EqGraph(AmpsurdProcessor& p) : proc(p)
+{
+    for (int n = 2; n <= ampsurd::ParametricEq::kNumBands; ++n)
+        bandsBox.addItem(n == 2 ? juce::String("2 BANDS (CUTS)") : juce::String(n) + " BANDS", n);
+    bandsBox.setTooltip("How many EQ bands to show: 2 = only low cut and high cut, 10 = all. Hidden bands are flat.");
+    bandsBox.onChange = [this] {
+        if (slot >= 0) proc.setEqBandCount(slot, bandsBox.getSelectedId());
+        hoverBand = activeBand = -1;
+        repaint();
+    };
+    addChildComponent(bandsBox);
+}
+
+void EqGraph::setSlot(int s)
+{
+    slot = s;
+    activeBand = hoverBand = -1;
+    bandsBox.setVisible(s >= 0);
+    if (s >= 0) bandsBox.setSelectedId(proc.getEqBandCount(s), juce::dontSendNotification);
+    repaint();
+}
+
+void EqGraph::resized()
+{
+    const auto r = plotArea();
+    bandsBox.setBounds((int) r.getX() + 34, (int) r.getY() + 4, 132, 22);
+}
 
 juce::RangedAudioParameter* EqGraph::bandParam(int band, const char* name) const
 {
@@ -511,7 +546,7 @@ std::array<ampsurd::EqBand, ampsurd::ParametricEq::kNumBands> EqGraph::bands() c
     if (slot < 0) return b;
     for (int i = 0; i < ampsurd::ParametricEq::kNumBands; ++i)
         b[(size_t) i] = { paramValue(proc, AmpsurdProcessor::bandParamId(slot, i, "freq")),
-                          paramValue(proc, AmpsurdProcessor::bandParamId(slot, i, "gain")),
+                          proc.isEqBandVisible(slot, i) ? paramValue(proc, AmpsurdProcessor::bandParamId(slot, i, "gain")) : 0.0f,
                           paramValue(proc, AmpsurdProcessor::bandParamId(slot, i, "q")) };
     return b;
 }
@@ -556,6 +591,7 @@ int EqGraph::bandAt(juce::Point<float> p, float maxDistance) const
     float bestD = maxDistance < 0.0f ? std::numeric_limits<float>::max() : maxDistance;
     for (int i = 0; i < ampsurd::ParametricEq::kNumBands; ++i)
     {
+        if (!proc.isEqBandVisible(slot, i)) continue;
         const float d = p.getDistanceFrom(nodePos(i, b));
         if (d < bestD) { bestD = d; best = i; }
     }
@@ -634,9 +670,23 @@ void EqGraph::paint(juce::Graphics& g)
     g.setColour(eqOn ? text : textFaint);
     g.strokePath(curve, juce::PathStrokeType(1.5f));
 
-    // nodes
+    // AUTO LEVEL: the EQ keeps the loudness the same (boost -> turned down, cut -> turned up)
+    if (eqOn)
+    {
+        const double lvl = ampsurd::ParametricEq::autoLevelDb(b, sr);
+        if (std::abs(lvl) >= 0.05)
+        {
+            g.setColour(textDim);
+            g.setFont(Fonts::get().regular(11.0f));
+            g.drawText("AUTO LEVEL " + juce::String(lvl > 0 ? "+" : "") + juce::String(lvl, 1) + " dB",
+                       juce::Rectangle<float>(r.getX() + 36.0f, r.getY() + 30.0f, 200.0f, 14.0f), juce::Justification::centredLeft, false);
+        }
+    }
+
+    // nodes (only the bands this EQ shows)
     for (int i = 0; i < ampsurd::ParametricEq::kNumBands; ++i)
     {
+        if (!proc.isEqBandVisible(slot, i)) continue;
         const auto pos = nodePos(i, b);
         const float x = pos.x, y = pos.y;
         const bool hot = i == hoverBand || i == activeBand;
@@ -683,9 +733,9 @@ void EqGraph::paint(juce::Graphics& g)
     {
         g.setColour(textDim);
         g.setFont(Fonts::get().regular(12.0f));
-        g.drawText(r.getWidth() > 760 ? "Drag a point: left/right = frequency, up/down = gain.  Wheel = width (Q) of the nearest point.  Double-click = reset."
+        g.drawText(r.getWidth() > 900 ? "Drag a point: left/right = frequency, up/down = gain.  Wheel = width (Q) of the nearest point.  Double-click = reset."
                                       : "Drag: frequency / gain.  Wheel: Q.  Double-click: reset.",
-                   r.reduced(10.0f, 6.0f).removeFromTop(16.0f).withTrimmedLeft(30.0f), juce::Justification::centredLeft, false);
+                   r.reduced(10.0f, 6.0f).removeFromTop(16.0f).withTrimmedLeft(170.0f), juce::Justification::centredLeft, false);
     }
     if (!eqOn)
         drawLabel(g, "EQ OFF", r.reduced(10.0f, 6.0f).removeFromTop(16.0f).toNearestInt(), textDim, juce::Justification::centredRight);
@@ -694,7 +744,7 @@ void EqGraph::paint(juce::Graphics& g)
 void EqGraph::refreshIfChanged()
 {
     if (slot < 0) return;
-    std::array<float, 3 * ampsurd::ParametricEq::kNumBands + 1> now {};
+    std::array<float, 3 * ampsurd::ParametricEq::kNumBands + 2> now {};
     const auto b = bands();
     for (int i = 0; i < ampsurd::ParametricEq::kNumBands; ++i)
     {
@@ -702,7 +752,9 @@ void EqGraph::refreshIfChanged()
         now[(size_t) (3 * i + 1)] = b[(size_t) i].gainDb;
         now[(size_t) (3 * i + 2)] = b[(size_t) i].q;
     }
-    now.back() = paramValue(proc, AmpsurdProcessor::slotParamId(slot, "eqOn"));
+    now[now.size() - 2] = paramValue(proc, AmpsurdProcessor::slotParamId(slot, "eqOn"));
+    now.back() = (float) proc.getEqBandCount(slot);
+    if (bandsBox.getSelectedId() != proc.getEqBandCount(slot)) bandsBox.setSelectedId(proc.getEqBandCount(slot), juce::dontSendNotification);
     bool changed = now != lastSeen;
     if (slot < AmpsurdProcessor::kGlobalEq)
     {
@@ -989,7 +1041,7 @@ void EditPanel::resized()
 void EditPanel::paint(juce::Graphics& g)
 {
     g.setColour(line);
-    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), 3.0f, 1.0f);
+    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(sectionBorder * 0.5f), 3.0f, sectionBorder);
     if (slot < 0)
     {
         g.setColour(textFaint);
@@ -999,7 +1051,7 @@ void EditPanel::paint(juce::Graphics& g)
         return;
     }
     auto header = getLocalBounds().reduced(16, 12).removeFromTop(26);
-    drawLabel(g, "EDIT  /  AMP " + juce::String(slot + 1), header.removeFromLeft(130), text, juce::Justification::centredLeft, 11.0f);
+    drawLabel(g, "EDIT  /  AMP " + juce::String(slot + 1), header.removeFromLeft(130), accent, juce::Justification::centredLeft, 11.0f);
     g.setColour(textDim);
     g.setFont(Fonts::get().regular(12.5f));
     g.drawText(title, header.withTrimmedRight(340), juce::Justification::centredLeft, true);
@@ -1046,8 +1098,8 @@ std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> FxSection:
 
 FxSection::FxSection(AmpsurdProcessor& p) : proc(p)
 {
-    const char* names[4] = { "DELAY 1", "DELAY 2", "REVERB", "FLANGER" };
-    for (int i = 0; i < 4; ++i)
+    const char* names[5] = { "DELAY 1", "DELAY 2", "REVERB", "FLANGER", "PITCH" };
+    for (int i = 0; i < 5; ++i)
     {
         selector[(size_t) i].setButtonText(names[i]);
         selector[(size_t) i].onClick = [this, i] { select(i); };
@@ -1104,6 +1156,25 @@ FxSection::FxSection(AmpsurdProcessor& p) : proc(p)
     fRows[1] = makeRow("DEPTH", "fxFlDepth");
     fRows[2] = makeRow("FEEDBACK", "fxFlFeedback");
     fRows[3] = makeRow("MIX", "fxFlMix");
+
+    pOn.setButtonText("ON");
+    buttonAtts.push_back(attachButton(pOn, "pitchOn"));
+    pOn.setTooltip("Tune the whole guitar up or down (before the amps). Adds about 5 ms delay while on.");
+    pRows[0] = makeRow("SEMITONES", "pitchSemi");
+    pRows[1] = makeRow("CENTS", "pitchCents");
+    const std::pair<const char*, int> tunings[4] = { { "Eb  -1", -1 }, { "D  -2", -2 }, { "C#  -3", -3 }, { "C  -4", -4 } };
+    for (int t = 0; t < 4; ++t)
+    {
+        pPreset[(size_t) t].setButtonText(tunings[t].first);
+        pPreset[(size_t) t].setTooltip("Standard tuning down to " + juce::String(tunings[t].first).upToFirstOccurrenceOf(" ", false, false));
+        const int semi = tunings[t].second;
+        pPreset[(size_t) t].onClick = [this, semi] {
+            setParamValue(proc, "pitchSemi", (float) semi);
+            setParamValue(proc, "pitchCents", 0.0f);
+            setParamValue(proc, "pitchOn", 1.0f);
+        };
+        addChildComponent(pPreset[(size_t) t]);
+    }
     select(0);
 }
 
@@ -1123,7 +1194,7 @@ void FxSection::tap()
 void FxSection::select(int which)
 {
     selected = which;
-    for (int i = 0; i < 4; ++i) selector[(size_t) i].setToggleState(i == which, juce::dontSendNotification);
+    for (int i = 0; i < 5; ++i) selector[(size_t) i].setToggleState(i == which, juce::dontSendNotification);
     for (int d = 0; d < 2; ++d)
     {
         const bool v = which == d;
@@ -1139,6 +1210,9 @@ void FxSection::select(int which)
     for (auto& r : rRows) r.slider->setVisible(which == 2);
     fOn.setVisible(which == 3);
     for (auto& r : fRows) r.slider->setVisible(which == 3);
+    pOn.setVisible(which == 4);
+    for (auto& r : pRows) r.slider->setVisible(which == 4);
+    for (auto& b : pPreset) b.setVisible(which == 4);
     resized();
     refresh();
     repaint();
@@ -1148,11 +1222,11 @@ void FxSection::resized()
 {
     auto r = getLocalBounds();
     auto sel = r.removeFromTop(26);
-    const int sw = (sel.getWidth() - 3 * 6) / 4;
-    for (int i = 0; i < 4; ++i)
+    const int sw = (sel.getWidth() - 4 * 6) / 5;
+    for (int i = 0; i < 5; ++i)
     {
-        selector[(size_t) i].setBounds(i == 3 ? sel : sel.removeFromLeft(sw));
-        if (i < 3) sel.removeFromLeft(6);
+        selector[(size_t) i].setBounds(i == 4 ? sel : sel.removeFromLeft(sw));
+        if (i < 4) sel.removeFromLeft(6);
     }
     r.removeFromTop(10);
     auto ctl = r.removeFromTop(26);
@@ -1195,10 +1269,22 @@ void FxSection::resized()
         }
         placeRows(rRows, r);
     }
-    else
+    else if (selected == 3)
     {
         fOn.setBounds(ctl.removeFromLeft(56));
         placeRows(fRows, r);
+    }
+    else
+    {
+        auto c = ctl;
+        pOn.setBounds(c.removeFromLeft(56));
+        c.removeFromLeft(14);
+        for (auto& b : pPreset)
+        {
+            b.setBounds(c.removeFromLeft(70));
+            c.removeFromLeft(6);
+        }
+        placeRows(pRows, r);
     }
 }
 
@@ -1223,12 +1309,21 @@ void FxSection::paint(juce::Graphics& g)
         }
     }
     else if (selected == 2) drawRowLabels(rRows, proc.isFxActive(2));
-    else drawRowLabels(fRows, proc.isFxActive(3));
+    else if (selected == 3) drawRowLabels(fRows, proc.isFxActive(3));
+    else
+    {
+        drawRowLabels(pRows, proc.isFxActive(4));
+        g.setColour(textDim);
+        g.setFont(Fonts::get().regular(12.0f));
+        g.drawFittedText("Tunes the whole guitar before the amps, as if the strings were re-tuned (the tuner still shows the real strings). "
+                         "Adds about 5 ms delay while on; best within 1 - 5 semitones.",
+                         juce::Rectangle<int>(0, pRows[1].slider->getBottom() + 14, getWidth(), 40), juce::Justification::topLeft, 3);
+    }
 }
 
 void FxSection::refresh()
 {
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < 5; ++i)
     {
         const bool on = proc.isFxActive(i);
         if ((bool) selector[(size_t) i].getProperties().getWithDefault("lit", false) != on)
@@ -1313,10 +1408,10 @@ void GlobalEqPanel::resized()
 void GlobalEqPanel::paint(juce::Graphics& g)
 {
     g.setColour(line);
-    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), 3.0f, 1.0f);
+    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(sectionBorder * 0.5f), 3.0f, sectionBorder);
     auto r = getLocalBounds().reduced(16, 12);
     auto header = r.removeFromTop(26);
-    drawLabel(g, "GLOBAL EQ / FX", header.removeFromLeft(140), text, juce::Justification::centredLeft, 11.0f);
+    drawLabel(g, "GLOBAL EQ / FX", header.removeFromLeft(140), accent, juce::Justification::centredLeft, 11.0f);
     g.setColour(textDim);
     g.setFont(Fonts::get().regular(12.5f));
     g.drawText("For the complete sound:  blend  >  EQ  >  gate  >  flanger  >  delays  >  reverb  >  OUTPUT",
@@ -1349,6 +1444,33 @@ juce::String clock(double seconds)
 Timeline::Timeline(PlayerRecorder& p) : player(p)
 {
     setRepaintsOnMouseActivity(false);
+    scroll.setAutoHide(false);
+    scroll.addListener(this);
+    scroll.setColour(juce::ScrollBar::thumbColourId, textFaint);
+    scroll.setColour(juce::ScrollBar::trackColourId, raised);
+    addAndMakeVisible(scroll);
+}
+
+void Timeline::resized()
+{
+    scroll.setBounds(getLocalBounds().withTrimmedLeft(64).removeFromBottom(kScrollH));
+    updateScrollBar();
+}
+
+void Timeline::scrollBarMoved(juce::ScrollBar*, double newRangeStart)
+{
+    if (std::abs(newRangeStart - viewStart) < 1e-9) return;
+    viewStart = newRangeStart;
+    clampView();
+    repaint();
+}
+
+void Timeline::updateScrollBar()
+{
+    const double len = std::max(10.0, player.getLengthSeconds() + 5.0);
+    const double span = secondsPerPixel * laneArea().getWidth();
+    scroll.setRangeLimits(0.0, std::max(len, viewStart + span), juce::dontSendNotification);
+    scroll.setCurrentRange(viewStart, span, juce::dontSendNotification);
 }
 
 juce::Rectangle<int> Timeline::backingLane() const
@@ -1505,6 +1627,7 @@ void Timeline::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelD
 void Timeline::paint(juce::Graphics& g)
 {
     clampView();
+    updateScrollBar();
     const double sr = player.getSampleRate();
     const auto lanes = laneArea();
     const double v0 = viewStart, v1 = viewStart + secondsPerPixel * lanes.getWidth();
@@ -1789,10 +1912,10 @@ void PlayerPanel::resized()
 void PlayerPanel::paint(juce::Graphics& g)
 {
     g.setColour(line);
-    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), 3.0f, 1.0f);
+    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(sectionBorder * 0.5f), 3.0f, sectionBorder);
     auto r = getLocalBounds().reduced(16, 10);
     auto header = r.removeFromTop(24);
-    drawLabel(g, "PLAYER / RECORDER", header.removeFromLeft(160), text, juce::Justification::centredLeft, 11.0f);
+    drawLabel(g, "PLAYER / RECORDER", header.removeFromLeft(160), accent, juce::Justification::centredLeft, 11.0f);
 
     using S = PlayerRecorder::State;
     const auto st = player.getState();
@@ -1980,11 +2103,11 @@ void IrPanel::resized()
 void IrPanel::paint(juce::Graphics& g)
 {
     g.setColour(line);
-    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), 3.0f, 1.0f);
+    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(sectionBorder * 0.5f), 3.0f, sectionBorder);
     if (slot < 0) return;
     auto r = getLocalBounds().reduced(16, 12);
     auto header = r.removeFromTop(26);
-    drawLabel(g, "IR  /  AMP " + juce::String(slot + 1), header.removeFromLeft(130), text, juce::Justification::centredLeft, 11.0f);
+    drawLabel(g, "IR  /  AMP " + juce::String(slot + 1), header.removeFromLeft(130), accent, juce::Justification::centredLeft, 11.0f);
     g.setColour(textDim);
     g.setFont(Fonts::get().regular(12.5f));
     g.drawText(namName, header.withTrimmedRight(90), juce::Justification::centredLeft, true);
@@ -2084,6 +2207,7 @@ void GlobalEqButton::refresh()
     if (proc.isFxActive(3)) parts.add("FLG");
     if (proc.isFxActive(0) || proc.isFxActive(1)) parts.add("DLY");
     if (proc.isFxActive(2)) parts.add("REV");
+    if (proc.isFxActive(4)) parts.add("PITCH");
     const auto fxText = parts.joinIntoString(" + ");
     const bool on = !parts.isEmpty();
     if (on != shownOn || flat != shownFlat || fxText != shownFx) { shownOn = on; shownFlat = flat; shownFx = fxText; repaint(); }
@@ -2193,7 +2317,7 @@ void GatePanel::resized()
 
 void GatePanel::paint(juce::Graphics& g)
 {
-    drawLabel(g, "NOISE GATE", { 16, 12, 200, 24 }, text, juce::Justification::centredLeft, 11.5f);
+    drawLabel(g, "NOISE GATE", { 16, 12, 200, 24 }, accent, juce::Justification::centredLeft, 11.5f);
     const bool on = paramValue(proc, "gateOn") > 0.5f;
 
     // input level vs threshold (drag the marker to set the threshold)
@@ -2308,7 +2432,7 @@ void TunerPanel::refresh()
 
 void TunerPanel::paint(juce::Graphics& g)
 {
-    drawLabel(g, "TUNER", { 16, 12, 200, 24 }, text, juce::Justification::centredLeft, 11.5f);
+    drawLabel(g, "TUNER", { 16, 12, 200, 24 }, accent, juce::Justification::centredLeft, 11.5f);
     const auto area = getLocalBounds().reduced(16, 0).withTrimmedTop(44);
 
     // note name
@@ -2469,8 +2593,8 @@ int FrankensteinPanel::dividerAt(juce::Point<float> p) const
 void FrankensteinPanel::paint(juce::Graphics& g)
 {
     g.setColour(line);
-    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), 3.0f, 1.0f);
-    drawLabel(g, "FRANKENSTEIN", { 16, 12, 200, 26 }, text, juce::Justification::centredLeft, 11.5f);
+    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(sectionBorder * 0.5f), 3.0f, sectionBorder);
+    drawLabel(g, "FRANKENSTEIN", { 16, 12, 200, 26 }, accent, juce::Justification::centredLeft, 11.5f);
     drawLabel(g, "SECTIONS", { sectionButtons[0].getX() - 76, 12, 70, 26 }, textDim, juce::Justification::centredRight);
     drawLabel(g, "SPLIT", { toneButton.getX() - 50, 12, 44, 26 }, textDim, juce::Justification::centredRight);
     drawLabel(g, "WIDTH", { widthSlider.getX() - 56, 12, 50, 26 }, textDim, juce::Justification::centredRight);
@@ -2715,7 +2839,7 @@ void CentrePanel::resized()
 void CentrePanel::paint(juce::Graphics& g)
 {
     g.setColour(line);
-    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), 3.0f, 1.0f);
+    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(sectionBorder * 0.5f), 3.0f, sectionBorder);
     g.fillRect((float) getWidth() / 2.0f, 12.0f, 1.0f, (float) getHeight() - 24.0f);
 }
 
@@ -2809,7 +2933,7 @@ void MasterPanel::resized()
 void MasterPanel::paint(juce::Graphics& g)
 {
     g.setColour(line);
-    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), 3.0f, 1.0f);
+    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(sectionBorder * 0.5f), 3.0f, sectionBorder);
     drawLabel(g, "INPUT", { 16, 0, 60, getHeight() }, textDim);
     drawLabel(g, "OUTPUT", { 16 + 344, 0, 60, getHeight() }, textDim);
 
@@ -2867,7 +2991,7 @@ void HeaderBar::resized()
 
 void HeaderBar::paint(juce::Graphics& g)
 {
-    g.setColour(text);
+    g.setColour(accent);
     g.setFont(Fonts::get().semibold(24.0f).withExtraKerningFactor(0.16f));
     g.drawText("AMPSURD", getLocalBounds().reduced(24, 0), juce::Justification::centredLeft, false);
     drawLabel(g, "PRESET", { presetButton.getX() - 64, 0, 56, getHeight() }, textDim, juce::Justification::centredRight);
@@ -3014,12 +3138,12 @@ void BrandingFooter::paint(juce::Graphics& g)
     g.setFont(Fonts::get().regular(12.0f));
     g.drawText(cpuText, getLocalBounds().reduced(24, 0), juce::Justification::centredRight, false);
 
-    static const char* names[3] = { "THE BLACK DEATH ENSEMBLE", "DARK MATTER", "SYMBIORBIS" };
+    static const char* names[3] = { "THE BLACK DEATH ENSEMBLE", "DARK MATTERS", "SYMBIORBIS" };
     const int boxW = 168, boxH = 26, gap = 12, labelW = 140;
     const int total = labelW + 3 * boxW + 2 * gap;
     int x = (getWidth() - total) / 2;
     const int y = (getHeight() - boxH) / 2 + 1;
-    drawLabel(g, "BROUGHT TO YOU BY", { x, y, labelW - 12, boxH }, textDim, juce::Justification::centredRight, 10.5f);
+    drawLabel(g, "BROUGHT TO YOU BY", { x, y, labelW - 12, boxH }, text, juce::Justification::centredRight, 10.5f);
     x += labelW;
     for (int i = 0; i < 3; ++i)
     {
@@ -3028,9 +3152,9 @@ void BrandingFooter::paint(juce::Graphics& g)
             logos[(size_t) i]->drawWithin(g, box.toFloat().reduced(2.0f), juce::RectanglePlacement::centred, 0.85f);
         else
         {
-            g.setColour(line);
+            g.setColour(textFaint);
             g.drawRect(box, 1);
-            drawLabel(g, names[i], box, textDim, juce::Justification::centred, 10.0f);
+            drawLabel(g, names[i], box, text, juce::Justification::centred, 10.0f);
         }
         x += boxW + gap;
     }

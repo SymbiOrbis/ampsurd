@@ -21,6 +21,8 @@ public:
 
     void paint(juce::Graphics&) override;
     void resized() override;
+    // standalone player shortcuts: Space = play / stop, R = record / punch in-out, W or Home = to the start
+    bool keyPressed(const juce::KeyPress&) override;
 
     // for tests / screenshots
     void selectSlot(int slot);

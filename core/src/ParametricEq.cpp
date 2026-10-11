@@ -52,6 +52,9 @@ void ParametricEq::prepare(double sampleRate)
     fs = sampleRate;
     // ~30 ms smoothing time constant, applied once per kStep samples
     smoothCoef = 1.0 - std::exp(-(double) kStep / (0.030 * fs));
+    levelCoef = 1.0 - std::exp(-1.0 / (0.030 * fs));
+    haveTargets = false;
+    levelTarget = level = 1.0;
     const auto d = defaultBands();
     for (int i = 0; i < kNumBands; ++i)
     {
@@ -67,6 +70,7 @@ void ParametricEq::prepare(double sampleRate)
 
 void ParametricEq::reset() noexcept
 {
+    level = levelTarget;
     for (auto& s : bands)
     {
         s.ic1 = s.ic2 = 0.0;
@@ -77,8 +81,37 @@ void ParametricEq::reset() noexcept
     }
 }
 
+double ParametricEq::autoLevelDb(const std::array<EqBand, kNumBands>& b, double sampleRate)
+{
+    if (isFlat(b)) return 0.0;
+    // average power gain over a typical guitar (amp + cab) spectrum: 30 Hz .. 16 kHz, log spaced,
+    // weighted with a band-pass shape (main energy 100 Hz .. 4 kHz)
+    constexpr int kPoints = 96;
+    double num = 0.0, den = 0.0;
+    for (int i = 0; i < kPoints; ++i)
+    {
+        const double f = 30.0 * std::pow(16000.0 / 30.0, (i + 0.5) / kPoints);
+        const double w = 1.0 / (1.0 + std::pow(90.0 / f, 4.0)) / (1.0 + std::pow(f / 4500.0, 4.0));
+        const double h = std::pow(10.0, magnitudeDb(b, f, sampleRate) / 10.0); // power
+        num += w * h;
+        den += w;
+    }
+    const double db = -10.0 * std::log10(std::max(1e-12, num / den));
+    return std::clamp(db, -kMaxAutoCutDb, kMaxAutoBoostDb);
+}
+
 void ParametricEq::setBands(const std::array<EqBand, kNumBands>& t) noexcept
 {
+    bool changed = !haveTargets;
+    for (int i = 0; i < kNumBands && !changed; ++i)
+        changed = t[(size_t) i].freqHz != lastTargets[(size_t) i].freqHz || t[(size_t) i].gainDb != lastTargets[(size_t) i].gainDb
+                  || t[(size_t) i].q != lastTargets[(size_t) i].q;
+    if (changed)
+    {
+        lastTargets = t;
+        haveTargets = true;
+        levelTarget = std::pow(10.0, autoLevelDb(t, fs) / 20.0); // only when the bands change
+    }
     for (int i = 0; i < kNumBands; ++i)
     {
         auto& s = bands[(size_t) i];
@@ -174,6 +207,17 @@ void ParametricEq::process(double* x, int n) noexcept
             s.ic1 = std::abs(ic1) < 1e-25 ? 0.0 : ic1;
             s.ic2 = std::abs(ic2) < 1e-25 ? 0.0 : ic2;
         }
+    }
+
+    // AUTO LEVEL (exactly 1.0 when flat and settled: untouched)
+    if (level != 1.0 || levelTarget != 1.0)
+    {
+        for (int i = 0; i < n; ++i)
+        {
+            level += (levelTarget - level) * levelCoef;
+            x[i] *= level;
+        }
+        if (std::abs(level - levelTarget) < 1e-9) level = levelTarget;
     }
 }
 

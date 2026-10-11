@@ -122,6 +122,22 @@ int main(int argc, char** argv)
         e->selectSlot(1);
         e->refreshAll();
         save(*ed, out.getChildFile("03_edit_slot2.png"));
+        {
+            // EQ band count: 4 = low cut + 2 bells + high cut; hidden bells are flat, unused bells spread out
+            const auto before = proc->getEqBands(1);
+            proc->setEqBandCount(1, 4);
+            const auto after = proc->getEqBands(1);
+            bool hiddenFlat = true;
+            for (int b = 3; b < 9; ++b) hiddenFlat = hiddenFlat && after[(size_t) b].gainDb == 0.0f;
+            std::cout << (proc->getEqBandCount(1) == 4 && hiddenFlat && !proc->isEqBandVisible(1, 3) && proc->isEqBandVisible(1, 9) ? "[PASS]" : "[FAIL]")
+                      << " EQ BANDS: 4 bands -> bells 3..8 hidden and flat, cuts kept (bell 1 at " << after[1].freqHz
+                      << " Hz, bell 2 at " << after[2].freqHz << " Hz)\n";
+            (void) before;
+            e->refreshAll();
+            save(*ed, out.getChildFile("03b_edit_4_bands.png"));
+            proc->setEqBandCount(1, 10);
+            e->refreshAll();
+        }
         setP(*proc, AmpsurdProcessor::slotParamId(1, "align"), 1.0f);
         setP(*proc, AmpsurdProcessor::slotParamId(1, "time"), 0.25f);
         setP(*proc, AmpsurdProcessor::slotParamId(1, "phase"), 45.0f);
@@ -223,6 +239,22 @@ int main(int argc, char** argv)
         e->showFxPage(2);
         e->refreshAll();
         save(*ed, out.getChildFile("17_fx_reverb.png"));
+        setP(*proc, "pitchOn", 1.0f);
+        setP(*proc, "pitchSemi", -2.0f);
+        e->showFxPage(4);
+        e->refreshAll();
+        save(*ed, out.getChildFile("17b_fx_pitch.png"));
+        // PITCH adds its delay to the reported latency (and removes it when off)
+        juce::AudioBuffer<float> pb(2, 256);
+        juce::MidiBuffer pm;
+        proc->processBlock(pb, pm);
+        e->refreshAll();
+        juce::Thread::sleep(100);
+        const int withPitch = proc->getLatencySamples();
+        setP(*proc, "pitchOn", 0.0f);
+        e->refreshAll();
+        juce::Thread::sleep(100);
+        std::cout << "[INFO] latency with PITCH " << withPitch << " samples, without " << proc->getLatencySamples() << "\n";
         e->showGlobalEq(false);
         e->refreshAll();
         save(*ed, out.getChildFile("18_fx_button.png"));

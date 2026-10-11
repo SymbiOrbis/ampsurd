@@ -84,10 +84,45 @@ int main(int argc, char** argv)
             auto x = sine(f, sr, 24000);
             eq.process(x.data(), (int) x.size());
             double a, ph; fitSine(x, f, sr, a, ph);
-            const double meas = 20 * std::log10(a / 0.5), expect = ParametricEq::magnitudeDb(bands, f, sr);
+            const double meas = 20 * std::log10(a / 0.5), expect = ParametricEq::magnitudeDb(bands, f, sr) + ParametricEq::autoLevelDb(bands, sr);
             worst = std::max(worst, std::abs(meas - expect));
         }
-        check(worst < 0.05, "EQ: bells + low cut + high cut: measured response matches the drawn curve (worst error %.3f dB)", worst);
+        check(worst < 0.05, "EQ: bells + low cut + high cut: measured response = the drawn curve + AUTO LEVEL (worst error %.3f dB)", worst);
+
+        // AUTO LEVEL: a guitar-like signal keeps its loudness when boosting or cutting
+        {
+            std::mt19937 rng(3);
+            std::normal_distribution<double> nd(0.0, 1.0);
+            std::vector<double> pink((size_t) sr * 4);
+            double b0 = 0, b1 = 0, b2 = 0;
+            for (auto& v : pink) // pink noise, band-limited like a guitar cab (100 Hz .. 5 kHz)
+            {
+                const double w = nd(rng);
+                b0 = 0.99765 * b0 + w * 0.0990460; b1 = 0.96300 * b1 + w * 0.2965164; b2 = 0.57000 * b2 + w * 1.0526913;
+                v = 0.05 * (b0 + b1 + b2 + w * 0.1848);
+            }
+            ParametricEq shape; shape.prepare(sr);
+            auto cab = ParametricEq::defaultBands();
+            cab[0] = { 100.0f, 0.0f, 0.707f }; cab[9] = { 5000.0f, 0.0f, 0.707f };
+            shape.setBands(cab); shape.reset(); shape.process(pink.data(), (int) pink.size());
+            const double ref = power(pink, (size_t) sr);
+            double worstLevel = 0;
+            std::array<double, 4> shown {};
+            int k = 0;
+            for (const auto& setting : { std::pair<int, float> { 3, 9.0f }, { 5, -9.0f }, { 7, 12.0f }, { 2, -12.0f } })
+            {
+                auto b = ParametricEq::defaultBands();
+                b[(size_t) setting.first] = { b[(size_t) setting.first].freqHz, setting.second, 1.0f };
+                ParametricEq e; e.prepare(sr); e.setBands(b); e.reset();
+                auto y = pink;
+                e.process(y.data(), (int) y.size());
+                const double d = 10 * std::log10(power(y, (size_t) sr) / ref);
+                shown[(size_t) k++] = d;
+                worstLevel = std::max(worstLevel, std::abs(d));
+            }
+            check(worstLevel < 1.5, "EQ AUTO LEVEL: +9 / -9 / +12 / -12 dB bands change a guitar-like signal's level by only %+.1f / %+.1f / %+.1f / %+.1f dB",
+                  shown[0], shown[1], shown[2], shown[3]);
+        }
 
         ParametricEq eq; eq.prepare(sr);
         auto x = sine(440, sr, 4800), y = x;
@@ -608,6 +643,32 @@ int main(int argc, char** argv)
               "SLEEP: a muted amp stops using CPU %.2f s after MUTE (fade-out + 0.5 s hold) and runs again after unmute", sleptAt / sr - 1.0);
         check(resDb < -100.0, "SLEEP: 1.5 s after unmute the sound is identical to an amp that never slept (difference %.0f dB)", resDb);
         check(curv <= curvRef * 1.05, "SLEEP: the amp fades back in without a click (curvature %.4f vs %.4f without sleeping)", curv, curvRef);
+    }
+
+    // ---------------- 8. ECO: the Lite model of a slimmable capture ----------------
+    {
+        const std::string dir = std::string(argv[1]).substr(0, std::string(argv[1]).find_last_of("/\\") + 1);
+        const std::string slimPath = dir + "slimmable_container.nam";
+        auto full = CaptureModel::load(slimPath, sr, 256, false);
+        auto eco = CaptureModel::load(slimPath, sr, 256, true);
+        auto plain = CaptureModel::load(argv[2], sr, 256, true); // A1 WaveNet: no Lite model
+        if (full.model && eco.model && plain.model)
+        {
+            const auto x = sine(220.0, sr, 256 * 188);
+            auto render = [&](CaptureModel& m) {
+                std::vector<double> y(x.size());
+                for (size_t b = 0; b < x.size(); b += 256) m.process(x.data() + b, y.data() + b, 256, false);
+                return y;
+            };
+            const auto yf = render(*full.model), ye = render(*eco.model);
+            double diff = 0;
+            for (size_t i = 24000; i < x.size(); ++i) diff = std::max(diff, std::abs(yf[i] - ye[i]));
+            check(full.model->getInfo().slimmable && eco.model->getInfo().ecoActive && !full.model->getInfo().ecoActive && diff > 1e-6,
+                  "ECO: a slimmable capture runs its Lite model when ECO is on (output differs by %.3f from the full model)", diff);
+            check(!plain.model->getInfo().ecoActive, "ECO: a capture without a Lite model is unaffected (ECO not available)");
+        }
+        else
+            std::printf("[INFO] slimmable example model not found next to the first capture - ECO test skipped\n");
     }
 
     std::printf(failures == 0 ? "\nALL PASS\n" : "\n%d FAILURE(S)\n", failures);

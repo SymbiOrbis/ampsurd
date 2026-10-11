@@ -361,6 +361,30 @@ int main()
               "PLAY without REC: nothing is added (the pass recording is discarded)");
     }
 
+    // 10. keyboard shortcuts (standalone): Space play / stop, R record / punch, W / Home to the start
+    {
+        pl->stop();
+        std::unique_ptr<juce::AudioProcessorEditor> ed(proc->createEditor());
+        using S = PlayerRecorder::State;
+        pl->setPositionSeconds(1.0);
+        const bool space1 = ed->keyPressed(juce::KeyPress(juce::KeyPress::spaceKey)) && pl->getState() == S::playing;
+        run(0.3, nullptr);
+        const bool space2 = ed->keyPressed(juce::KeyPress(juce::KeyPress::spaceKey)) && pl->getState() == S::stopped;
+        const bool rKey = ed->keyPressed(juce::KeyPress('r', {}, 'r')) && pl->getState() == S::recording;
+        run(0.3, nullptr);
+        ed->keyPressed(juce::KeyPress('r', {}, 'r')); // punch out
+        const bool punchedOut = pl->getState() == S::playing;
+        ed->keyPressed(juce::KeyPress(juce::KeyPress::spaceKey));
+        pl->renderNow();
+        pl->setPositionSeconds(2.0);
+        const bool wKey = ed->keyPressed(juce::KeyPress('w', {}, 'w')) && pl->getPositionSeconds() == 0.0;
+        pl->setPositionSeconds(2.0);
+        const bool home = ed->keyPressed(juce::KeyPress(juce::KeyPress::homeKey)) && pl->getPositionSeconds() == 0.0;
+        check(space1 && space2 && rKey && punchedOut && wKey && home,
+              "KEYS: Space plays / stops, R records and punches out, W and Home go to the start");
+        ed.reset();
+    }
+
     proc.reset();
     tmp.deleteRecursively();
     std::cout << (failures == 0 ? "\nALL PASS\n" : "\n" + juce::String(failures) + " FAILURE(S)\n");

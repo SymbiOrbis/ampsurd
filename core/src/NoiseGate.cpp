@@ -17,6 +17,7 @@ void NoiseGate::prepare(double sampleRate)
     slowCoef = 1.0 - std::exp(-1.0 / (0.030 * sr));
     shapeCoef = 1.0 - std::exp(-1.0 / (0.002 * sr));    // second smoothing stage: no corners in the gain curve
     holdSamples = (int) std::lround(0.015 * sr);        // 15 ms hold
+    rampSamples = std::max(1, (int) std::lround(0.0009 * sr));
     setParameters(enabled, kDefaultThresholdDb, kDefaultDecayMs);
     reset();
 }
@@ -69,7 +70,12 @@ void NoiseGate::process(const double* key, double* target, int n, double* target
                 // a new note after silence opens at once (before the amp signal arrives); a note that
                 // was still sounding while the gate began to close is faded back in smoothly
                 // (a pick attack: the 4 ms level jumps > 10 dB above the 30 ms average)
-                if (!open) fastOpen = meanSquare > 10.0 * meanSquareSlow || gain < 1e-4;
+                if (!open)
+                {
+                    fastOpen = meanSquare > 10.0 * meanSquareSlow || gain < 1e-4;
+                    rampFrom = gain; // a new pick attack: S-shaped fade-in (raised cosine), done in 0.9 ms
+                    rampPos = 0;
+                }
                 open = true;
                 holdCounter = holdSamples;
             }
@@ -83,7 +89,16 @@ void NoiseGate::process(const double* key, double* target, int n, double* target
             {
                 if (gain < 1.0)
                 {
-                    gain += (1.0 - gain) * (fastOpen ? attackCoef : reopenCoef);
+                    if (fastOpen)
+                    {
+                        // smooth start and end, still fully open before the amp's attack arrives
+                        ++rampPos;
+                        const double x = std::min(1.0, (double) rampPos / (double) rampSamples);
+                        gain = rampFrom + (1.0 - rampFrom) * (0.5 - 0.5 * std::cos(3.14159265358979323846 * x));
+                        if (x >= 1.0) gain = 1.0;
+                    }
+                    else
+                        gain += (1.0 - gain) * reopenCoef;
                     if (gain > 0.99999) gain = 1.0;
                 }
             }

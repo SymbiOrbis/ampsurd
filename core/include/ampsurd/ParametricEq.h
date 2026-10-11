@@ -10,6 +10,11 @@
 // recomputed every 16 samples. A bell at exactly 0 dB, or a cut band at its end stop,
 // costs nothing, and the whole EQ is bit-transparent when everything is at default.
 //
+// AUTO LEVEL (always on): the EQ output is compensated so that the overall loudness stays the same -
+// boosting makes the EQ turn itself down (no clipping), cutting makes it turn up. The amount comes
+// from the curve's average power over a typical guitar spectrum (autoLevelDb), recomputed only when
+// the bands change, smoothed like the bands. A flat EQ is untouched (bit-identical).
+//
 // prepare(): non-RT. setBands()/process(): audio thread (no allocation).
 
 #include <array>
@@ -66,6 +71,10 @@ public:
     // Magnitude response in dB of a set of bands (for drawing the curve, any thread).
     static double magnitudeDb(const std::array<EqBand, kNumBands>& bands, double freqHz, double sampleRate);
 
+    // AUTO LEVEL: output gain in dB that keeps the loudness of a guitar signal unchanged (0 when flat).
+    static double autoLevelDb(const std::array<EqBand, kNumBands>& bands, double sampleRate);
+    static constexpr double kMaxAutoBoostDb = 12.0, kMaxAutoCutDb = 18.0;
+
 private:
     struct State
     {
@@ -84,6 +93,9 @@ private:
 
     double fs = 48000.0;
     double smoothCoef = 0.0; // per 16-sample step
+    std::array<EqBand, kNumBands> lastTargets {};
+    bool haveTargets = false;
+    double levelTarget = 1.0, level = 1.0, levelCoef = 0.0;
     std::array<State, kNumBands> bands {};
 };
 

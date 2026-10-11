@@ -36,7 +36,8 @@ struct CaptureInfo
     double loudnessDb = 0.0;
     bool hasInputLevel = false;
     double inputLevelDbu = 0.0;
-    bool slimmable = false;
+    bool slimmable = false;   // contains a smaller (Lite) model: ECO is possible
+    bool ecoActive = false;   // the Lite model is running
     std::string metadataJson;     // untouched "metadata" object, kept for attribution
 };
 
@@ -50,7 +51,8 @@ public:
     };
 
     // Non-RT. Loads the file and prepares it for the given host sample rate / max block size.
-    static LoadResult load(const std::filesystem::path& file, double hostSampleRate, int maxBlockSize);
+    // eco: for slimmable files (A2 Full + Lite in one file) run the Lite model (less CPU)
+    static LoadResult load(const std::filesystem::path& file, double hostSampleRate, int maxBlockSize, bool eco = false);
 
     // Non-RT. An "empty" model outputs silence (used to unload a slot without a special case).
     static std::unique_ptr<CaptureModel> makeEmpty(double hostSampleRate, int maxBlockSize);

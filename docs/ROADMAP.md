@@ -64,6 +64,10 @@ Waveform of the take with the backing track's waveform above it, zoom, click to 
 recording while the backing plays, draggable start edge of a correction (automatic crossfades, no
 pops), undo. One guitar track (no multitrack).
 
+## 3f+. Polish list 2026-10-11 + PITCH — IMPLEMENTED 2026-10-11, awaiting test
+Red accent, thicker outlines, icon, smoother gate opening, INPUT -30...+15, EQ band count per EQ +
+AUTO LEVEL, ECO per slot, timeline scrollbar, shortcuts (Space / R / W, Home), PITCH (tuning).
+
 ## 3g. Shareable presets (next)
 `.ampsurd` (settings only; captures / IRs found again by file name in the capture folders) and
 `.ampsurdpack` (zip: preset + the .nam / IR files it uses, with a licence reminder).
@@ -76,7 +80,8 @@ pops), undo. One guitar track (no multitrack).
   GitHub Releases for the latest version only when chosen; disclosed in the privacy note; About).
 
 ## Later / not planned
+- Frankenstein FOLLOW (whole note routed by detected pitch) - postponed by the owner.
+- Octave / harmony effects (PITCH only re-tunes).
 - Stereo input processing (not planned: guitar DI is mono, doubles CPU).
-- ECO mode (A2 Lite).
 - macOS (VST3 + AU + standalone) after 1.0: needs an Apple Developer account and someone with a Mac
   for testing / notarisation.

@@ -38,6 +38,7 @@ juce::String describe(const CaptureModel& m, const juce::File& f)
     if (std::abs(i.modelSampleRate - m.getPreparedSampleRate()) > 0.5)
         s << " (resampled from " << juce::String(m.getPreparedSampleRate(), 0) << " Hz)";
     if (i.hasInputLevel) s << "\nRecorded at input level " << juce::String(i.inputLevelDbu, 2) << " dBu";
+    if (i.slimmable) s << (i.ecoActive ? "\nECO: the A2 Lite model is running (less CPU)" : "\nContains an A2 Lite model: ECO available");
     s << "\n" << f.getParentDirectory().getFullPathName();
     return s;
 }
@@ -78,7 +79,46 @@ std::array<ampsurd::EqBand, ampsurd::ParametricEq::kNumBands> AmpsurdProcessor::
     const auto& q = e ? e->q : slotParams[(size_t) target].q;
     for (int i = 0; i < kNumBands; ++i)
         b[(size_t) i] = { freq[(size_t) i]->load(), gain[(size_t) i]->load(), q[(size_t) i]->load() };
+    // bells beyond the chosen band count are hidden and flat (low / high cut always stay)
+    const int count = getEqBandCount(target);
+    for (int i = count - 1; i < kNumBands - 1; ++i)
+        b[(size_t) i].gainDb = 0.0f;
     return b;
+}
+
+int AmpsurdProcessor::getEqBandCount(int target) const
+{
+    if (target < 0 || target >= kNumEqTargets || bandCountParams[(size_t) target] == nullptr) return kNumBands;
+    return juce::jlimit(2, (int) kNumBands, juce::roundToInt(bandCountParams[(size_t) target]->load()));
+}
+
+bool AmpsurdProcessor::isEqBandVisible(int target, int band) const
+{
+    return band == 0 || band == kNumBands - 1 || band <= getEqBandCount(target) - 2;
+}
+
+void AmpsurdProcessor::setEqBandCount(int target, int count)
+{
+    count = juce::jlimit(2, (int) kNumBands, count);
+    if (count == getEqBandCount(target)) return;
+    setParam(params, slotParamId(target, "bands"), (float) count);
+    // hidden bells: flat. Visible bells nobody has used yet: spread evenly over the guitar range,
+    // so that e.g. 3 bells sit at low / mid / high instead of 63 / 125 / 250 Hz.
+    const int bells = count - 2;
+    for (int i = 1; i < kNumBands - 1; ++i)
+    {
+        if (i > bells) { setParam(params, bandParamId(target, i, "gain"), 0.0f); continue; }
+        if (paramValueRaw(bandParamId(target, i, "gain")) != 0.0f) continue;
+        const double f = bells == 8 ? (double) ampsurd::ParametricEq::defaultBands()[(size_t) i].freqHz
+                                    : 80.0 * std::pow(8000.0 / 80.0, (i - 0.5) / bells);
+        setParam(params, bandParamId(target, i, "freq"), (float) f);
+    }
+}
+
+float AmpsurdProcessor::paramValueRaw(const juce::String& id) const
+{
+    auto* v = params.getRawParameterValue(id);
+    return v != nullptr ? v->load() : 0.0f;
 }
 
 juce::StringArray AmpsurdProcessor::delayNoteNames()
@@ -114,6 +154,10 @@ static void addEqBandParams(juce::AudioProcessorParameterGroup& group, int targe
 {
     using namespace juce;
     const auto defaults = ampsurd::ParametricEq::defaultBands();
+    // how many of the ten bands this EQ shows: 2 = low + high cut only, 10 = all (default)
+    group.addChild(std::make_unique<AudioParameterInt>(ParameterID { AmpsurdProcessor::slotParamId(target, "bands"), 1 },
+                                                       namePrefix + "EQ Bands", 2, ampsurd::ParametricEq::kNumBands,
+                                                       ampsurd::ParametricEq::kNumBands));
     for (int b = 0; b < ampsurd::ParametricEq::kNumBands; ++b)
     {
         const auto type = ampsurd::ParametricEq::bandType(b);
@@ -142,7 +186,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout AmpsurdProcessor::createLayo
     auto db = AudioParameterFloatAttributes().withLabel("dB");
 
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { "input", 1 }, "Input",
-                                                     NormalisableRange<float>(-24.0f, 24.0f, 0.1f), 0.0f, db));
+                                                     NormalisableRange<float>(-30.0f, 15.0f, 0.1f), 0.0f, db));
     layout.add(std::make_unique<AudioParameterFloat>(ParameterID { "output", 1 }, "Output",
                                                      NormalisableRange<float>(-40.0f, 12.0f, 0.1f), 0.0f, db));
     layout.add(std::make_unique<AudioParameterBool>(ParameterID { "bypass", 1 }, "Bypass", false));
@@ -192,6 +236,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout AmpsurdProcessor::createLayo
         group->addChild(std::make_unique<AudioParameterBool>(ParameterID { slotParamId(s, "mute"), 1 }, n + "Mute", false));
         group->addChild(std::make_unique<AudioParameterBool>(ParameterID { slotParamId(s, "solo"), 1 }, n + "Solo", false));
         group->addChild(std::make_unique<AudioParameterBool>(ParameterID { slotParamId(s, "eqOn"), 1 }, n + "EQ On", true));
+        group->addChild(std::make_unique<AudioParameterBool>(ParameterID { slotParamId(s, "eco"), 1 }, n + "ECO (A2 Lite)", false));
         group->addChild(std::make_unique<AudioParameterChoice>(ParameterID { slotParamId(s, "align"), 1 }, n + "Alignment",
                                                                StringArray { "AUTO", "FREE" }, 0));
         group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { slotParamId(s, "time"), 1 }, n + "Time",
@@ -275,6 +320,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout AmpsurdProcessor::createLayo
                                                               NormalisableRange<float>(-90.0f, 90.0f, 0.1f), 50.0f, pctAttr));
         group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { "fxFlMix", 1 }, "Flanger Mix",
                                                               NormalisableRange<float>(0.0f, 100.0f, 0.1f), 50.0f, pctAttr));
+        // PITCH: tunes the whole guitar (before the amps)
+        group->addChild(std::make_unique<AudioParameterBool>(ParameterID { "pitchOn", 1 }, "Pitch On", false));
+        group->addChild(std::make_unique<AudioParameterInt>(ParameterID { "pitchSemi", 1 }, "Pitch Semitones", -12, 12, 0,
+                                                            AudioParameterIntAttributes().withStringFromValueFunction([](int v, int) {
+                                                                return (v > 0 ? "+" : "") + String(v) + " st";
+                                                            })));
+        group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { "pitchCents", 1 }, "Pitch Cents",
+                                                              NormalisableRange<float>(-50.0f, 50.0f, 1.0f), 0.0f, unitAttr("cents", 0)));
         layout.add(std::move(group));
     }
     return layout;
@@ -325,6 +378,7 @@ AmpsurdProcessor::AmpsurdProcessor()
         sp.phaseDeg = params.getRawParameterValue(slotParamId(s, "phase"));
         sp.pan = params.getRawParameterValue(slotParamId(s, "pan"));
         sp.irOn = params.getRawParameterValue(slotParamId(s, "irOn"));
+        sp.eco = params.getRawParameterValue(slotParamId(s, "eco"));
         auto& ie = irEqParams[(size_t) s];
         ie.eqOn = params.getRawParameterValue(slotParamId(irEqTarget(s), "eqOn"));
         for (int b = 0; b < kNumBands; ++b)
@@ -362,12 +416,17 @@ AmpsurdProcessor::AmpsurdProcessor()
     revTone = params.getRawParameterValue("fxRevTone");
     revLevel = params.getRawParameterValue("fxRevLevel");
     flOn = params.getRawParameterValue("fxFlOn");
+    pitchOnParam = params.getRawParameterValue("pitchOn");
+    pitchSemiParam = params.getRawParameterValue("pitchSemi");
+    pitchCentsParam = params.getRawParameterValue("pitchCents");
     flRate = params.getRawParameterValue("fxFlRate");
     flDepth = params.getRawParameterValue("fxFlDepth");
     flFeedback = params.getRawParameterValue("fxFlFeedback");
     flMix = params.getRawParameterValue("fxFlMix");
 
     globalEqParams.eqOn = params.getRawParameterValue(slotParamId(kGlobalEq, "eqOn"));
+    for (int t = 0; t < kNumEqTargets; ++t)
+        bandCountParams[(size_t) t] = params.getRawParameterValue(slotParamId(t, "bands"));
     for (int b = 0; b < kNumBands; ++b)
     {
         globalEqParams.freq[(size_t) b] = params.getRawParameterValue(bandParamId(kGlobalEq, b, "freq"));
@@ -424,6 +483,7 @@ void AmpsurdProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     dryBuffer.assign((size_t) maxBlock, 0.0);
     rawBuffer.assign((size_t) maxBlock, 0.0f);
     gate.prepare(sampleRate);
+    pitch.prepare(sampleRate);
     tuner.prepare(sampleRate);
     fx.prepare(sampleRate, maxBlock);
     if (player) player->prepare(sampleRate, maxBlock);
@@ -480,6 +540,7 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
     const double bypassTarget = bypassParam->load() > 0.5f ? 1.0 : 0.0;
     const bool levelMatch = levelMatchParam->load() > 0.5f;
     gate.setParameters(gateOnParam->load() > 0.5f, gateThresholdParam->load(), gateDecayParam->load());
+    pitch.setParameters(pitchOnParam->load() > 0.5f, pitchSemiParam->load(), pitchCentsParam->load());
     const double muteTarget = (tunerMuteParam->load() > 0.5f && tunerVisible.load(std::memory_order_relaxed)) ? 1.0 : 0.0;
     float keyPeak = 0.0f;
 
@@ -548,7 +609,8 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
             inPeak = juce::jmax(inPeak, std::abs(x));
             inBuffer[(size_t) i] = x;
         }
-        tuner.push(rawBuffer.data(), n); // tuner works on the clean DI, also when bypassed
+        tuner.push(rawBuffer.data(), n); // tuner works on the clean DI, also when bypassed (the real strings)
+        pitch.process(inBuffer.data(), n); // PITCH: the whole guitar re-tuned before the amps
         {
             int w = specWrite.load(std::memory_order_relaxed);
             for (int i = 0; i < n; ++i)
@@ -648,7 +710,8 @@ void AmpsurdProcessor::loadJob(int slot, juce::File file, int gen, bool /*adjust
         return; // superseded
 
     const double sr = currentSampleRate.load();
-    auto result = CaptureModel::load(toStdPath(file), sr, currentMaxBlock);
+    const bool eco = slotParams[(size_t) slot].eco->load() > 0.5f;
+    auto result = CaptureModel::load(toStdPath(file), sr, currentMaxBlock, eco);
     if (!result.model)
     {
         setSlotStatus(slot, { SlotState::error, file.getFullPathName(), file.getFileNameWithoutExtension(),
@@ -683,8 +746,10 @@ void AmpsurdProcessor::loadJob(int slot, juce::File file, int gen, bool /*adjust
 
     const auto info = describe(*result.model, file);
     captureDbu[(size_t) slot].store(newDbu);
+    const bool canEco = mi.slimmable, ecoActive = mi.ecoActive;
+    lastEco[(size_t) slot] = eco;
     engine.getSlot(slot).submit(std::move(result.model));
-    setSlotStatus(slot, { SlotState::loaded, file.getFullPathName(), file.getFileNameWithoutExtension(), info });
+    setSlotStatus(slot, { SlotState::loaded, file.getFullPathName(), file.getFileNameWithoutExtension(), info, canEco, ecoActive });
 
     auto aliveFlag = alive;
     juce::MessageManager::callAsync([this, aliveFlag] {
@@ -740,7 +805,7 @@ void AmpsurdProcessor::remeasureJob(int gen)
         const auto st = getSlotStatus(s);
         gens[(size_t) s] = slotGeneration[(size_t) s].load();
         if (st.state != SlotState::loaded) continue;
-        auto r = CaptureModel::load(toStdPath(juce::File(st.path)), sr, currentMaxBlock);
+        auto r = CaptureModel::load(toStdPath(juce::File(st.path)), sr, currentMaxBlock, slotParams[(size_t) s].eco->load() > 0.5f);
         if (!r.model) continue;
         const auto& mi = r.model->getInfo();
         const double g = std::pow(10.0, (gainDb + trimDbFor(calibrateOn.load(), interfaceDbu.load(),
@@ -1176,6 +1241,7 @@ bool AmpsurdProcessor::isFxActive(int which) const
         case 1: return delayParams[1].on->load() > 0.5f;
         case 2: return revOn->load() > 0.5f;
         case 3: return flOn->load() > 0.5f;
+        case 4: return pitchOnParam->load() > 0.5f;
         default: return false;
     }
 }
@@ -1264,7 +1330,8 @@ void AmpsurdProcessor::updateLatency()
         resampler = std::max(resampler, engine.getSlot(s).getLatencySamples());
     const double sr = currentSampleRate.load();
     const int total = resampler + ampsurd::PathAligner::kBaseLatency + (int) std::lround(kReserveMs * 0.001 * sr)
-                      + limiter.getLatencySamples();
+                      + limiter.getLatencySamples()
+                      + (pitchOnParam->load() > 0.5f ? (int) std::lround(ampsurd::PitchShifter::kNominalLatencyMs * 0.001 * sr) : 0);
     if (totalLatency.exchange(total) != total)
         setLatencySamples(total);
 }
@@ -1276,6 +1343,17 @@ void AmpsurdProcessor::timerCallback()
 
     updateCovariance(false);
     updateLatency();
+
+    // ECO switched: reload the capture with the Lite (or full) model - crossfaded like any swap
+    for (int sl = 0; sl < kNumSlots; ++sl)
+    {
+        const bool eco = slotParams[(size_t) sl].eco->load() > 0.5f;
+        if (eco == lastEco[(size_t) sl]) continue;
+        lastEco[(size_t) sl] = eco;
+        const auto st = getSlotStatus(sl);
+        if (st.state == SlotState::loaded && st.canEco)
+            loadCapture(sl, juce::File(st.path));
+    }
 
     // IR ON / BYPASS changes how the slot sounds: re-measure it (level match, alignment, mix law)
     for (int sl = 0; sl < kNumSlots; ++sl)
