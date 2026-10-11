@@ -74,7 +74,8 @@ AUTO LEVEL, ECO per slot, timeline scrollbar, shortcuts (Space / R / W, Home), P
 `.ampsurd` (settings only; captures / IRs found again by file name in the capture folders) and
 `.ampsurdpack` (zip: preset + the .nam / IR files it uses, with a licence reminder).
 
-## 4. Public release package (remaining)
+## 4. Public release package — installer, releases, update check DONE 2026-10-11; signing pending
+(SignPath Foundation application by the owner; fallback: own OV certificate in the owner's name)
 - Code signing (SignPath Foundation, free for OSI-licensed open source) so Windows Smart App Control
   accepts the plugin.
 - Installer with uninstaller (VST3 + standalone app).

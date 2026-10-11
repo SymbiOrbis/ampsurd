@@ -6,6 +6,23 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-11 — Session 2o: Windows release package — Claude (Opus 5.5)
+
+Owner: publisher = Radovan Glovňa (Slovak sole trader being set up).
+- Version 0.9.0 (single source: project(AMPSURD VERSION) in CMakeLists.txt).
+- installer/AMPSURD.iss (Inno Setup 6): VST3 -> C:\Program Files\Common Files\VST3, standalone app ->
+  Program Files + Start menu (+ optional desktop shortcut), components VST3 / app, uninstaller (removes
+  the VST3 too; presets / recordings in Documents\AMPSURD are never touched), icon (assets/icon/ampsurd.ico),
+  licence page. CI builds AMPSURD-Setup-<version>.exe + portable zips on every push (artifact
+  AMPSURD-Setup-windows-x64, ~10 MB); a pushed tag v<version> (must equal the CMake version) creates a
+  GitHub pre-release with notes from docs/RELEASE_NOTES.md. Code signing step: placeholder in the workflow.
+- Check for updates... (settings menu): asks api.github.com for the releases only when clicked, highest
+  version incl. pre-releases, offers the release page (plugin/UpdateCheck.h; version compare tested).
+- docs/CODE_SIGNING.md (SignPath Foundation policy: roles, what is signed, verification), PRIVACY.md
+  (no data collection; only the update check on request), README download / policy links,
+  BUILD_WINDOWS: installer first.
+- Next: owner applies at signpath.org/apply; on approval add the SignPath signing action + API token secret.
+
 ## 2026-10-11 — Session 2n: the dragon in the background — Claude (Opus 5.5)
 
 Concept: project doc DRAGON_BACKGROUND (owner's five-headed dragon, sketch v3). Implemented:
