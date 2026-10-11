@@ -10,6 +10,7 @@
 #include <iostream>
 
 #include "../plugin/PluginEditor.h"
+#include "../plugin/UpdateCheck.h"
 #include "../plugin/PluginProcessor.h"
 
 static void pump(int ms)
@@ -39,6 +40,12 @@ int main(int argc, char** argv)
     const juce::File out(argv[1]);
     out.createDirectory();
 
+    {
+        using ampsurd::isNewerVersion;
+        const bool ok = isNewerVersion("v0.9.1", "0.9.0") && isNewerVersion("0.10.0", "0.9.9") && isNewerVersion("v1.0.0", "0.9.0")
+                        && !isNewerVersion("v0.9.0", "0.9.0") && !isNewerVersion("0.8.9", "0.9.0") && isNewerVersion("0.9.0.1", "0.9.0");
+        std::cout << (ok ? "[PASS]" : "[FAIL]") << " UPDATES: version comparison (0.9.1 > 0.9.0, 0.10.0 > 0.9.9, equal is not newer)\n";
+    }
     auto proc = std::make_unique<AmpsurdProcessor>();
     proc->prepareToPlay(48000.0, 256);
 

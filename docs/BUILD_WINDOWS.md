@@ -1,6 +1,16 @@
 # Getting AMPSURD onto Windows 11
 
-## Easiest: download the ready-made plugin (no tools needed)
+## Easiest: the installer
+
+1. Open https://github.com/SymbiOrbis/ampsurd/releases and download **AMPSURD-Setup-<version>.exe**
+   (before the first release: Actions -> newest green run -> artifact **AMPSURD-Setup-windows-x64**).
+2. Run it. It installs the VST3 plugin (C:\Program Files\Common Files\VST3) and the standalone app
+   (Start menu: AMPSURD). Updating = running the newer installer; your presets and recordings stay.
+3. If SmartScreen says "Windows protected your PC": **More info -> Run anyway** (until the releases are
+   code-signed and have a reputation).
+4. In the app: settings icon -> **Check for updates...** tells you when a newer version exists.
+
+## Without installer: download the ready-made plugin (no tools needed)
 
 GitHub builds the Windows VST3 automatically after every change.
 

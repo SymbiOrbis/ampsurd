@@ -1,6 +1,7 @@
 #include "Components.h"
 
 #include "BinaryData.h"
+#include "../UpdateCheck.h"
 
 #include <cstring>
 #include <limits>
@@ -3043,6 +3044,7 @@ void HeaderBar::showPresetMenu()
         m.addItem(100 + i, files[i].getFileNameWithoutExtension(), true, files[i] == proc.getCurrentPresetFile());
     m.addSeparator();
     m.addItem(2, "Open preset folder");
+    m.addItem(40, "Check for updates...");
     m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&presetButton).withMinimumWidth(presetButton.getWidth()),
                     [this, files](int r) {
                         if (r == 1) proc.loadInitPreset();
@@ -3099,12 +3101,28 @@ void HeaderBar::showSettings()
     m.addItem(20, "Use several CPU cores" + (mc ? " (" + juce::String(proc.getNumWorkerThreads() + 1) + " in use)" : juce::String()), true, mc);
     m.addSeparator();
     m.addItem(2, "Open preset folder");
+    m.addItem(40, "Check for updates...");
     m.addItem(3, "About AMPSURD");
     m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&settingsButton), [this, lm, cal, dbu](int r) {
         if (r == 1) setParamValue(proc, "levelMatch", lm ? 0.0f : 1.0f);
         if (r == 10) proc.setInputCalibration(!cal, dbu);
         if (r == 20) proc.setMultiCore(!proc.isMultiCoreOn());
         if (r == 30) proc.setDragonShown(!proc.isDragonShown());
+        if (r == 40)
+            ampsurd::checkForUpdates([](const ampsurd::UpdateInfo& u) {
+                const juce::String current = JucePlugin_VersionString;
+                if (!u.ok)
+                    juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, "Check for updates", u.error);
+                else if (u.latest.isNotEmpty() && ampsurd::isNewerVersion(u.latest, current))
+                    juce::AlertWindow::showOkCancelBox(juce::MessageBoxIconType::InfoIcon, "AMPSURD " + u.latest + " is available",
+                                                       "You have " + current + ". Open the download page?", "Download", "Later", nullptr,
+                                                       juce::ModalCallbackFunction::create([url = u.pageUrl](int result) {
+                                                           if (result == 1) juce::URL(url).launchInDefaultBrowser();
+                                                       }));
+                else
+                    juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon, "Check for updates",
+                                                           "AMPSURD " + current + " is the latest version.");
+            });
         if (r >= 100 && r <= 156) proc.setInputCalibration(true, (r - 100) * 0.5);
         if (r == 2) { proc.getPresetFolder().createDirectory(); proc.getPresetFolder().revealToUser(); }
         if (r == 3)

@@ -14,5 +14,9 @@ editing. Play.
 **Status:** `PROJECT_STATUS.md` · **Build on Windows:** `docs/BUILD_WINDOWS.md` ·
 **Design:** `docs/ARCHITECTURE.md`, `docs/UI_SPEC.md`, `docs/REVIEW.md`, `docs/ROADMAP.md` · **Log:** `docs/DEVLOG.md`
 
+**Download (Windows 10 / 11, 64-bit):** [Releases](https://github.com/SymbiOrbis/ampsurd/releases) - installer
+`AMPSURD-Setup-<version>.exe` (VST3 plugin + standalone app). [Code signing policy](docs/CODE_SIGNING.md) ·
+[Privacy](PRIVACY.md)
+
 Licence: GNU AGPLv3 (`LICENSE.md`). Third-party components: `THIRD_PARTY.md`. The AMPSURD name,
 the footer logos and capture packs are not covered by the code licence.
