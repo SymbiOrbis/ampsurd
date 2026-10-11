@@ -530,7 +530,7 @@ void EqGraph::setSlot(int s)
 void EqGraph::resized()
 {
     const auto r = plotArea();
-    bandsBox.setBounds((int) r.getX() + 34, (int) r.getY() + 4, 132, 22);
+    bandsBox.setBounds((int) r.getRight() - 140, (int) r.getY() + 4, 132, 22); // top right: the readout is top left
 }
 
 juce::RangedAudioParameter* EqGraph::bandParam(int band, const char* name) const
@@ -677,7 +677,7 @@ void EqGraph::paint(juce::Graphics& g)
             g.setColour(textDim);
             g.setFont(Fonts::get().regular(11.0f));
             g.drawText("AUTO LEVEL " + juce::String(lvl > 0 ? "+" : "") + juce::String(lvl, 1) + " dB",
-                       juce::Rectangle<float>(r.getX() + 36.0f, r.getY() + 30.0f, 200.0f, 14.0f), juce::Justification::centredLeft, false);
+                       juce::Rectangle<float>(r.getRight() - 208.0f, r.getY() + 30.0f, 200.0f, 14.0f), juce::Justification::centredRight, false);
         }
     }
 
@@ -725,7 +725,7 @@ void EqGraph::paint(juce::Graphics& g)
         }
         g.setColour(text);
         g.setFont(Fonts::get().medium(12.0f));
-        g.drawText(t, r.reduced(10.0f, 6.0f).removeFromTop(16.0f).withTrimmedLeft(30.0f), juce::Justification::centredLeft, false);
+        g.drawText(t, r.reduced(10.0f, 6.0f).removeFromTop(16.0f).withTrimmedLeft(30.0f).withTrimmedRight(150.0f), juce::Justification::centredLeft, false);
     }
     else
     {
@@ -733,10 +733,10 @@ void EqGraph::paint(juce::Graphics& g)
         g.setFont(Fonts::get().regular(12.0f));
         g.drawText(r.getWidth() > 900 ? "Drag a point: left/right = frequency, up/down = gain.  Wheel = width (Q) of the nearest point.  Double-click = reset."
                                       : "Drag: frequency / gain.  Wheel: Q.  Double-click: reset.",
-                   r.reduced(10.0f, 6.0f).removeFromTop(16.0f).withTrimmedLeft(170.0f), juce::Justification::centredLeft, false);
+                   r.reduced(10.0f, 6.0f).removeFromTop(16.0f).withTrimmedLeft(30.0f).withTrimmedRight(150.0f), juce::Justification::centredLeft, false);
     }
     if (!eqOn)
-        drawLabel(g, "EQ OFF", r.reduced(10.0f, 6.0f).removeFromTop(16.0f).toNearestInt(), textDim, juce::Justification::centredRight);
+        drawLabel(g, "EQ OFF", r.reduced(10.0f, 6.0f).removeFromTop(16.0f).withTrimmedRight(146.0f).toNearestInt(), textDim, juce::Justification::centredRight);
 }
 
 void EqGraph::refreshIfChanged()
