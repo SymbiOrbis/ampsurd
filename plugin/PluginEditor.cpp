@@ -30,6 +30,22 @@ AmpsurdEditor::Content::Content(AmpsurdProcessor& p) : header(p), edit(p), ir(p)
 void AmpsurdEditor::Content::paint(juce::Graphics& g)
 {
     g.fillAll(colours::background);
+    // a selected slot's fill (here, so that the dragon is drawn on top of it)
+    for (auto& sl : slots)
+        if (sl->isSelected())
+        {
+            g.setColour(colours::raised);
+            g.fillRoundedRectangle(sl->getBounds().toFloat().reduced(1.25f), 3.0f);
+        }
+    if (!showDragon) return;
+    dragon.draw(g, getLocalBounds().toFloat());
+    dragon.drawEyes(g, getLocalBounds().toFloat()); // under the slot texts
+    // the lower panel, the master row and the footer cover the body almost completely (EQ curves and
+    // sliders stay clean); the heads in the slots stay visible
+    g.setColour(colours::background.withAlpha(0.8f));
+    g.fillRect(master.getBounds().getUnion(edit.getBounds()).withTop(edit.getY() - 2).withBottom(master.getBottom() + 2)
+                   .withLeft(edit.getX() - 2).withRight(edit.getRight() + 2));
+    g.fillRect(footer.getBounds());
 }
 
 void AmpsurdEditor::Content::resized()
@@ -272,6 +288,24 @@ void AmpsurdEditor::timerCallback()
     }
     content.master.refresh();
     content.header.refresh();
+
+    // dragon: one head per slot - asleep (empty), awake (capture loaded), red eye (SOLO or EDIT)
+    {
+        std::array<int, 5> st {};
+        for (int s = 0; s < AmpsurdProcessor::kNumSlots; ++s)
+        {
+            const bool loaded = proc.getSlotStatus(s).state == AmpsurdProcessor::SlotState::loaded;
+            const bool solo = proc.params.getRawParameterValue(AmpsurdProcessor::slotParamId(s, "solo"))->load() > 0.5f;
+            const bool edit = content.edit.getSlot() == s || content.ir.getSlot() == s;
+            st[(size_t) s] = !loaded ? ampsurd::ui::DragonLayer::asleep : (solo || edit) ? ampsurd::ui::DragonLayer::redEye : ampsurd::ui::DragonLayer::awake;
+        }
+        const bool show = proc.isDragonShown();
+        if (content.dragon.setStates(st) || show != content.showDragon)
+        {
+            content.showDragon = show;
+            content.repaint();
+        }
+    }
     // standalone: take the keyboard focus whenever nothing else has it (typing a value keeps it)
     if (proc.getPlayer() != nullptr && isShowing() && juce::Component::getCurrentlyFocusedComponent() == nullptr)
         grabKeyboardFocus();

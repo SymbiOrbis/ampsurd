@@ -6,6 +6,21 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-11 — Session 2n: the dragon in the background — Claude (Opus 5.5)
+
+Concept: project doc DRAGON_BACKGROUND (owner's five-headed dragon, sketch v3). Implemented:
+- tools/dragon/make_dragon.py: the approved sketch's geometry, placed on the 1200 x 800 layout,
+  rendered as layers at 2x (plugin/assets/dragon, ~1.1 MB embedded): body (wings, tail, torso, legs,
+  necks; head silhouettes cut out so heads cover the necks) + per head asleep / awake; eye positions.
+  Writes preview_*.png when given UI snapshots.
+- UI: DragonLayer composes body + heads once into a cached image (rebuilt only when a head changes)
+  and draws it under all components at ~10 % (white lines, opacity 0.095); the lower panel, master
+  row and footer get an 80 % background cover (EQ graph and sliders stay clean). Heads: empty slot =
+  asleep (head 5 smokes), capture loaded = awake, SOLO or EDIT / IR editor = red eye (accent). A
+  selected slot's fill is now painted by the editor under the dragon (head stays visible there).
+  Settings menu: "Show dragon" (on by default, per computer).
+- Note for the artwork: head 2's eye lands behind long capture names (text is drawn over it).
+
 ## 2026-10-11 — Session 2m: owner's polish list + PITCH — Claude (Opus 5.5)
 
 Owner (tone now on par with TONE3000 after re-capturing; buffer question postponed) asked for:

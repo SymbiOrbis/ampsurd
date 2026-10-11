@@ -157,6 +157,10 @@ public:
     int getNumWorkerThreads() const { return engine.getNumWorkers(); }
     int getActivePaths() const { return engine.getActivePaths(); }
 
+    // --- the dragon in the background (a setting of this computer) ---
+    bool isDragonShown() const { return showDragon.load(); }
+    void setDragonShown(bool on);
+
     // --- presets: one preset = the complete rig ---
     juce::File getPresetFolder() const;
     juce::Array<juce::File> listPresets() const;
@@ -316,6 +320,7 @@ private:
     float lastSeenInputGainDb = 0.0f;
     std::atomic<bool> calibrateOn { false };
     std::atomic<bool> multiCore { true };
+    std::atomic<bool> showDragon { true };
     std::atomic<double> interfaceDbu { 12.0 };
     std::array<std::atomic<double>, kNumSlots> captureDbu {};
     std::atomic<int> calibrationVersion { 0 }, measuredCalibrationVersion { 0 };

@@ -311,11 +311,7 @@ void SlotComponent::resized()
 void SlotComponent::paint(juce::Graphics& g)
 {
     const auto bounds = getLocalBounds().toFloat().reduced(sectionBorder * 0.5f + 0.25f);
-    if (selected)
-    {
-        g.setColour(raised);
-        g.fillRoundedRectangle(bounds, 3.0f);
-    }
+    // (the fill of a selected slot is painted by the editor, under the background dragon)
     g.setColour(selected ? lineStrong : (dragHover ? textDim : line));
     g.drawRoundedRectangle(bounds, 3.0f, selected ? sectionBorder + 0.5f : sectionBorder);
 
@@ -407,6 +403,8 @@ void SlotComponent::refresh(bool isSelected, bool irEditorOpen)
     status = st;
     effective = eff;
     audible = aud;
+    if (selected != isSelected && getParentComponent() != nullptr)
+        getParentComponent()->repaint(getBounds()); // the selection fill is painted by the editor
     selected = isSelected;
 
     const bool loaded = isLoadedState(st.state);
@@ -3097,6 +3095,7 @@ void HeaderBar::showSettings()
     m.addSubMenu("My interface's input level: " + juce::String(dbu, 1) + " dBu", levels, true);
     m.addSeparator();
     const bool mc = proc.isMultiCoreOn();
+    m.addItem(30, "Show dragon", true, proc.isDragonShown());
     m.addItem(20, "Use several CPU cores" + (mc ? " (" + juce::String(proc.getNumWorkerThreads() + 1) + " in use)" : juce::String()), true, mc);
     m.addSeparator();
     m.addItem(2, "Open preset folder");
@@ -3105,6 +3104,7 @@ void HeaderBar::showSettings()
         if (r == 1) setParamValue(proc, "levelMatch", lm ? 0.0f : 1.0f);
         if (r == 10) proc.setInputCalibration(!cal, dbu);
         if (r == 20) proc.setMultiCore(!proc.isMultiCoreOn());
+        if (r == 30) proc.setDragonShown(!proc.isDragonShown());
         if (r >= 100 && r <= 156) proc.setInputCalibration(true, (r - 100) * 0.5);
         if (r == 2) { proc.getPresetFolder().createDirectory(); proc.getPresetFolder().revealToUser(); }
         if (r == 3)
@@ -3119,6 +3119,82 @@ void HeaderBar::showSettings()
                 "recorded - set your interface's input level (the dBu that gives 0 dBFS) once.\n"
                 "Mix: percentages are kept at a constant overall loudness.");
     });
+}
+
+// =============================================================================================
+// Dragon
+// =============================================================================================
+namespace
+{
+juce::Image loadAsset(const juce::String& file)
+{
+    for (int k = 0; k < BinaryData::namedResourceListSize; ++k)
+        if (file == BinaryData::originalFilenames[k])
+        {
+            int size = 0;
+            if (const char* data = BinaryData::getNamedResource(BinaryData::namedResourceList[k], size))
+                return juce::ImageCache::getFromMemory(data, size);
+        }
+    return {};
+}
+// eye centre (x, y) and radius per head, 1200 x 800 layout units (tools/dragon/make_dragon.py -> dragon_eyes.txt)
+constexpr float kDragonEyes[5][3] = { { 142.89f, 92.89f, 4.6f }, { 383.81f, 142.87f, 4.6f }, { 580.34f, 158.15f, 4.6f },
+                                      { 833.16f, 150.34f, 4.6f }, { 1072.47f, 180.07f, 4.6f } };
+} // namespace
+
+DragonLayer::DragonLayer()
+{
+    body = loadAsset("dragon_body.png");
+    for (int i = 0; i < 5; ++i)
+    {
+        heads[(size_t) i][0] = loadAsset("dragon_head" + juce::String(i + 1) + "_asleep.png");
+        heads[(size_t) i][1] = loadAsset("dragon_head" + juce::String(i + 1) + "_awake.png");
+    }
+}
+
+bool DragonLayer::setStates(const std::array<int, 5>& s)
+{
+    if (s == states) return false;
+    states = s;
+    rebuild();
+    return true;
+}
+
+void DragonLayer::rebuild()
+{
+    if (!body.isValid()) return;
+    cache = juce::Image(juce::Image::ARGB, body.getWidth(), body.getHeight(), true);
+    juce::Graphics g(cache);
+    g.drawImageAt(body, 0, 0);
+    for (int i = 0; i < 5; ++i)
+    {
+        const auto& h = heads[(size_t) i][states[(size_t) i] == asleep ? 0 : 1];
+        if (h.isValid()) g.drawImageAt(h, 0, 0);
+    }
+}
+
+void DragonLayer::draw(juce::Graphics& g, juce::Rectangle<float> area) const
+{
+    if (!cache.isValid()) return;
+    g.setOpacity(kStrength);
+    g.setImageResamplingQuality(juce::Graphics::mediumResamplingQuality);
+    g.drawImage(cache, area);
+    g.setOpacity(1.0f);
+}
+
+void DragonLayer::drawEyes(juce::Graphics& g, juce::Rectangle<float> area) const
+{
+    // red eyes: SOLO / EDIT on that slot
+    const float sx = area.getWidth() / 1200.0f, sy = area.getHeight() / 800.0f;
+    for (int i = 0; i < 5; ++i)
+        if (states[(size_t) i] == redEye)
+        {
+            const float x = area.getX() + kDragonEyes[i][0] * sx, y = area.getY() + kDragonEyes[i][1] * sy, r = kDragonEyes[i][2] * sx;
+            g.setColour(accent.withAlpha(0.9f));
+            g.fillEllipse(x - r, y - r * 0.7f, 2 * r, 1.4f * r);
+            g.setColour(background);
+            g.drawLine(x, y - r * 0.6f, x, y + r * 0.6f, 1.0f * sx);
+        }
 }
 
 // =============================================================================================

@@ -68,6 +68,8 @@ pops), undo. One guitar track (no multitrack).
 Red accent, thicker outlines, icon, smoother gate opening, INPUT -30...+15, EQ band count per EQ +
 AUTO LEVEL, ECO per slot, timeline scrollbar, shortcuts (Space / R / W, Home), PITCH (tuning).
 
+## 3h. Background dragon — IMPLEMENTED 2026-10-11 (sketch v3), final artwork can replace the layers
+
 ## 3g. Shareable presets (next)
 `.ampsurd` (settings only; captures / IRs found again by file name in the capture folders) and
 `.ampsurdpack` (zip: preset + the .nam / IR files it uses, with a licence reminder).

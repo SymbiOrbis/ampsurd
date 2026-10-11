@@ -352,6 +352,7 @@ AmpsurdProcessor::AmpsurdProcessor()
         calibrateOn.store(pf.getBoolValue("calibrateInput", false));
         interfaceDbu.store(pf.getDoubleValue("interfaceInputDbu", 12.0));
         multiCore.store(pf.getBoolValue("multiCore", true));
+        showDragon.store(pf.getBoolValue("showDragon", true));
     }
     engine.setMultiCore(multiCore.load() ? -1 : 0);
     bypassParamObj = params.getParameter("bypass");
@@ -830,6 +831,16 @@ void AmpsurdProcessor::remeasureJob(int gen)
     }
     measuredCalibrationVersion.store(calVersion);
     applyRig(CaptureAnalyzer::analyseRig(snapshot));
+}
+
+void AmpsurdProcessor::setDragonShown(bool on)
+{
+    showDragon.store(on);
+    juce::PropertiesFile::Options o;
+    o.applicationName = "AMPSURD"; o.filenameSuffix = ".settings"; o.osxLibrarySubFolder = "Application Support";
+    juce::PropertiesFile pf(o);
+    pf.setValue("showDragon", on);
+    pf.saveIfNeeded();
 }
 
 void AmpsurdProcessor::setMultiCore(bool on)

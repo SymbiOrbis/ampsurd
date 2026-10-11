@@ -53,6 +53,8 @@ private:
         juce::TextButton playerButton { "PLAYER / REC" };
         ampsurd::ui::MasterPanel master;
         ampsurd::ui::BrandingFooter footer;
+        ampsurd::ui::DragonLayer dragon;
+        bool showDragon = true;
     };
 
     AmpsurdProcessor& proc;

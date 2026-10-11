@@ -26,11 +26,13 @@ target_sources(Ampsurd PRIVATE
   standalone/StandaloneApp.cpp
   player/PlayerRecorder.cpp)
 
-# Embedded assets: fonts (Inter, SIL OFL) and the footer logos (assets/logos/logo_1..3.svg|png).
+# Embedded assets: fonts (Inter, SIL OFL), the footer logos (assets/logos/logo_1..3.svg|png) and the
+# background dragon (assets/dragon, made by tools/dragon/make_dragon.py).
 file(GLOB AMPSURD_ASSETS CONFIGURE_DEPENDS
   "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/*.ttf"
   "${CMAKE_CURRENT_SOURCE_DIR}/assets/logos/*.svg"
-  "${CMAKE_CURRENT_SOURCE_DIR}/assets/logos/*.png")
+  "${CMAKE_CURRENT_SOURCE_DIR}/assets/logos/*.png"
+  "${CMAKE_CURRENT_SOURCE_DIR}/assets/dragon/*.png")
 juce_add_binary_data(AmpsurdAssets SOURCES ${AMPSURD_ASSETS})
 
 target_compile_definitions(Ampsurd PUBLIC

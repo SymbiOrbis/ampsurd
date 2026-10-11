@@ -69,6 +69,7 @@ public:
     void filesDropped(const juce::StringArray&, int, int) override;
 
     void refresh(bool isSelected, bool irEditorOpen = false);
+    bool isSelected() const { return selected; } // the editor fills a selected slot (under the dragon)
     std::function<void(int)> onEditClicked, onIrClicked;
 
 private:
@@ -518,6 +519,29 @@ private:
     double clearArmedAt = -1.0;
     float backLevel = 0.0f, takeLevel = 0.0f;
     juce::Rectangle<int> backMeter, takeMeter, statusArea, infoArea;
+};
+
+// ---------------------------------------------------------------------------------------------
+// The five-headed AMPSURD dragon drawn faintly behind the UI (concept: project doc DRAGON_BACKGROUND).
+// Body layer + one head per slot: asleep (empty slot), awake (capture loaded), red eye (SOLO / EDIT).
+// Composed once into a cached image; redrawn only when a head changes. Art: assets/dragon (2x).
+class DragonLayer
+{
+public:
+    enum HeadState { asleep = 0, awake = 1, redEye = 2 };
+    DragonLayer();
+    // true when something changed (the caller repaints)
+    bool setStates(const std::array<int, 5>& states);
+    void draw(juce::Graphics&, juce::Rectangle<float> area) const;     // lines (under everything)
+    void drawEyes(juce::Graphics&, juce::Rectangle<float> area) const; // red eyes (SOLO / EDIT)
+    static constexpr float kStrength = 0.095f; // white lines at ~10 % = the light grey ink of the concept
+
+private:
+    void rebuild();
+    juce::Image body;
+    std::array<std::array<juce::Image, 2>, 5> heads;
+    juce::Image cache;
+    std::array<int, 5> states { -1, -1, -1, -1, -1 };
 };
 
 // ---------------------------------------------------------------------------------------------
