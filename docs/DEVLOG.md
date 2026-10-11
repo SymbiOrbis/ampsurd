@@ -40,6 +40,8 @@ Owner (tone now on par with TONE3000 after re-capturing; buffer question postpon
   (82 Hz and 330 Hz), low power chord 8.6 ms; ON/OFF without a click; OFF bit-identical; 1.6 % CPU.
   Reported latency +5 ms while on. The tuner keeps showing the real strings.
 - All tests PASS (core, engine incl. ECO + AUTO LEVEL, compat, tone_test, recorder_test incl. keys).
+- Frankenstein (owner, 16:15): SECTIONS offers only as many sections as there are loaded, unmuted
+  amps; the other buttons are darker and inactive; the stored choice returns when more amps play.
 
 ## 2026-10-09 — Session 2l: recorder timeline, punch-in corrections — Claude (Opus 5.5)
 

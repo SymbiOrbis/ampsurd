@@ -358,6 +358,7 @@ public:
     void refresh();
 
 private:
+    int availableAmps = 0; // loaded + unmuted amps (limits the SECTIONS buttons)
     juce::Rectangle<float> mapArea() const;
     juce::Rectangle<float> bandArea() const;     // live note band under the map
     float xForHz(double hz) const;

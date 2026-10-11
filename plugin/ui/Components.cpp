@@ -2691,7 +2691,9 @@ void FrankensteinPanel::paint(juce::Graphics& g)
                    juce::Rectangle<float>(x - 20.0f, axisY + 5.0f, 40.0f, 13.0f), juce::Justification::centred, false);
     }
 
-    const int hidden = juce::jlimit(2, 5, (int) std::lround(proc.params.getRawParameterValue("frankSections")->load())) - layout.numVisible;
+    // sections beyond the available amps are simply not offered; "hidden" = a section whose amp is muted
+    const int hidden = juce::jmin(juce::jlimit(2, 5, (int) std::lround(proc.params.getRawParameterValue("frankSections")->load())),
+                                  juce::jmax(2, availableAmps)) - layout.numVisible;
     g.setFont(Fonts::get().regular(11.5f));
     g.setColour(textDim);
     const juce::String hint = layout.numVisible == 0 ? juce::String("All amps used here are muted or empty")
@@ -2705,8 +2707,17 @@ void FrankensteinPanel::refresh()
 {
     const auto l = proc.getFrankensteinLayout();
     const int K = juce::jlimit(2, 5, (int) std::lround(proc.params.getRawParameterValue("frankSections")->load()));
+    // only as many sections as there are loaded, unmuted amps (the stored choice comes back with more amps)
+    int avail = 0;
+    for (int s = 0; s < AmpsurdProcessor::kNumSlots; ++s) avail += proc.isSlotAudible(s) ? 1 : 0;
+    const int usable = juce::jmax(2, avail);
     for (int i = 0; i < 4; ++i)
-        sectionButtons[(size_t) i].setToggleState(i + 2 == K, juce::dontSendNotification);
+    {
+        auto& b = sectionButtons[(size_t) i];
+        b.setEnabled(avail >= 2 && i + 2 <= usable);
+        b.setToggleState(i + 2 == juce::jmin(K, usable), juce::dontSendNotification);
+    }
+    availableAmps = avail;
     // repaint the map only when the layout really changed (no constant redrawing / flicker)
     const bool changed = std::memcmp(&l.crossoverHz, &layout.crossoverHz, sizeof(l.crossoverHz)) != 0 || l.numVisible != layout.numVisible
                          || std::memcmp(&l.visibleDividersHz, &layout.visibleDividersHz, sizeof(l.visibleDividersHz)) != 0
