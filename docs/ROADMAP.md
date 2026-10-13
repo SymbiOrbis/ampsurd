@@ -91,6 +91,13 @@ AUTO LEVEL, ECO per slot, timeline scrollbar, shortcuts (Space / R / W, Home), P
 3. **Gate: gentler action**, no step-like closing / re-opening (smoother attack and release curves).
 4. **Footer:** move "BROUGHT TO YOU BY" a little to the left; new button bottom left
    **"Buy Ampsurd amp packs"** -> opens https://www.ampsurd.com/ in the default browser.
+5. **Tone vs. the TONE3000 app** (owner 2026-10-13: TONE3000 sounds fuller, more natural, less scooped,
+   juicier). Facts: AMPSURD with one capture is sample-identical to NAM Core (tone_test). Differences
+   found in TONE3000's guide: new blocks default to **A2-Lite** (AMPSURD: Full unless ECO), captures with
+   calibration data may use input calibration, optional oversampling (2x), per-block normalisation on,
+   gate at the chain start, tone stack / EQs, Spread. Next: owner compares with matched settings (ECO,
+   same input drive, gate off, single amp, equal loudness); then a recorded null test (same DI through
+   both, outputs analysed band by band). TONE3000's plugin is open source: check its processing chain.
 
 ## Later / not planned
 - Frankenstein FOLLOW (whole note routed by detected pitch) - postponed by the owner.
