@@ -82,6 +82,16 @@ AUTO LEVEL, ECO per slot, timeline scrollbar, shortcuts (Space / R / W, Home), P
 - Standalone Windows app: File (open/save preset), Audio settings, Help (Check for updates — asks
   GitHub Releases for the latest version only when chosen; disclosed in the privacy note; About).
 
+## Backlog from the owner (recorded 2026-10-13, NOT implemented yet - wait for the go-ahead)
+1. **Input and output level per amp** in EDIT, with automatic loudness compensation (changing an amp's
+   input drive must not change its loudness in the mix; its output level is the deliberate change).
+2. **MUTE moves the fader to 0 %**: the other faders show the real percentages without the muted amp;
+   un-muting brings the amp back to its previous share and the others are rescaled accordingly
+   (today: stored faders unchanged, only the effective percentages change).
+3. **Gate: gentler action**, no step-like closing / re-opening (smoother attack and release curves).
+4. **Footer:** move "BROUGHT TO YOU BY" a little to the left; new button bottom left
+   **"Buy Ampsurd amp packs"** -> opens https://www.ampsurd.com/ in the default browser.
+
 ## Later / not planned
 - Frankenstein FOLLOW (whole note routed by detected pitch) - postponed by the owner.
 - Octave / harmony effects (PITCH only re-tunes).
