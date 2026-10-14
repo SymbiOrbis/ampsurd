@@ -1,0 +1,51 @@
+name: Maintenance (release notes, feedback discussion)
+
+# Run by hand: Actions -> Maintenance -> Run workflow.
+#   update-release-notes:       the GitHub release v<CMake version> gets the text of docs/RELEASE_NOTES.md
+#   create-feedback-discussion: creates the discussion "AMPSURD beta feedback" (docs/FEEDBACK_DISCUSSION.md)
+#                               in the "General" category (Discussions must be enabled in the repository settings)
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: What to do
+        type: choice
+        options: [update-release-notes, create-feedback-discussion]
+
+permissions:
+  contents: write
+  discussions: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update release notes
+        if: inputs.task == 'update-release-notes'
+        run: |
+          ver=$(sed -n 's/.*project(AMPSURD VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          gh release edit "v$ver" --repo "$REPO" --notes-file docs/RELEASE_NOTES.md
+          echo "Updated: https://github.com/$REPO/releases/tag/v$ver" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Create the feedback discussion
+        if: inputs.task == 'create-feedback-discussion'
+        run: |
+          owner=${REPO%/*}; name=${REPO#*/}
+          title="AMPSURD beta feedback"
+          info=$(gh api graphql -f query='query($o:String!,$n:String!){repository(owner:$o,name:$n){id hasDiscussionsEnabled discussionCategories(first:20){nodes{id name}} discussions(first:50){nodes{title url}}}}' -f o="$owner" -f n="$name")
+          if [ "$(echo "$info" | jq -r '.data.repository.hasDiscussionsEnabled')" != "true" ]; then
+            echo "::error title=discussions::Discussions are not enabled (Settings -> General -> Features -> Discussions)"; exit 1
+          fi
+          existing=$(echo "$info" | jq -r --arg t "$title" '.data.repository.discussions.nodes[] | select(.title==$t) | .url' | head -1)
+          if [ -n "$existing" ]; then echo "Already exists: $existing" | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          repoId=$(echo "$info" | jq -r '.data.repository.id')
+          catId=$(echo "$info" | jq -r '.data.repository.discussionCategories.nodes[] | select(.name=="General") | .id' | head -1)
+          [ -z "$catId" ] && catId=$(echo "$info" | jq -r '.data.repository.discussionCategories.nodes[0].id')
+          url=$(gh api graphql -f query='mutation($r:ID!,$c:ID!,$t:String!,$b:String!){createDiscussion(input:{repositoryId:$r,categoryId:$c,title:$t,body:$b}){discussion{url}}}' \
+                -f r="$repoId" -f c="$catId" -f t="$title" -f b="$(cat docs/FEEDBACK_DISCUSSION.md)" --jq '.data.createDiscussion.discussion.url')
+          echo "Created: $url" | tee -a "$GITHUB_STEP_SUMMARY"

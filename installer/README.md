@@ -7,5 +7,5 @@ hand on main (Actions -> Build Windows -> Run workflow -> publish_release): that
 `v<CMake version>` on the commit and a pre-release with docs/RELEASE_NOTES.md.
 The version comes from `project(AMPSURD VERSION ...)` in the top-level CMakeLists.txt.
 
-Code signing (planned): the installer and the binaries inside it are signed in CI before upload
-(see docs/CODE_SIGNING.md).
+Code signing: NOT active yet (releases so far are unsigned). Once SignPath Foundation signing is
+granted, the installer and the binaries inside it will be signed in CI before upload (docs/CODE_SIGNING.md).
