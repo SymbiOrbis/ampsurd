@@ -8,7 +8,7 @@ be turned back on without reinstalling Windows. If that matters to you,
 wait for the signed release.
 SmartScreen may also show "Windows protected your PC": More info, Run anyway.
 
-Feedback: please share your experience in [GitHub Discussions](https://github.com/SymbiOrbis/ampsurd/discussions)
+Feedback: please share your experience in [GitHub Discussions](https://github.com/SymbiOrbis/ampsurd/discussions/1)
 ("AMPSURD beta feedback") or report bugs as [Issues](https://github.com/SymbiOrbis/ampsurd/issues).
 If you like AMPSURD, a star on GitHub helps a lot: it's how a small
 open-source project qualifies for free code signing, so Windows stops

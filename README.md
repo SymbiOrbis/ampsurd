@@ -22,7 +22,7 @@ editing. Play.
 > then, Windows 11 Smart App Control blocks the installer (it only runs with Smart App Control turned
 > off), and SmartScreen may show "Windows protected your PC" (More info, Run anyway).
 
-Feedback: please share your experience in [GitHub Discussions](https://github.com/SymbiOrbis/ampsurd/discussions)
+Feedback: please share your experience in [GitHub Discussions](https://github.com/SymbiOrbis/ampsurd/discussions/1)
 ("AMPSURD beta feedback") or report bugs as [Issues](https://github.com/SymbiOrbis/ampsurd/issues).
 If you like AMPSURD, a star on GitHub helps a lot: it's how a small
 open-source project qualifies for free code signing, so Windows stops
