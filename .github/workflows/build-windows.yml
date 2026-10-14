@@ -4,6 +4,11 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "Publish a pre-release: creates the tag v<CMake version> on this commit (main only)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write   # creating GitHub Releases from tags
@@ -92,12 +97,16 @@ jobs:
           name: AMPSURD-Setup-windows-x64
           path: installer/output/*.exe
 
-      - name: GitHub Release (tag v<version>)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: GitHub Release (tag v<version>, or "Run workflow" with publish_release on main)
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release && github.ref == 'refs/heads/main')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "${{ github.ref_name }}"
-          if ($tag -ne "v$env:AMPSURD_VERSION") { Write-Output "::error title=release::tag $tag does not match the CMake version $env:AMPSURD_VERSION"; exit 1 }
-          gh release create $tag (Get-ChildItem installer/output/*).FullName --title "AMPSURD $env:AMPSURD_VERSION" --notes-file docs/RELEASE_NOTES.md --prerelease
+          $tag = "v$env:AMPSURD_VERSION"
+          if ("${{ github.ref }}".StartsWith("refs/tags/") -and "${{ github.ref_name }}" -ne $tag) { Write-Output "::error title=release::tag ${{ github.ref_name }} does not match the CMake version $env:AMPSURD_VERSION"; exit 1 }
+          gh release view $tag --repo "${{ github.repository }}" 2>$null
+          if ($LASTEXITCODE -eq 0) { Write-Output "::error title=release::release $tag already exists"; exit 1 }
+          # creates the tag on this commit when it does not exist yet
+          gh release create $tag (Get-ChildItem installer/output/*).FullName --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "AMPSURD $env:AMPSURD_VERSION (beta)" --notes-file docs/RELEASE_NOTES.md --prerelease
+          if ($LASTEXITCODE -ne 0) { Write-Output "::error title=release::gh release create failed"; exit 1 }
