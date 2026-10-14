@@ -6,6 +6,14 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-14 — Session 2u: undo / redo as arrow icons — Claude (Opus 5.5)
+
+- Owner: in the standalone app PLAYER / REC overlapped UNDO. UNDO / REDO are now curved-arrow icon buttons
+  (32 px); header checked in a render with the player button. Ctrl+Z / Ctrl+Y tested on the editor
+  (ui_snapshot "UNDO keys"); the recording is not part of this undo (it has its own UNDO).
+- v0.9.0 had 0 downloads: the release was rebuilt from this commit (build workflow input replace_release
+  deletes the release and its tag, then publishes again).
+
 ## 2026-10-14 — Session 2t: beta feedback channels — Claude (Opus 5.5)
 
 - README + release notes (v0.9.0 release and docs/RELEASE_NOTES.md): Discussions / Issues links and the

@@ -9,6 +9,10 @@ on:
         description: "Publish a pre-release: creates the tag v<CMake version> on this commit (main only)"
         type: boolean
         default: false
+      replace_release:
+        description: "With publish_release: replace an existing release of this version (deletes it and its tag first)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write   # creating GitHub Releases from tags
@@ -106,7 +110,13 @@ jobs:
           $tag = "v$env:AMPSURD_VERSION"
           if ("${{ github.ref }}".StartsWith("refs/tags/") -and "${{ github.ref_name }}" -ne $tag) { Write-Output "::error title=release::tag ${{ github.ref_name }} does not match the CMake version $env:AMPSURD_VERSION"; exit 1 }
           gh release view $tag --repo "${{ github.repository }}" 2>$null
-          if ($LASTEXITCODE -eq 0) { Write-Output "::error title=release::release $tag already exists"; exit 1 }
+          if ($LASTEXITCODE -eq 0) {
+            if ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ inputs.replace_release }}" -eq "true") {
+              gh release delete $tag --repo "${{ github.repository }}" --cleanup-tag --yes
+              if ($LASTEXITCODE -ne 0) { Write-Output "::error title=release::could not delete $tag"; exit 1 }
+              Start-Sleep -Seconds 5
+            } else { Write-Output "::error title=release::release $tag already exists"; exit 1 }
+          }
           # creates the tag on this commit when it does not exist yet
           gh release create $tag (Get-ChildItem installer/output/*).FullName --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "AMPSURD $env:AMPSURD_VERSION (beta)" --notes-file docs/RELEASE_NOTES.md --prerelease
           if ($LASTEXITCODE -ne 0) { Write-Output "::error title=release::gh release create failed"; exit 1 }

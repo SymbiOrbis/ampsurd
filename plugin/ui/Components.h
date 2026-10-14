@@ -448,6 +448,17 @@ private:
 };
 
 // ---------------------------------------------------------------------------------------------
+// Undo / redo button: the usual curved arrow instead of text (same frame as the other buttons).
+class ArrowButton final : public juce::TextButton
+{
+public:
+    explicit ArrowButton(bool redoArrow) : redo(redoArrow) {}
+    void paintButton(juce::Graphics&, bool highlighted, bool down) override;
+
+private:
+    bool redo;
+};
+
 class HeaderBar final : public juce::Component
 {
 public:
@@ -466,7 +477,8 @@ private:
 
     AmpsurdProcessor& proc;
     juce::TextButton presetButton, saveButton { "SAVE" }, saveAsButton { "SAVE AS" }, settingsButton;
-    juce::TextButton undoButton { "UNDO" }, redoButton { "REDO" }, aButton { "A" }, bButton { "B" }, copyAbButton;
+    ArrowButton undoButton { false }, redoButton { true };
+    juce::TextButton aButton { "A" }, bButton { "B" }, copyAbButton;
     std::unique_ptr<juce::FileChooser> chooser;
     juce::String presetName, status;
 };

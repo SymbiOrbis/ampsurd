@@ -3112,7 +3112,7 @@ HeaderBar::HeaderBar(AmpsurdProcessor& p) : proc(p)
     presetButton.setTooltip("Presets store the complete rig: captures, mix, EQ, alignment and master");
     settingsButton.setTooltip("Settings");
 
-    for (auto* b : { &undoButton, &redoButton, &aButton, &bButton, &copyAbButton })
+    for (juce::TextButton* b : { (juce::TextButton*) &undoButton, (juce::TextButton*) &redoButton, &aButton, &bButton, &copyAbButton })
     {
         addAndMakeVisible(*b);
         b->setWantsKeyboardFocus(false);
@@ -3122,7 +3122,7 @@ HeaderBar::HeaderBar(AmpsurdProcessor& p) : proc(p)
     aButton.onClick = [this] { proc.selectAb(0); refresh(); };
     bButton.onClick = [this] { proc.selectAb(1); refresh(); };
     copyAbButton.onClick = [this] { proc.copyAbToOther(); refresh(); };
-    undoButton.setTooltip("Undo the last change (Ctrl+Z)");
+    undoButton.setTooltip("Undo (Ctrl+Z): any change of the sound or the rig - not the recording (it has its own UNDO)");
     redoButton.setTooltip("Redo (Ctrl+Y)");
     aButton.setTooltip("A / B compare: two complete rigs of this session. Switch between them to compare");
     bButton.setTooltip("A / B compare: B starts as a copy of A the first time");
@@ -3146,9 +3146,31 @@ void HeaderBar::resized()
     r.removeFromRight(4);
     aButton.setBounds(r.removeFromRight(32));
     r.removeFromRight(16);
-    redoButton.setBounds(r.removeFromRight(56));
+    redoButton.setBounds(r.removeFromRight(32));
     r.removeFromRight(6);
-    undoButton.setBounds(r.removeFromRight(56));
+    undoButton.setBounds(r.removeFromRight(32));
+}
+
+void ArrowButton::paintButton(juce::Graphics& g, bool highlighted, bool down)
+{
+    getLookAndFeel().drawButtonBackground(g, *this, findColour(juce::TextButton::buttonColourId), highlighted, down);
+    // curved arrow: an arc with an arrow head at its end (mirrored for redo)
+    auto r = getLocalBounds().toFloat().reduced(9.0f, 8.0f);
+    const float cx = r.getCentreX(), cy = r.getCentreY() + 1.5f, rad = r.getHeight() * 0.42f;
+    juce::Path arc;
+    arc.addCentredArc(cx, cy, rad, rad, 0.0f, -2.1f, 0.9f, true);
+    juce::Path head;
+    const float hx = cx + rad * std::sin(-2.1f), hy = cy - rad * std::cos(-2.1f);
+    head.addTriangle(hx - 4.0f, hy - 0.5f, hx + 2.0f, hy - 5.0f, hx + 2.5f, hy + 2.5f);
+    if (redo)
+    {
+        const auto flip = juce::AffineTransform::scale(-1.0f, 1.0f, cx, cy);
+        arc.applyTransform(flip);
+        head.applyTransform(flip);
+    }
+    g.setColour(isEnabled() ? colours::text : colours::textFaint);
+    g.strokePath(arc, juce::PathStrokeType(1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    g.fillPath(head);
 }
 
 void HeaderBar::paint(juce::Graphics& g)

@@ -413,6 +413,18 @@ int main(int argc, char** argv)
         const bool redo2 = val("gateThreshold") == -50.0f && val("output") == -6.0f;
         std::cout << (undo1 && undo2 && redo2 && kept ? "[PASS]" : "[FAIL]")
                   << " UNDO: two changes undone and redone; the loaded captures stay loaded (no reload)\n";
+        {
+            // the keyboard: Ctrl+Z / Ctrl+Y in the editor
+            std::unique_ptr<juce::AudioProcessorEditor> ed(p2.createEditor());
+            setP(p2, "output", -9.0f);
+            settle();
+            ed->keyPressed(juce::KeyPress('z', juce::ModifierKeys::commandModifier, 0));
+            const bool kz = val("output") == -6.0f;
+            ed->keyPressed(juce::KeyPress('y', juce::ModifierKeys::commandModifier, 0));
+            const bool ky = val("output") == -9.0f;
+            ed->keyPressed(juce::KeyPress('z', juce::ModifierKeys::commandModifier, 0));
+            std::cout << (kz && ky ? "[PASS]" : "[FAIL]") << " UNDO keys: Ctrl+Z undoes, Ctrl+Y redoes\n";
+        }
 
         p2.selectAb(1);                // B = copy of A
         setP(p2, "output", 3.0f);      // change B
