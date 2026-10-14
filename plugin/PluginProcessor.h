@@ -3,6 +3,7 @@
 #include <functional>
 
 #include <array>
+#include <map>
 #include <atomic>
 #include <memory>
 #include <mutex>
@@ -49,7 +50,7 @@ public:
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
     const juce::String getName() const override { return "AMPSURD"; }
-    bool acceptsMidi() const override { return false; }
+    bool acceptsMidi() const override { return true; } // footswitches / controllers (program change, learned CCs)
     bool producesMidi() const override { return false; }
     double getTailLengthSeconds() const override { return 0.0; }
     int getNumPrograms() override { return 1; }
@@ -210,6 +211,38 @@ public:
 
     juce::AudioProcessorValueTreeState params;
 
+    // --- undo / redo of all settings, A/B compare (message thread) ---
+    // A settled change (nothing moved for 0.4 s) becomes one undo step; captures / IRs that stay the same
+    // are not reloaded. A and B are two complete rigs of this session (not saved in presets).
+    bool canUndo() const { return !undoStack.empty(); }
+    bool canRedo() const { return !redoStack.empty(); }
+    void undo();
+    void redo();
+    int getAbSlot() const { return abCurrent; }       // 0 = A, 1 = B
+    void selectAb(int which);
+    void copyAbToOther();                             // the current rig becomes the other one too
+
+    // --- MIDI: footswitches / controllers (message thread; settings of this computer) ---
+    struct MidiAction { juce::String id, name; bool continuous = false; };
+    static const std::vector<MidiAction>& midiActions();
+    int getMidiCcFor(const juce::String& actionId) const;     // -1 = not assigned
+    void startMidiLearn(const juce::String& actionId);        // the next CC is assigned to this action
+    juce::String getMidiLearnAction() const { return midiLearnAction; }
+    void cancelMidiLearn() { midiLearnAction.clear(); }
+    void clearMidiAssignments();
+    bool isProgramChangeOn() const { return midiProgramChange; } // Program Change n -> n-th preset
+    void setProgramChangeOn(bool on);
+    bool isFootswitchLatching() const { return midiLatching; }   // latching (on / off) vs momentary (press)
+    void setFootswitchLatching(bool on);
+    juce::String getMidiStatus() const;                        // last MIDI action, shown for 3 s
+    void selectPresetByIndex(int index);                       // 0 = first preset in the folder (sorted)
+    void stepPreset(int delta);                                // next / previous preset (wraps)
+
+    // --- preset packs (.ampsurdpack = zip: preset + its captures + IRs + licence note) ---
+    juce::File getPacksFolder() const;
+    bool exportPack(const juce::File& packFile, juce::String& error);
+    bool importPack(const juce::File& packFile, juce::String& error); // unpacks into the packs folder, loads the preset
+
     // The 30 Hz housekeeping (normally run by the message-thread timer): for tests / tools without a message loop.
     void runHousekeeping() { timerCallback(); }
 
@@ -278,6 +311,8 @@ private:
     bool mixesWith(int slot) const;                 // loaded / loading and not muted: takes part in the linked faders
     void setSlotStatus(int slot, const SlotStatus& s);
     void restoreState(const juce::ValueTree& state, const juce::File& presetFile);
+    juce::File resolveFileRef(const juce::String& ref, const juce::File& presetFile) const;
+    static juce::String fileNameOfRef(const juce::String& ref);
     juce::ValueTree createStateTree() const;
     void updateLatency();
 
@@ -375,6 +410,34 @@ private:
     std::array<SlotStatus, kNumSlots> slotStatus;
     juce::File currentPresetFile;
     juce::String currentPresetName { "Init" };
+
+    // undo / A-B
+    std::vector<juce::ValueTree> undoStack, redoStack;
+    std::atomic<bool> resetUndo { false }; // the host loaded a state: start the history there
+    juce::ValueTree committedState;
+    juce::uint64 committedHash = 0, pendingHash = 0;
+    double pendingSince = 0.0;
+    juce::uint64 stateHash() const;
+    void trackUndo(double nowMs);
+    void applySnapshot(const juce::ValueTree& t);
+    std::array<juce::ValueTree, 2> abStates;
+    int abCurrent = 0;
+
+    // MIDI (the audio thread queues, the timer acts)
+    struct MidiEvent { int type = 0, number = 0, value = 0; }; // type 0 = CC, 1 = program change
+    static constexpr int kMidiFifo = 256;
+    std::array<MidiEvent, kMidiFifo> midiEvents {};
+    juce::AbstractFifo midiFifo { kMidiFifo };
+    std::map<int, juce::String> midiMap; // CC number -> action id
+    juce::String midiLearnAction;
+    bool midiProgramChange = true, midiLatching = false;
+    std::array<int, 128> lastCcValue {};
+    juce::String midiStatus;
+    double midiStatusAt = 0.0;
+    void handleMidiEvents();
+    void applyMidiAction(const juce::String& id, int cc, int value);
+    void loadMidiSettings();
+    void saveMidiSettings() const;
 
     // MUTE -> fader 0: the share the amp had before it was muted (saved in presets)
     std::array<float, kNumSlots> mutedShare {};

@@ -459,10 +459,14 @@ private:
     void save(bool saveAs);
     void showSettings();
 
+    void exportPack();
+    void importPack();
+
     AmpsurdProcessor& proc;
     juce::TextButton presetButton, saveButton { "SAVE" }, saveAsButton { "SAVE AS" }, settingsButton;
+    juce::TextButton undoButton { "UNDO" }, redoButton { "REDO" }, aButton { "A" }, bButton { "B" }, copyAbButton;
     std::unique_ptr<juce::FileChooser> chooser;
-    juce::String presetName;
+    juce::String presetName, status;
 };
 
 // ---------------------------------------------------------------------------------------------

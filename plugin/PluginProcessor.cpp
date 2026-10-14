@@ -361,6 +361,7 @@ AmpsurdProcessor::AmpsurdProcessor()
         ecoByDefault.store(pf.getBoolValue("ecoByDefault", true));
     }
     engine.setMultiCore(multiCore.load() ? -1 : 0);
+    loadMidiSettings();
     bypassParamObj = params.getParameter("bypass");
     gateOnParam = params.getRawParameterValue("gateOn");
     gateThresholdParam = params.getRawParameterValue("gateThreshold");
@@ -533,8 +534,23 @@ AmpsurdProcessor::EffectiveAlign AmpsurdProcessor::effectiveAlign(int s, double 
              free ? (double) sp.phaseDeg->load() * kPi / 180.0 : 0.0 };
 }
 
-void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
+    // footswitches / controllers: queued for the message thread (preset changes, learned CCs)
+    for (const auto meta : midiMessages)
+    {
+        const auto m = meta.getMessage();
+        MidiEvent e;
+        if (m.isController()) e = { 0, m.getControllerNumber(), m.getControllerValue() };
+        else if (m.isProgramChange()) e = { 1, m.getProgramChangeNumber(), 0 };
+        else continue;
+        int s1 = 0, n1 = 0, s2 = 0, n2 = 0;
+        midiFifo.prepareToWrite(1, s1, n1, s2, n2);
+        if (n1 > 0) midiEvents[(size_t) s1] = e;
+        midiFifo.finishedWrite(n1);
+    }
+    midiMessages.clear();
+
     juce::ScopedNoDenormals noDenormals;
     const int numSamples = buffer.getNumSamples();
     juce::AudioProcessLoadMeasurer::ScopedTimer cpuTimer(loadMeasurer, numSamples);
@@ -1540,6 +1556,8 @@ void AmpsurdProcessor::timerCallback()
 
     updateCovariance(false);
     updateLatency();
+    handleMidiEvents();
+    trackUndo(juce::Time::getMillisecondCounterHiRes());
 
     // MUTE (button or automation): fader to 0 %, the others to their real shares; un-mute restores
     if (resyncMute.exchange(false))
@@ -1661,6 +1679,28 @@ juce::ValueTree AmpsurdProcessor::createStateTree() const
     return state;
 }
 
+juce::String AmpsurdProcessor::fileNameOfRef(const juce::String& ref)
+{
+    return ref.fromLastOccurrenceOf("/", false, false).fromLastOccurrenceOf("\\", false, false);
+}
+
+juce::File AmpsurdProcessor::resolveFileRef(const juce::String& ref, const juce::File& presetFile) const
+{
+    // A preset refers to captures / IRs by full path, or (in a preset pack) by file name only.
+    // Not found at the path: look next to the preset, then in the AMPSURD folders (packs) by file name.
+    if (juce::File::isAbsolutePath(ref))
+        if (const juce::File f(ref); f.existsAsFile()) return f;
+    const auto name = fileNameOfRef(ref);
+    if (name.isEmpty()) return {};
+    if (presetFile != juce::File())
+        if (const auto sib = presetFile.getSiblingFile(name); sib.existsAsFile()) return sib;
+    for (const auto& dir : { getPacksFolder(), getPresetFolder().getParentDirectory() })
+        if (dir.isDirectory())
+            for (const auto& entry : juce::RangedDirectoryIterator(dir, true, name, juce::File::findFiles))
+                return entry.getFile();
+    return juce::File::isAbsolutePath(ref) ? juce::File(ref) : juce::File();
+}
+
 void AmpsurdProcessor::restoreState(const juce::ValueTree& tree, const juce::File& presetFile)
 {
     if (!tree.isValid() || tree.getType() != params.state.getType())
@@ -1709,15 +1749,16 @@ void AmpsurdProcessor::restoreState(const juce::ValueTree& tree, const juce::Fil
                 if (getIrStatus(s).state != IrState::none) removeIr(s);
                 return;
             }
-            juce::File f(irPath);
-            if (!f.existsAsFile() && presetFile != juce::File())
-                if (const auto sib = presetFile.getSiblingFile(f.getFileName()); sib.existsAsFile()) f = sib;
+            const juce::File f = resolveFileRef(irPath, presetFile);
+            const auto cur = getIrStatus(s);
+            if (f.existsAsFile() && (cur.state == IrState::loaded || cur.state == IrState::loading) && juce::File(cur.path) == f)
+                return; // the same IR is already there (undo, A/B, presets sharing an IR): keep it
             if (f.existsAsFile())
                 loadIr(s, f);
             else
             {
                 removeIr(s);
-                setIrStatus(s, { IrState::missing, irPath, juce::File(irPath).getFileNameWithoutExtension(), "IR file not found:\n" + irPath });
+                setIrStatus(s, { IrState::missing, irPath, fileNameOfRef(irPath).upToLastOccurrenceOf(".", false, false), "IR file not found:\n" + irPath });
             }
         };
 
@@ -1747,16 +1788,16 @@ void AmpsurdProcessor::restoreState(const juce::ValueTree& tree, const juce::Fil
             continue;
         }
 
-        juce::File file(path);
-        if (!file.existsAsFile() && presetFile != juce::File())
-        {
-            // A preset shared together with its captures: look next to the preset file.
-            const auto sibling = presetFile.getSiblingFile(file.getFileName());
-            if (sibling.existsAsFile()) file = sibling;
-        }
+        const juce::File file = resolveFileRef(path, presetFile);
 
         if (file.existsAsFile())
         {
+            const auto cur = getSlotStatus(s);
+            if ((cur.state == SlotState::loaded || cur.state == SlotState::loading) && juce::File(cur.path) == file)
+            {
+                restoreIr(); // the same capture is already loaded: keep it (ECO / INPUT changes are picked up by the timer)
+                continue;
+            }
             const int gen = ++slotGeneration[(size_t) s];
             setSlotStatus(s, { SlotState::loading, file.getFullPathName(), file.getFileNameWithoutExtension(), "Loading..." });
             auto aliveFlag = alive;
@@ -1767,7 +1808,7 @@ void AmpsurdProcessor::restoreState(const juce::ValueTree& tree, const juce::Fil
         else
         {
             ++slotGeneration[(size_t) s];
-            setSlotStatus(s, { SlotState::missing, path, juce::File(path).getFileNameWithoutExtension(),
+            setSlotStatus(s, { SlotState::missing, path, fileNameOfRef(path).upToLastOccurrenceOf(".", false, false),
                                "Capture file not found:\n" + path });
             auto aliveFlag = alive;
             const int gen = slotGeneration[(size_t) s].load();
@@ -1809,6 +1850,7 @@ void AmpsurdProcessor::setStateInformation(const void* data, int sizeInBytes)
         currentPresetFile = presetFile;
     }
     restoreState(tree, presetFile);
+    resetUndo.store(true); // a project / session was opened: undo starts from here
 }
 
 juce::File AmpsurdProcessor::getPresetFolder() const

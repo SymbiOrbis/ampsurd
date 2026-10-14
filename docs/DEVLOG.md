@@ -6,6 +6,32 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-14 — Session 2q: MIDI footswitches, preset packs, undo / redo, A/B — Claude (Opus 5.5)
+
+- **MIDI** (NEEDS_MIDI_INPUT on; acceptsMidi): processBlock queues CC / Program Change in a lock-free FIFO,
+  the 30 Hz housekeeping acts (plugin/RigControl.cpp). Program Change n -> n-th preset of the preset
+  folder (sorted). Settings -> MIDI footswitch / controller: MIDI learn for 30 actions (next / previous
+  preset, A/B, bypass, gate, Frankenstein, delays / reverb / flanger / pitch, amp 1-5 mute / solo,
+  input / output / amp input as continuous controllers), momentary (act on press, 127 after < 64) or
+  latching (every change; on / off follows the value), clear all. Stored per computer (midiMap,
+  midiProgramChange, midiLatching). Header shows the last MIDI action / learn prompt for 3 s.
+- **Preset restore keeps unchanged captures / IRs** (same file already loaded or loading): instant preset
+  switches between rigs that share captures; ECO / INPUT differences are applied by the housekeeping.
+  File references resolve by name: next to the preset, then Documents\AMPSURD (incl. Packs) recursively.
+- **Packs** (.ampsurdpack, zip): export = preset with file names only + captures + IRs + README (licence
+  reminder); duplicate names get " (2)". Import: entries with folders rejected, unpacked into
+  Documents\AMPSURD\Packs\<name> (numbered if it exists), preset loaded. Preset menu: Export / Import /
+  Open packs folder (the stray "Check for updates" item in the preset menu was removed).
+- **Undo / redo + A/B**: snapshot history (FNV hash of all parameters + files; a change that stays put
+  for 0.4 s = one step, 50 steps), restored through the same restore (no reload of unchanged captures);
+  history restarts when the host loads a state. A/B = two complete rigs of the session, B starts as a
+  copy, COPY TO B / A. Header: UNDO, REDO, A, B, COPY; Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z.
+- Tests (ui_snapshot, Linux): UNDO (two changes undone + redone, captures stay loaded), A/B, MIDI learn +
+  footswitch toggling, PACK export (3 captures + preset + README, no folders) / import (loaded from the
+  packs folder). All earlier checks pass.
+- Jester Dyne IR packs (Emerald: Marshall 1960AX Greenback, 6 IRs; Brutal: modified BG412S, 15 IRs; WAV
+  44.1 / 48 kHz): pages say "free even for commercial use"; no CC0 / redistribution wording found online.
+
 ## 2026-10-14 — Session 2p: owner's backlog (per-amp level, mute -> 0 %, gentler gate, shop button, TONE3000) — Claude (Opus 5.5)
 
 - **Per-amp INPUT / OUTPUT** (EDIT -> LEVEL, params `s{n}_drive` -24...+24 dB, `s{n}_level` -24...+12 dB).

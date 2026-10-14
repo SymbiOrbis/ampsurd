@@ -392,6 +392,91 @@ int main(int argc, char** argv)
         oldPreset.deleteFile();
     }
 
+    // 3c. undo / redo, A/B, MIDI learn, preset pack (on proc2, which holds the test rig)
+    {
+        auto& p2 = *proc2;
+        auto val = [&](const char* id) { return p2.params.getRawParameterValue(id)->load(); };
+        auto settle = [&] { p2.runHousekeeping(); pump(450); p2.runHousekeeping(); };
+        settle();
+        const float thr0 = val("gateThreshold");
+        setP(p2, "gateThreshold", -50.0f);
+        settle();
+        setP(p2, "output", -6.0f);
+        settle();
+        p2.undo();
+        const bool undo1 = val("output") == 0.0f && val("gateThreshold") == -50.0f;
+        const bool kept = p2.getSlotStatus(0).state == AmpsurdProcessor::SlotState::loaded; // same capture: not reloaded
+        p2.undo();
+        const bool undo2 = val("gateThreshold") == thr0;
+        p2.redo();
+        p2.redo();
+        const bool redo2 = val("gateThreshold") == -50.0f && val("output") == -6.0f;
+        std::cout << (undo1 && undo2 && redo2 && kept ? "[PASS]" : "[FAIL]")
+                  << " UNDO: two changes undone and redone; the loaded captures stay loaded (no reload)\n";
+
+        p2.selectAb(1);                // B = copy of A
+        setP(p2, "output", 3.0f);      // change B
+        p2.selectAb(0);
+        const bool aBack = val("output") == -6.0f;
+        p2.selectAb(1);
+        const bool bKept = val("output") == 3.0f;
+        p2.selectAb(0);
+        std::cout << (aBack && bKept ? "[PASS]" : "[FAIL]") << " A/B: B changed, A unchanged, switching back and forth keeps both\n";
+
+        // MIDI learn: CC 80 -> amp 1 mute (momentary footswitch: 127 on press, 0 on release)
+        auto sendCc = [&](int cc, int v) {
+            juce::AudioBuffer<float> b(2, 256);
+            b.clear();
+            juce::MidiBuffer m;
+            m.addEvent(juce::MidiMessage::controllerEvent(1, cc, v), 0);
+            p2.processBlock(b, m);
+            p2.runHousekeeping();
+        };
+        const bool wasMuted = p2.isSlotMuted(0);
+        p2.startMidiLearn("s1_mute");
+        sendCc(80, 127);
+        sendCc(80, 0);
+        const bool learned = p2.getMidiCcFor("s1_mute") == 80 && p2.isSlotMuted(0) == wasMuted;
+        sendCc(80, 127);
+        sendCc(80, 0);
+        const bool toggled = p2.isSlotMuted(0) != wasMuted;
+        sendCc(80, 127);
+        sendCc(80, 0);
+        const bool back = p2.isSlotMuted(0) == wasMuted;
+        p2.clearMidiAssignments(); // leave this computer's settings as they were
+        std::cout << (learned && toggled && back ? "[PASS]" : "[FAIL]") << " MIDI: CC 80 learned for Amp 1 mute; each footswitch press toggles it\n";
+
+        // preset pack: export (preset + captures + README), import (unpacked, loaded, captures found by name)
+        const auto pack = out.getChildFile("Pack test.ampsurdpack");
+        juce::String err;
+        const bool exported = p2.exportPack(pack, err);
+        juce::ZipFile zip(pack);
+        int nams = 0;
+        bool hasPreset = false, hasReadme = false, noFolders = true;
+        for (int i = 0; i < zip.getNumEntries(); ++i)
+        {
+            const auto n = zip.getEntry(i)->filename;
+            nams += n.endsWithIgnoreCase(".nam");
+            hasPreset = hasPreset || n == "Pack test.ampsurd";
+            hasReadme = hasReadme || n == "README.txt";
+            noFolders = noFolders && !n.containsAnyOf("/\\");
+        }
+        bool imported = false, fromPack = false;
+        juce::File unpacked;
+        if (exported)
+        {
+            imported = p2.importPack(pack, err);
+            for (int t = 0; t < 400 && p2.getSlotStatus(0).state == AmpsurdProcessor::SlotState::loading; ++t) pump(50);
+            unpacked = juce::File(p2.getSlotStatus(0).path).getParentDirectory();
+            fromPack = unpacked.isAChildOf(p2.getPacksFolder()) && p2.getSlotStatus(0).state == AmpsurdProcessor::SlotState::loaded;
+        }
+        std::cout << (exported && nams == n && hasPreset && hasReadme && noFolders && imported && fromPack ? "[PASS]" : "[FAIL]")
+                  << " PACK: exported " << zip.getNumEntries() << " files (" << nams << " captures + preset + README), imported and loaded from "
+                  << unpacked.getFullPathName() << (err.isNotEmpty() ? " - " + err : juce::String()) << "\n";
+        if (fromPack) unpacked.deleteRecursively();
+        pack.deleteFile();
+    }
+
     // 4. preset with a missing capture
     {
         auto xml = juce::XmlDocument::parse(presetFile);

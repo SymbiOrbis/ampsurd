@@ -15,6 +15,7 @@ standalone player / recorder with punch-in corrections and crossfaded edits, pre
 
 New since the first test builds: per-amp INPUT (loudness kept automatically) and OUTPUT in EDIT,
 MUTE moves the fader to 0 % and back, a gentler gate, A2 captures load as Lite (ECO) by default like
-in TONE3000 (settings menu), BUY AMPSURD AMP PACKS link.
+in TONE3000 (settings menu), BUY AMPSURD AMP PACKS link, MIDI footswitches (program change, MIDI
+learn), preset packs (.ampsurdpack with captures and IRs), undo / redo and A/B compare.
 
 Portable zips (no installer) are attached as well.

@@ -70,9 +70,21 @@ AUTO LEVEL, ECO per slot, timeline scrollbar, shortcuts (Space / R / W, Home), P
 
 ## 3h. Background dragon — IMPLEMENTED 2026-10-11 (sketch v3), final artwork can replace the layers
 
-## 3g. Shareable presets (next)
-`.ampsurd` (settings only; captures / IRs found again by file name in the capture folders) and
-`.ampsurdpack` (zip: preset + the .nam / IR files it uses, with a licence reminder).
+## 3g. Shareable presets — IMPLEMENTED 2026-10-14 (session 2q), awaiting test
+`.ampsurdpack` (zip: preset + the .nam / IR files it uses + README with a licence reminder; the preset
+refers to files by name only). Import unpacks into Documents\AMPSURD\Packs\<name> and loads it. Any
+preset whose files moved is found again by file name (next to the preset, then in the AMPSURD folders).
+
+## 3i. Live use: MIDI, undo, A/B — IMPLEMENTED 2026-10-14 (session 2q), awaiting test
+- MIDI footswitch / controller (plugin + standalone): Program Change n = n-th preset; MIDI learn for
+  next / previous preset, A/B, bypass, gate, Frankenstein, effects on/off, amp mute / solo, input /
+  output / amp input as controllers; momentary or latching footswitches; settings per computer.
+- Presets switch without reloading captures / IRs that stay the same (fast between rigs that share captures).
+- Undo / redo of all settings (50 steps, Ctrl+Z / Ctrl+Y, header buttons), A/B compare with copy.
+
+## 3j. Bundled cabinet IRs (owner considering Jester Dyne's free packs) — licence to be confirmed
+Pages say "absolutely free even for commercial use"; no CC0 / redistribution statement found on the
+pages. Needs the manual's licence text or the author's written OK before bundling.
 
 ## 4. Public release package — installer, releases, update check DONE 2026-10-11; signing pending
 (SignPath Foundation application by the owner; fallback: own OV certificate in the owner's name)

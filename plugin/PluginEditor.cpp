@@ -129,6 +129,12 @@ AmpsurdEditor::AmpsurdEditor(AmpsurdProcessor& p) : AudioProcessorEditor(&p), pr
 
 bool AmpsurdEditor::keyPressed(const juce::KeyPress& key)
 {
+    // undo / redo of the settings (also in a DAW, when AMPSURD's window has the keyboard)
+    const auto mods = key.getModifiers();
+    const auto kc = juce::CharacterFunctions::toLowerCase((juce::juce_wchar) key.getKeyCode());
+    if (mods.isCommandDown() && kc == 'z') { if (mods.isShiftDown()) proc.redo(); else proc.undo(); return true; }
+    if (mods.isCommandDown() && kc == 'y') { proc.redo(); return true; }
+
     auto* pl = proc.getPlayer();
     if (pl == nullptr) return false;
     using S = PlayerRecorder::State;

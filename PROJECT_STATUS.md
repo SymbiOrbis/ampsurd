@@ -1,6 +1,6 @@
 # AMPSURD — Project Status
 
-_Last updated: 2026-10-14 (Claude, session 2p)_
+_Last updated: 2026-10-14 (Claude, session 2q)_
 
 **Product name:** AMPSURD (formerly MONSTROSITY / QUINQUEPLEX).
 **What it is:** free, open-source (GNU AGPLv3) guitar plugin: one DI signal → up to five Neural
@@ -39,7 +39,9 @@ count per EQ + AUTO LEVEL, ECO per slot, timeline scrollbar, keyboard shortcuts,
 the amps, ~5 ms). Session 2p (2026-10-14): owner's backlog - per-amp INPUT (loudness kept) / OUTPUT in
 EDIT, MUTE -> fader 0 % and back, gentler gate, BUY AMPSURD AMP PACKS, A2 captures as Lite by default
 (TONE3000's default, found in its source). Code signing: SignPath Foundation application next (project
-doc CODE_SIGNING_PLAN). Awaiting test: BUILD_WINDOWS.md checklist 25-29.
+doc CODE_SIGNING_PLAN). Awaiting test: BUILD_WINDOWS.md checklist 25-29. Session 2q (2026-10-14): MIDI
+footswitches (program change, MIDI learn), preset packs, undo / redo, A/B, fast preset switching
+(checklist 30-33). Bundled IRs (Jester Dyne) pending licence confirmation.
 
 ## Implemented and tested
 

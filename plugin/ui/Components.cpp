@@ -3075,6 +3075,22 @@ HeaderBar::HeaderBar(AmpsurdProcessor& p) : proc(p)
     settingsButton.onClick = [this] { showSettings(); };
     presetButton.setTooltip("Presets store the complete rig: captures, mix, EQ, alignment and master");
     settingsButton.setTooltip("Settings");
+
+    for (auto* b : { &undoButton, &redoButton, &aButton, &bButton, &copyAbButton })
+    {
+        addAndMakeVisible(*b);
+        b->setWantsKeyboardFocus(false);
+    }
+    undoButton.onClick = [this] { proc.undo(); refresh(); };
+    redoButton.onClick = [this] { proc.redo(); refresh(); };
+    aButton.onClick = [this] { proc.selectAb(0); refresh(); };
+    bButton.onClick = [this] { proc.selectAb(1); refresh(); };
+    copyAbButton.onClick = [this] { proc.copyAbToOther(); refresh(); };
+    undoButton.setTooltip("Undo the last change (Ctrl+Z)");
+    redoButton.setTooltip("Redo (Ctrl+Y)");
+    aButton.setTooltip("A / B compare: two complete rigs of this session. Switch between them to compare");
+    bButton.setTooltip("A / B compare: B starts as a copy of A the first time");
+    copyAbButton.setTooltip("Copy the rig you hear now to the other side (A -> B or B -> A)");
 }
 
 void HeaderBar::resized()
@@ -3087,6 +3103,16 @@ void HeaderBar::resized()
     saveButton.setBounds(r.removeFromRight(64));
     r.removeFromRight(12);
     presetButton.setBounds(r.removeFromRight(260));
+    r.removeFromRight(80); // "PRESET" label
+    copyAbButton.setBounds(r.removeFromRight(92));
+    r.removeFromRight(6);
+    bButton.setBounds(r.removeFromRight(32));
+    r.removeFromRight(4);
+    aButton.setBounds(r.removeFromRight(32));
+    r.removeFromRight(16);
+    redoButton.setBounds(r.removeFromRight(56));
+    r.removeFromRight(6);
+    undoButton.setBounds(r.removeFromRight(56));
 }
 
 void HeaderBar::paint(juce::Graphics& g)
@@ -3095,6 +3121,13 @@ void HeaderBar::paint(juce::Graphics& g)
     g.setFont(Fonts::get().semibold(24.0f).withExtraKerningFactor(0.16f));
     g.drawText("AMPSURD", getLocalBounds().reduced(24, 0), juce::Justification::centredLeft, false);
     drawLabel(g, "PRESET", { presetButton.getX() - 64, 0, 56, getHeight() }, textDim, juce::Justification::centredRight);
+    if (status.isNotEmpty()) // MIDI learn / last footswitch action, under the buttons
+    {
+        g.setColour(accent);
+        g.setFont(Fonts::get().regular(11.0f));
+        g.drawText(status, juce::Rectangle<int>(undoButton.getX(), undoButton.getBottom() + 1, presetButton.getRight() - undoButton.getX(), 12),
+                   juce::Justification::centredLeft, true);
+    }
 
     // preset name inside its button (left aligned, with a small caret)
     auto pr = presetButton.getBounds().reduced(12, 0);
@@ -3122,6 +3155,14 @@ void HeaderBar::refresh()
 {
     const auto n = proc.getCurrentPresetName();
     if (n != presetName) { presetName = n; repaint(); }
+    undoButton.setEnabled(proc.canUndo());
+    redoButton.setEnabled(proc.canRedo());
+    aButton.setToggleState(proc.getAbSlot() == 0, juce::dontSendNotification);
+    bButton.setToggleState(proc.getAbSlot() == 1, juce::dontSendNotification);
+    const juce::String ab = proc.getAbSlot() == 0 ? "COPY TO B" : "COPY TO A";
+    if (copyAbButton.getButtonText() != ab) copyAbButton.setButtonText(ab);
+    const auto st = proc.getMidiStatus();
+    if (st != status) { status = st; repaint(); }
 }
 
 void HeaderBar::showPresetMenu()
@@ -3133,15 +3174,57 @@ void HeaderBar::showPresetMenu()
     for (int i = 0; i < files.size(); ++i)
         m.addItem(100 + i, files[i].getFileNameWithoutExtension(), true, files[i] == proc.getCurrentPresetFile());
     m.addSeparator();
+    m.addItem(3, "Export pack (preset + captures + IRs)...");
+    m.addItem(4, "Import pack...");
+    m.addSeparator();
     m.addItem(2, "Open preset folder");
-    m.addItem(40, "Check for updates...");
+    m.addItem(5, "Open packs folder");
     m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&presetButton).withMinimumWidth(presetButton.getWidth()),
                     [this, files](int r) {
                         if (r == 1) proc.loadInitPreset();
                         else if (r == 2) { proc.getPresetFolder().createDirectory(); proc.getPresetFolder().revealToUser(); }
+                        else if (r == 3) exportPack();
+                        else if (r == 4) importPack();
+                        else if (r == 5) { proc.getPacksFolder().createDirectory(); proc.getPacksFolder().revealToUser(); }
                         else if (r >= 100 && r - 100 < files.size()) proc.loadPreset(files[r - 100]);
                         refresh();
                     });
+}
+
+void HeaderBar::exportPack()
+{
+    const auto name = proc.getCurrentPresetName() == "Init" ? juce::String("My rig") : proc.getCurrentPresetName();
+    const auto start = juce::File::getSpecialLocation(juce::File::userDesktopDirectory).getChildFile(name + ".ampsurdpack");
+    chooser = std::make_unique<juce::FileChooser>("Export AMPSURD pack (preset + captures + IRs)", start, "*.ampsurdpack");
+    chooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                             | juce::FileBrowserComponent::warnAboutOverwriting,
+                         [this](const juce::FileChooser& fc) {
+                             const auto f = fc.getResult();
+                             if (f == juce::File()) return;
+                             juce::String err;
+                             if (proc.exportPack(f, err))
+                                 juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon, "Pack exported",
+                                     f.withFileExtension(".ampsurdpack").getFullPathName()
+                                         + "\n\nIt contains the preset and the capture / IR files it uses. Share it only when the "
+                                           "licences of these files allow it.");
+                             else
+                                 juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, "Export pack", err);
+                         });
+}
+
+void HeaderBar::importPack()
+{
+    chooser = std::make_unique<juce::FileChooser>("Import AMPSURD pack",
+                                                  juce::File::getSpecialLocation(juce::File::userHomeDirectory).getChildFile("Downloads"), "*.ampsurdpack");
+    chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                         [this](const juce::FileChooser& fc) {
+                             const auto f = fc.getResult();
+                             if (f == juce::File()) return;
+                             juce::String err;
+                             if (!proc.importPack(f, err))
+                                 juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, "Import pack", err);
+                             refresh();
+                         });
 }
 
 void HeaderBar::save(bool saveAs)
@@ -3188,6 +3271,26 @@ void HeaderBar::showSettings()
     m.addItem(50, "Load A2 captures as Lite (ECO) - like TONE3000", true, proc.isEcoByDefault());
     m.addSeparator();
     const bool mc = proc.isMultiCoreOn();
+    {
+        // MIDI: footswitches / controllers (program change selects presets; learn any action to a CC)
+        juce::PopupMenu midi;
+        midi.addItem(60, "Program Change selects presets (PC 1 = first preset)", true, proc.isProgramChangeOn());
+        midi.addItem(61, "Latching footswitches (on / off) - else momentary", true, proc.isFootswitchLatching());
+        midi.addSeparator();
+        midi.addSectionHeader("MIDI learn (choose, then press the footswitch):");
+        const auto& acts = AmpsurdProcessor::midiActions();
+        for (int i = 0; i < (int) acts.size(); ++i)
+        {
+            const int cc = proc.getMidiCcFor(acts[(size_t) i].id);
+            midi.addItem(1000 + i, acts[(size_t) i].name + (cc >= 0 ? "    [CC " + juce::String(cc) + "]" : juce::String()), true,
+                         proc.getMidiLearnAction() == acts[(size_t) i].id);
+        }
+        midi.addSeparator();
+        if (proc.getMidiLearnAction().isNotEmpty()) midi.addItem(62, "Cancel MIDI learn");
+        midi.addItem(63, "Clear all MIDI assignments");
+        m.addSubMenu("MIDI footswitch / controller", midi);
+        m.addSeparator();
+    }
     m.addItem(30, "Show dragon", true, proc.isDragonShown());
     m.addItem(20, "Use several CPU cores" + (mc ? " (" + juce::String(proc.getNumWorkerThreads() + 1) + " in use)" : juce::String()), true, mc);
     m.addSeparator();
@@ -3200,6 +3303,12 @@ void HeaderBar::showSettings()
         if (r == 20) proc.setMultiCore(!proc.isMultiCoreOn());
         if (r == 30) proc.setDragonShown(!proc.isDragonShown());
         if (r == 50) proc.setEcoByDefault(!proc.isEcoByDefault());
+        if (r == 60) proc.setProgramChangeOn(!proc.isProgramChangeOn());
+        if (r == 61) proc.setFootswitchLatching(!proc.isFootswitchLatching());
+        if (r == 62) proc.cancelMidiLearn();
+        if (r == 63) proc.clearMidiAssignments();
+        if (r >= 1000 && r - 1000 < (int) AmpsurdProcessor::midiActions().size())
+            proc.startMidiLearn(AmpsurdProcessor::midiActions()[(size_t) (r - 1000)].id);
         if (r == 40)
             ampsurd::checkForUpdates([](const ampsurd::UpdateInfo& u) {
                 const juce::String current = JucePlugin_VersionString;

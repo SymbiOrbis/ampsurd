@@ -6,7 +6,7 @@ juce_add_plugin(Ampsurd
   PLUGIN_CODE               Amp5
   FORMATS                   VST3 Standalone
   IS_SYNTH                  FALSE
-  NEEDS_MIDI_INPUT          FALSE
+  NEEDS_MIDI_INPUT          TRUE
   NEEDS_MIDI_OUTPUT         FALSE
   IS_MIDI_EFFECT            FALSE
   EDITOR_WANTS_KEYBOARD_FOCUS FALSE
@@ -20,6 +20,7 @@ juce_add_plugin(Ampsurd
 
 target_sources(Ampsurd PRIVATE
   PluginProcessor.cpp
+  RigControl.cpp
   PluginEditor.cpp
   ui/Theme.cpp
   ui/Components.cpp

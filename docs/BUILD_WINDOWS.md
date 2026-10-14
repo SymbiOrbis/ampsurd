@@ -206,6 +206,19 @@ REAPER picks up the new version.
     (TONE3000 also plays A2 captures as Lite). Load the same capture in both, gate off, same input,
     level matched - do they sound alike now? Switch ECO off on the slot to hear the full model.
 
+30. UNDO / REDO (header, or Ctrl+Z / Ctrl+Y): change a few things, undo them one by one. A / B: press B,
+    change the sound, switch A <-> B while playing. COPY TO B copies what you hear to the other side.
+
+31. MIDI footswitch: standalone - Audio settings: enable your MIDI input; REAPER - route the MIDI to the
+    AMPSURD track. Settings -> MIDI footswitch / controller -> e.g. "Amp 1 mute", then press the switch:
+    the header shows "CC n -> Amp 1 mute"; each press toggles it. If every second press does nothing,
+    tick "Latching footswitches". Program Change 1, 2, 3 ... selects the presets in alphabetical order.
+
+32. Preset switching between presets that use the same captures should be instant (no reload).
+
+33. Packs: preset menu -> Export pack... -> send the file to another computer -> Import pack... : the rig
+    loads with its captures and IRs (unpacked into Documents\AMPSURD\Packs).
+
 Expected latency shown by REAPER: 104 samples at 48 kHz, 123 at 44.1 kHz.
 
 Optional measurements (in Developer PowerShell):
