@@ -219,6 +219,9 @@ REAPER picks up the new version.
 33. Packs: preset menu -> Export pack... -> send the file to another computer -> Import pack... : the rig
     loads with its captures and IRs (unpacked into Documents\AMPSURD\Packs).
 
+34. PAN by keyboard: click the PAN value of an amp (C / L40 / R35), type e.g. L30, R20 or C, Enter.
+    OUTPUT meter: two bars, L above R - pan one amp hard left: the L bar is higher.
+
 Expected latency shown by REAPER: 104 samples at 48 kHz, 123 at 44.1 kHz.
 
 Optional measurements (in Developer PowerShell):

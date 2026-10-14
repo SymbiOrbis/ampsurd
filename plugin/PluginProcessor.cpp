@@ -615,7 +615,7 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
     float* outR = numOut > 1 ? buffer.getWritePointer(1) : nullptr; // stereo: per-amp PAN
     const int maxBlock = (int) inBuffer.size();
     const int latency = juce::jlimit(0, (int) dryDelay.size() - 1, totalLatency.load(std::memory_order_relaxed));
-    float inPeak = 0.0f, outPeak = 0.0f;
+    float inPeak = 0.0f, outPeak = 0.0f, outPeakL = 0.0f, outPeakR = 0.0f;
 
     for (int start = 0; start < numSamples; start += maxBlock)
     {
@@ -684,6 +684,8 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
                 y = 0.5 * (y + yR); // mono output bus: fold down (centred amps unchanged)
             out[start + i] = (float) y;
             outPeak = juce::jmax(outPeak, (float) std::abs(y), (float) std::abs(yR));
+            outPeakL = juce::jmax(outPeakL, (float) std::abs(outR != nullptr ? L[i] : y));
+            outPeakR = juce::jmax(outPeakR, (float) std::abs(outR != nullptr ? yR : y));
         }
     }
 
@@ -694,6 +696,8 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
     if (keyPeak > gateKeyPeak.load(std::memory_order_relaxed)) gateKeyPeak.store(keyPeak, std::memory_order_relaxed);
     gateGain.store((float) gate.getCurrentGain(), std::memory_order_relaxed);
     if (outPeak > outputPeak.load(std::memory_order_relaxed)) outputPeak.store(outPeak, std::memory_order_relaxed);
+    if (outPeakL > outputPeakL.load(std::memory_order_relaxed)) outputPeakL.store(outPeakL, std::memory_order_relaxed);
+    if (outPeakR > outputPeakR.load(std::memory_order_relaxed)) outputPeakR.store(outPeakR, std::memory_order_relaxed);
     const float gr = (float) limiter.getAndResetMaxReductionDb();
     if (gr > limiterReductionDb.load(std::memory_order_relaxed)) limiterReductionDb.store(gr, std::memory_order_relaxed);
 }

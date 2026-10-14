@@ -198,6 +198,8 @@ public:
     }
     void setDeviceXRunProvider(std::function<int()> f) { deviceXRuns = std::move(f); } // standalone, message thread
     float getAndResetOutputPeak() { return outputPeak.exchange(0.0f); }
+    float getAndResetOutputPeakL() { return outputPeakL.exchange(0.0f); } // left / right output (meter)
+    float getAndResetOutputPeakR() { return outputPeakR.exchange(0.0f); }
     float getAndResetInputPeak() { return inputPeak.exchange(0.0f); }
     float getAndResetLimiterReductionDb() { return limiterReductionDb.exchange(0.0f); }
     float getCompensationDb() const { return engine.getCompensationDb(); }
@@ -465,6 +467,7 @@ private:
     juce::AudioProcessLoadMeasurer loadMeasurer;
     std::function<int()> deviceXRuns;
     std::atomic<float> inputPeak { 0.0f }, outputPeak { 0.0f }, limiterReductionDb { 0.0f };
+    std::atomic<float> outputPeakL { 0.0f }, outputPeakR { 0.0f };
 
     std::shared_ptr<std::atomic<bool>> alive = std::make_shared<std::atomic<bool>>(true);
     juce::ThreadPool loaderPool { juce::ThreadPoolOptions {}.withThreadName("AMPSURD loader").withNumberOfThreads(1) };

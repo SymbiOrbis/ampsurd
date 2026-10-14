@@ -268,7 +268,33 @@ SlotComponent::SlotComponent(AmpsurdProcessor& p, int s) : proc(p), slot(s), fad
     panSlider.setMouseDragSensitivity(220);
     addAndMakeVisible(panSlider);
     panAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.params, AmpsurdProcessor::slotParamId(s, "pan"), panSlider);
-    panSlider.onValueChange = [this] { repaint(panArea()); };
+    // the value can be typed: click it, enter L30 / R20 / C (or -30 / 20 / 0), Enter
+    panValue.setEditable(true, true, false);
+    panValue.setJustificationType(juce::Justification::centredRight);
+    panValue.setFont(Fonts::get().medium(12.0f));
+    panValue.setBorderSize({ 0, 0, 0, 0 });
+    panValue.setTooltip("PAN value: click and type L30, R20 or C, then Enter");
+    panValue.onTextChange = [this] {
+        const auto t = panValue.getText().trim().toUpperCase();
+        if (t.isEmpty()) { updatePanText(); return; }
+        double v = 0.0;
+        if (!t.startsWith("C"))
+        {
+            v = t.retainCharacters("0123456789.").getDoubleValue();
+            if (t.containsChar('L') || t.startsWith("-")) v = -v;
+        }
+        panSlider.setValue(juce::jlimit(-100.0, 100.0, (double) juce::roundToInt(v)), juce::sendNotificationSync);
+        updatePanText();
+    };
+    addAndMakeVisible(panValue);
+    panSlider.onValueChange = [this] { updatePanText(); repaint(panArea()); };
+    updatePanText();
+}
+
+void SlotComponent::updatePanText()
+{
+    const int v = juce::roundToInt(panSlider.getValue());
+    panValue.setText(v == 0 ? juce::String("C") : (v < 0 ? "L" : "R") + juce::String(std::abs(v)), juce::dontSendNotification);
 }
 
 juce::Rectangle<int> SlotComponent::panArea() const
@@ -307,7 +333,7 @@ void SlotComponent::resized()
     ecoButton.setBounds(40, 10, 44, 20);
     auto pa = panArea();
     pa.removeFromLeft(34);  // "PAN" label
-    pa.removeFromRight(34); // value
+    panValue.setBounds(pa.removeFromRight(34));
     panSlider.setBounds(pa);
 }
 
@@ -354,10 +380,8 @@ void SlotComponent::paint(juce::Graphics& g)
         g.setColour(line);
         g.fillRect(sb.getCentreX(), sb.getY() + 3, 1, sb.getHeight() - 6);
         const int v = juce::roundToInt(panSlider.getValue());
-        const juce::String t = v == 0 ? juce::String("C") : (v < 0 ? "L" : "R") + juce::String(std::abs(v));
-        g.setColour(loaded ? (v == 0 ? textDim : text) : textFaint);
-        g.setFont(Fonts::get().medium(12.0f));
-        g.drawText(t, pr.withTrimmedLeft(pr.getWidth() - 32), juce::Justification::centredRight, false);
+        const auto c = loaded ? (v == 0 ? textDim : text) : textFaint;
+        if (panValue.findColour(juce::Label::textColourId) != c) panValue.setColour(juce::Label::textColourId, c);
     }
 
     const auto area = nameArea().toFloat();
@@ -418,6 +442,7 @@ void SlotComponent::refresh(bool isSelected, bool irEditorOpen)
     muteButton.setEnabled(loaded);
     fader.setEnabled(loaded && !proc.isFrankensteinOn()); // Frankenstein replaces the fader blend
     panSlider.setEnabled(loaded);
+    panValue.setEnabled(loaded);
     editButton.setToggleState(selected && !irEditorOpen, juce::dontSendNotification);
 
     // IR button: ADD IR / IR (lit = loaded and on) / IR OFF / IR ?
@@ -2993,7 +3018,10 @@ MasterPanel::MasterPanel(AmpsurdProcessor& p) : proc(p)
         s->setDoubleClickReturnValue(true, 0.0);
     }
     addAndMakeVisible(inMeter);
-    addAndMakeVisible(outMeter);
+    addAndMakeVisible(outMeterL);
+    addAndMakeVisible(outMeterR);
+    outMeterL.setTooltip("Output, left channel");
+    outMeterR.setTooltip("Output, right channel");
     bypassButton.setClickingTogglesState(true);
     addAndMakeVisible(bypassButton);
     bypassAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.params, "bypass", bypassButton);
@@ -3021,7 +3049,11 @@ void MasterPanel::resized()
         r.removeFromLeft(24);
     };
     block(inputSlider, inMeter);
-    block(outputSlider, outMeter);
+    block(outputSlider, outMeterL);
+    // output: left above right (two thin bars), so a louder side is visible at a glance
+    const auto ob = outMeterL.getBounds();
+    outMeterL.setBounds(ob.getX() + 12, getHeight() / 2 - 6, ob.getWidth() - 12, 5);
+    outMeterR.setBounds(ob.getX() + 12, getHeight() / 2 + 1, ob.getWidth() - 12, 5);
     r.removeFromLeft(78); // room for the LIMIT indicator next to the output meter
     frankButton.setBounds(r.removeFromLeft(164).withSizeKeepingCentre(164, 28));
     r.removeFromLeft(8);
@@ -3038,7 +3070,9 @@ void MasterPanel::paint(juce::Graphics& g)
     drawLabel(g, "OUTPUT", { 16 + 344, 0, 60, getHeight() }, textDim);
 
     // safety limiter: shown as text, never only by colour
-    const auto lim = juce::Rectangle<int>(outMeter.getRight() + 8, getHeight() / 2 - 8, 66, 16);
+    drawLabel(g, "L", { outMeterL.getX() - 11, outMeterL.getY() - 3, 9, 11 }, textDim, juce::Justification::centredLeft, 8.5f);
+    drawLabel(g, "R", { outMeterR.getX() - 11, outMeterR.getY() - 3, 9, 11 }, textDim, juce::Justification::centredLeft, 8.5f);
+    const auto lim = juce::Rectangle<int>(outMeterL.getRight() + 8, getHeight() / 2 - 8, 66, 16);
     if (limitHold > 0)
     {
         g.setColour(onFill);
@@ -3053,7 +3087,9 @@ void MasterPanel::paint(juce::Graphics& g)
 void MasterPanel::refresh()
 {
     inMeter.setPeak(proc.getAndResetInputPeak());
-    outMeter.setPeak(proc.getAndResetOutputPeak());
+    proc.getAndResetOutputPeak();
+    outMeterL.setPeak(proc.getAndResetOutputPeakL());
+    outMeterR.setPeak(proc.getAndResetOutputPeakR());
     const float gr = proc.getAndResetLimiterReductionDb();
     const int oldHold = limitHold;
     if (gr > 0.05f) { limitDb = juce::jmax(gr, limitHold > 0 ? limitDb : 0.0f); limitHold = 30; }

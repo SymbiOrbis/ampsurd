@@ -6,6 +6,12 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-14 — Session 2r: PAN by keyboard, stereo output meter — Claude (Opus 5.5)
+
+- PAN value under each amp is an editable label: click, type L30 / R20 / C (or -30 / 20 / 0), Enter.
+- OUTPUT meter split into L and R bars (per-channel peaks from processBlock; mono bus: both the same).
+- Checked in ui_snapshot renders; all checks pass.
+
 ## 2026-10-14 — Session 2q: MIDI footswitches, preset packs, undo / redo, A/B — Claude (Opus 5.5)
 
 - **MIDI** (NEEDS_MIDI_INPUT on; acceptsMidi): processBlock queues CC / Program Change in a lock-free FIFO,

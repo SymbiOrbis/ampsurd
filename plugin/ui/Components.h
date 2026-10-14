@@ -86,9 +86,11 @@ private:
     bool irOn = true;
     MixFader fader;
     juce::Slider panSlider;   // per-amp PAN (stereo width)
+    juce::Label panValue;     // C / L35 / R20 - click and type a value
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> soloAtt, muteAtt;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> panAtt;
     juce::Rectangle<int> panArea() const;
+    void updatePanText();
     juce::Rectangle<int> irLineArea() const;
     juce::String panText;
     std::unique_ptr<juce::FileChooser> chooser;
@@ -414,7 +416,7 @@ private:
 };
 
 // ---------------------------------------------------------------------------------------------
-class LevelMeter final : public juce::Component
+class LevelMeter final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
     void setPeak(float linear);
@@ -438,7 +440,7 @@ private:
     juce::Slider inputSlider, outputSlider;
     juce::TextButton bypassButton { "BYPASS" }, gateButton { "GATE" }, frankButton { "CREATE FRANKENSTEIN" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> gateAtt;
-    LevelMeter inMeter, outMeter;
+    LevelMeter inMeter, outMeterL, outMeterR; // output: left and right channel
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> inAtt, outAtt;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAtt;
     float limitDb = 0.0f;
