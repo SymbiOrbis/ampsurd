@@ -18,5 +18,9 @@ editing. Play.
 `AMPSURD-Setup-<version>.exe` (VST3 plugin + standalone app). [Code signing policy](docs/CODE_SIGNING.md) ·
 [Privacy](PRIVACY.md)
 
+> **Public beta, not code-signed yet.** Signing through the SignPath Foundation is in progress. Until
+> then, Windows 11 Smart App Control blocks the installer (it only runs with Smart App Control turned
+> off), and SmartScreen may show "Windows protected your PC" (More info, Run anyway).
+
 Licence: GNU AGPLv3 (`LICENSE.md`). Third-party components: `THIRD_PARTY.md`. The AMPSURD name,
 the footer logos and capture packs are not covered by the code licence.
