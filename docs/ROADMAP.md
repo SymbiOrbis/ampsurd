@@ -82,9 +82,10 @@ preset whose files moved is found again by file name (next to the preset, then i
 - Presets switch without reloading captures / IRs that stay the same (fast between rigs that share captures).
 - Undo / redo of all settings (50 steps, Ctrl+Z / Ctrl+Y, header buttons), A/B compare with copy.
 
-## 3j. Bundled cabinet IRs (owner considering Jester Dyne's free packs) — licence to be confirmed
-Pages say "absolutely free even for commercial use"; no CC0 / redistribution statement found on the
-pages. Needs the manual's licence text or the author's written OK before bundling.
+## 3j. Bundled cabinet IRs — ON HOLD (owner decision 2026-10-14)
+No IRs ship with AMPSURD until an author gives explicit written consent to redistribution (Jester
+Dyne's packs: pages say "free even for commercial use", no redistribution wording; the site was
+unreachable for the owner on 2026-10-14). Users load their own IRs (ADD IR) as before.
 
 ## 4. Public release package — installer, releases, update check DONE 2026-10-11; signing pending
 (SignPath Foundation application by the owner; fallback: own OV certificate in the owner's name)
