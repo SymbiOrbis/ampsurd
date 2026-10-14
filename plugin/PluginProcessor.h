@@ -123,6 +123,10 @@ public:
     void endMixGesture(int slot);
     float getEffectivePercent(int slot) const { return engine.getEffectivePercent(slot); }
     bool isSlotAudible(int slot) const;
+    bool isSlotMuted(int slot) const { return slotParams[(size_t) slot].mute->load() > 0.5f; }
+    // MUTE moves the amp's fader to 0 % and the others to their real shares; un-muting brings back the
+    // amp's previous share (the others are rescaled). Applied for the button and for host automation.
+    float getMutedShare(int slot) const { return mutedShare[(size_t) slot]; }
 
     // --- Create Frankenstein (message thread) ---
     void setFrankenstein(bool on);                  // on: sets up a sensible split first if needed
@@ -141,6 +145,12 @@ public:
     AlignInfo getAlignInfo(int slot) const;
     void resetAlignment(int slot); // back to AUTO with zero manual offsets
 
+    // --- per-amp INPUT / OUTPUT (EDIT panel) ---
+    // INPUT drives the capture harder or softer; its loudness in the mix is kept automatically (measured
+    // INPUT -> loudness curve per capture). OUTPUT is the deliberate level change of the amp.
+    bool isDriveCompensationReady(int slot) const;
+    double getDriveCompensationDb(int slot) const { return derived[(size_t) slot].driveCompDb.load(); }
+
     // --- input calibration (like the official NAM plugin's "Calibrate input") ---
     // Most captures store the input level (dBu) they were recorded at. With calibration on and the
     // interface's input level entered once, each capture is driven exactly as during its recording:
@@ -156,6 +166,11 @@ public:
     void setMultiCore(bool on); // message thread
     int getNumWorkerThreads() const { return engine.getNumWorkers(); }
     int getActivePaths() const { return engine.getActivePaths(); }
+
+    // --- newly loaded A2 captures start with ECO (their Lite model), as in the TONE3000 app (a setting of
+    //     this computer; presets keep their own ECO state) ---
+    bool isEcoByDefault() const { return ecoByDefault.load(); }
+    void setEcoByDefault(bool on);
 
     // --- the dragon in the background (a setting of this computer) ---
     bool isDragonShown() const { return showDragon.load(); }
@@ -195,6 +210,9 @@ public:
 
     juce::AudioProcessorValueTreeState params;
 
+    // The 30 Hz housekeeping (normally run by the message-thread timer): for tests / tools without a message loop.
+    void runHousekeeping() { timerCallback(); }
+
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
     void timerCallback() override;
@@ -211,6 +229,8 @@ private:
         std::atomic<float>* phaseDeg = nullptr;
         std::atomic<float>* pan = nullptr;      // -100 (L) .. 0 .. +100 (R)
         std::atomic<float>* irOn = nullptr;     // IR ON / BYPASS
+        std::atomic<float>* drive = nullptr;    // per-amp INPUT (dB): drives this capture harder / softer
+        std::atomic<float>* level = nullptr;    // per-amp OUTPUT (dB): deliberate level change in the mix
         std::array<std::atomic<float>*, kNumBands> freq {}, gain {}, q {};
     };
     std::array<SlotParams, kNumSlots> slotParams;
@@ -230,6 +250,8 @@ private:
         std::atomic<double> autoDelayMs { 0.0 };
         std::atomic<double> polarity { 1.0 };
         std::atomic<double> levelGain { 1.0 };
+        std::atomic<double> driveCompDb { 0.0 };   // keeps the amp's loudness while its INPUT is turned
+        std::atomic<double> measuredDriveDb { 0.0 }; // INPUT of the amp when it was last measured
     };
     std::array<Derived, kNumSlots> derived;
 
@@ -242,12 +264,18 @@ private:
     void remeasureJob(int generation);
     void irJob(int slot, juce::File file, int generation);
     void measureSlotJob(int slot);          // re-measure one slot (IR changed), from its cached render
+    void requestDriveCurve(int slot);       // (re)compute the INPUT -> loudness curve in the background
+    void driveCurveJob(int slot, int generation);
+    void updateDriveCompensation();         // message thread (timer)
+    double slotOutputGain(int slot, bool levelMatch) const noexcept; // level match * INPUT compensation * OUTPUT
     std::shared_ptr<const ampsurd::CaptureAnalyzer::Measurement> measureWithIr(int slot, const std::vector<double>& raw, double sr);
     void storeMeasurement(int slot, std::shared_ptr<const ampsurd::CaptureAnalyzer::Measurement> m, double gainDb);
     void setIrStatus(int slot, const IrStatus& s);
     void applyRig(std::shared_ptr<const ampsurd::CaptureAnalyzer::RigAnalysis> rig); // any non-audio thread
     void updateCovariance(bool force);                                                // any non-audio thread
     void renormaliseMixAfterChange(int changedSlot, bool added);
+    void applyMuteToFaders(int slot, bool muted);   // message thread (timer)
+    bool mixesWith(int slot) const;                 // loaded / loading and not muted: takes part in the linked faders
     void setSlotStatus(int slot, const SlotStatus& s);
     void restoreState(const juce::ValueTree& state, const juce::File& presetFile);
     juce::ValueTree createStateTree() const;
@@ -303,6 +331,22 @@ private:
 
     std::array<std::atomic<int>, kNumSlots> slotGeneration {};
 
+    // INPUT -> loudness curves (analysisMutex); computed on their own low-priority thread
+    struct DriveCurveState
+    {
+        bool valid = false;
+        ampsurd::CaptureAnalyzer::DriveCurve curve;
+        double baseDb = 0.0;    // INPUT + calibration it was measured at
+        bool eco = false, ir = false;
+        const void* irData = nullptr;
+        juce::String path;
+    };
+    std::array<DriveCurveState, kNumSlots> driveCurves {};
+    std::array<std::atomic<int>, kNumSlots> curveGeneration {};
+    std::array<float, kNumSlots> lastSeenDrive {};
+    std::array<double, kNumSlots> driveChangedAt {};
+    std::array<float, kNumSlots> queuedDrive {};
+
     // cabinet IRs: the file's samples (for sample-rate changes) and the prepared IR at the current
     // rate (for measuring) - guarded by configMutex. Cached raw capture renders (analysisMutex) let an
     // IR change re-measure a slot without running the capture again.
@@ -321,6 +365,7 @@ private:
     std::atomic<bool> calibrateOn { false };
     std::atomic<bool> multiCore { true };
     std::atomic<bool> showDragon { true };
+    std::atomic<bool> ecoByDefault { true };
     std::atomic<double> interfaceDbu { 12.0 };
     std::array<std::atomic<double>, kNumSlots> captureDbu {};
     std::atomic<int> calibrationVersion { 0 }, measuredCalibrationVersion { 0 };
@@ -330,6 +375,11 @@ private:
     std::array<SlotStatus, kNumSlots> slotStatus;
     juce::File currentPresetFile;
     juce::String currentPresetName { "Init" };
+
+    // MUTE -> fader 0: the share the amp had before it was muted (saved in presets)
+    std::array<float, kNumSlots> mutedShare {};
+    std::array<bool, kNumSlots> lastMute {};
+    std::atomic<bool> resyncMute { true }; // after a preset / state load: take the mute states as they are
 
     // linked-fader gesture snapshot
     int mixGestureSlot = -1;
@@ -355,6 +405,8 @@ private:
 
     std::shared_ptr<std::atomic<bool>> alive = std::make_shared<std::atomic<bool>>(true);
     juce::ThreadPool loaderPool { juce::ThreadPoolOptions {}.withThreadName("AMPSURD loader").withNumberOfThreads(1) };
+    juce::ThreadPool curvePool { juce::ThreadPoolOptions {}.withThreadName("AMPSURD level curves").withNumberOfThreads(1)
+                                     .withDesiredThreadPriority(juce::Thread::Priority::background) };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AmpsurdProcessor)
 };

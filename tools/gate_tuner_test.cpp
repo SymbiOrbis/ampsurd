@@ -159,6 +159,74 @@ int main()
         check(worstStep <= steadyStep * 1.05,
               "GATE: a fading note that swells back above the threshold is faded in smoothly, no click (curvature %.5f vs %.5f)", worstStep, steadyStep);
     }
+    {
+        // Gentle action: a slowly fading note whose level wobbles +-3 dB (vibrato / beating) while it passes
+        // the threshold must close the gate ONCE, without de- and re-activating in between.
+        const double sr = 48000.0;
+        NoiseGate g;
+        g.prepare(sr);
+        g.setParameters(true, -70.0f, 120.0f);
+        const double thr = std::pow(10.0, -70.0 / 20.0);
+        const int N = (int) (sr * 3.0);
+        std::vector<double> key((size_t) N), gainCurve((size_t) N, 1.0);
+        for (int i = 0; i < N; ++i)
+        {
+            const double t = (double) i / sr;
+            const double db = 10.0 - 8.0 * t + 3.0 * std::sin(2 * kPi * 6.0 * t); // +10 dB -> -14 dB over 3 s, wobbling
+            key[(size_t) i] = thr * std::pow(10.0, db / 20.0) * std::sqrt(2.0) * std::sin(2 * kPi * 147.0 * t);
+        }
+        int closings = 0;
+        bool wasOpen = true;
+        for (int p = 0; p < N; p += 32)
+        {
+            const int m = std::min(32, N - p);
+            g.process(key.data() + p, gainCurve.data() + p, m);
+            if (wasOpen && !g.isOpen()) ++closings;
+            wasOpen = g.isOpen();
+        }
+        check(closings == 1, "GATE: a fading, wobbling note closes the gate once (%.0f closings), no stuttering on and off", closings);
+
+        // the closing starts gently: 20 ms after the gate begins to act it has faded by only a little
+        int start = -1;
+        for (int i = 0; i < N; ++i)
+            if (gainCurve[(size_t) i] < 0.9999) { start = i; break; }
+        const double after20 = start >= 0 && start + (int) (0.02 * sr) < N ? gainCurve[(size_t) (start + (int) (0.02 * sr))] : 0.0;
+        check(start >= 0 && 20 * std::log10(after20) > -3.0,
+              "GATE: closing starts gently (%.1f dB after 20 ms; the old exponential fade was -10 dB)", 20 * std::log10(std::max(after20, 1e-9)));
+    }
+    {
+        // A note that dips well below the threshold (the gate starts closing) and swells back WITHOUT a new
+        // pick attack is faded back in gently (about 25 ms), not snapped open.
+        const double sr = 48000.0;
+        NoiseGate g;
+        g.prepare(sr);
+        g.setParameters(true, -70.0f, 400.0f);
+        const double thr = std::pow(10.0, -70.0 / 20.0);
+        const int N = (int) (sr * 1.2);
+        std::vector<double> key((size_t) N), gainCurve((size_t) N, 1.0);
+        for (int i = 0; i < N; ++i)
+        {
+            const double t = (double) i / sr;
+            double db = 6.0;                                           // above the threshold
+            if (t > 0.2 && t < 0.3) db = 6.0 - 26.0 * (t - 0.2) / 0.1; // slow fade to -20 dB
+            else if (t >= 0.3 && t < 0.5) db = -20.0;
+            else if (t >= 0.5 && t < 0.6) db = -20.0 + 26.0 * (t - 0.5) / 0.1; // slow swell back
+            key[(size_t) i] = thr * std::pow(10.0, db / 20.0) * std::sqrt(2.0) * std::sin(2 * kPi * 147.0 * t);
+        }
+        for (int p = 0; p < N; p += 64) g.process(key.data() + p, gainCurve.data() + p, std::min(64, N - p));
+        int lowest = 0;
+        for (int i = (int) (0.45 * sr); i < (int) (0.65 * sr); ++i)
+            if (gainCurve[(size_t) i] < gainCurve[(size_t) lowest] || lowest == 0) lowest = i;
+        int back = -1;
+        for (int i = lowest; i < N; ++i)
+            if (gainCurve[(size_t) i] >= 0.99) { back = i; break; }
+        double worstCurve = 0;
+        for (int i = lowest + 1; i < std::min(N - 1, lowest + (int) (0.05 * sr)); ++i)
+            worstCurve = std::max(worstCurve, std::abs(gainCurve[(size_t) i + 1] - 2 * gainCurve[(size_t) i] + gainCurve[(size_t) i - 1]));
+        const double ms = back < 0 ? -1.0 : (back - lowest) * 1000.0 / sr;
+        check(back > 0 && ms > 15.0 && worstCurve < 2e-5,
+              "GATE: a note swelling back without a new pick fades in gently over %.0f ms (curvature %.6f)", ms, worstCurve);
+    }
 
     std::printf(failures == 0 ? "\nALL PASS\n" : "\n%d FAILURE(S)\n", failures);
     return failures == 0 ? 0 : 1;

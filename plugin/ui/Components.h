@@ -161,6 +161,25 @@ private:
 };
 
 // ---------------------------------------------------------------------------------------------
+// Per-amp INPUT (drive, loudness kept automatically) and OUTPUT (level in the mix).
+class LevelPanel final : public juce::Component
+{
+public:
+    explicit LevelPanel(AmpsurdProcessor&);
+    void setSlot(int s);
+    void paint(juce::Graphics&) override;
+    void resized() override;
+    void refresh();
+
+private:
+    AmpsurdProcessor& proc;
+    int slot = -1;
+    juce::Slider inputSlider, outputSlider;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> inputAtt, outputAtt;
+    juce::String info;
+};
+
+// ---------------------------------------------------------------------------------------------
 class EditPanel final : public juce::Component
 {
 public:
@@ -177,6 +196,7 @@ private:
     int slot = -1;
     EqGraph graph;
     AlignPanel align;
+    LevelPanel level;
     juce::TextButton eqOnButton { "EQ ON" }, flatButton { "FLAT" }, removeButton { "REMOVE" }, closeButton { "CLOSE" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> eqOnAtt;
     juce::String title;
@@ -552,10 +572,15 @@ class BrandingFooter final : public juce::Component
 public:
     BrandingFooter();
     void paint(juce::Graphics&) override;
+    void resized() override;
     void setCpuText(const juce::String& t) { if (t != cpuText) { cpuText = t; repaint(); } }
 
+    static constexpr const char* kShopUrl = "https://www.ampsurd.com/";
+
 private:
+    juce::Rectangle<int> logoArea() const; // "BROUGHT TO YOU BY" + the three logos
     std::array<std::unique_ptr<juce::Drawable>, 3> logos;
+    juce::TextButton shopButton { "BUY AMPSURD AMP PACKS" };
     juce::String cpuText;
 };
 

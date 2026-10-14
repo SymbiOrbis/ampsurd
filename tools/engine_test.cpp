@@ -671,6 +671,43 @@ int main(int argc, char** argv)
             std::printf("[INFO] slimmable example model not found next to the first capture - ECO test skipped\n");
     }
 
+    // ---------------- 9. Per-amp INPUT: loudness kept by the measured INPUT -> loudness curve ----------------
+    // Checked at two guitar levels: normal (the captures saturate: loudness hardly changes) and 24 dB quieter
+    // (the clean-to-crunch knee, where loudness changes fast and the curve is curved).
+    {
+        double worst = 0.0, worstUncomp = 0.0;
+        for (int which = 0; which < 2; ++which)
+        {
+            auto r = CaptureModel::load(argv[1 + which], sr, 256);
+            if (!r.model) { check(false, "INPUT: could not load the capture"); continue; }
+            for (double baseDb : { 0.0, -24.0 })
+            {
+                auto test = CaptureAnalyzer::makeTestSignal(sr);
+                for (double& v : test) v *= std::pow(10.0, baseDb / 20.0);
+                CaptureAnalyzer::DriveCurve curve;
+                CaptureAnalyzer::driveCurve(*r.model, test, nullptr, curve);
+                // the real loudness at INPUT settings between the curve points, with and without compensation
+                auto loudAt = [&](double driveDb) {
+                    auto x = test;
+                    const double g = std::pow(10.0, driveDb / 20.0);
+                    for (double& v : x) v *= g;
+                    r.model->prepare(sr, 256);
+                    return CaptureAnalyzer::loudnessDb(*CaptureAnalyzer::measure(CaptureAnalyzer::render(*r.model, x, false), sr));
+                };
+                const double l0 = loudAt(0.0);
+                for (double d : { -15.0, -9.0, -3.0, 3.0, 9.0, 15.0, 21.0 })
+                {
+                    const double ld = loudAt(d);
+                    const double comp = CaptureAnalyzer::loudnessAtDrive(curve, 0.0) - CaptureAnalyzer::loudnessAtDrive(curve, d);
+                    worst = std::max(worst, std::abs(ld + comp - l0));
+                    worstUncomp = std::max(worstUncomp, std::abs(ld - l0));
+                }
+            }
+        }
+        check(worst < 1.0, "INPUT: turning an amp's INPUT from -15 to +21 dB keeps its loudness within %.2f dB "
+                           "(two captures, two guitar levels; uncompensated the loudness changes by up to %.1f dB)", worst, worstUncomp);
+    }
+
     std::printf(failures == 0 ? "\nALL PASS\n" : "\n%d FAILURE(S)\n", failures);
     return failures == 0 ? 0 : 1;
 }

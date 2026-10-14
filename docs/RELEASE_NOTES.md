@@ -13,4 +13,8 @@ per-amp EQ / PAN / cabinet IR with IR EQ, Global EQ, gate + tuner, delays / reve
 PITCH (re-tuning), input calibration, ECO (A2 Lite), safety limiter (never above -1 dBFS),
 standalone player / recorder with punch-in corrections and crossfaded edits, presets.
 
+New since the first test builds: per-amp INPUT (loudness kept automatically) and OUTPUT in EDIT,
+MUTE moves the fader to 0 % and back, a gentler gate, A2 captures load as Lite (ECO) by default like
+in TONE3000 (settings menu), BUY AMPSURD AMP PACKS link.
+
 Portable zips (no installer) are attached as well.

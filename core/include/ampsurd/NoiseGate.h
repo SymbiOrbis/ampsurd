@@ -10,7 +10,14 @@
 //
 // Level detection: short-term RMS (4 ms), so hiss spikes do not open it.
 // Controls: THRESHOLD (dB RMS of the key signal), DECAY (time to fade out after the note ends).
-// 4 dB hysteresis and 15 ms hold prevent chattering. Fully open = gain exactly 1.0.
+//
+// Gentle action (no step-like closing / re-opening, no chattering on a fading note):
+//   - 8 dB hysteresis and a 60 ms hold: a note that hovers around the threshold keeps the gate open;
+//   - closing is an S-curve in dB: it starts at zero slope, reaches -60 dB after DECAY and then
+//     closes completely, so there is no audible "corner" when the gate begins to act;
+//   - a note that swells back while the gate is closing fades back in over 25 ms (raised cosine);
+//   - a new pick attack opens at once with a 0.9 ms S-curve (before the amp's attack arrives).
+// Fully open = gain exactly 1.0.
 //
 // prepare(): non-RT. setParameters()/process(): audio thread, no allocation.
 
@@ -22,6 +29,9 @@ class NoiseGate
 public:
     static constexpr float kDefaultThresholdDb = -70.0f; // subtle: only acts between notes
     static constexpr float kDefaultDecayMs = 120.0f;
+    static constexpr double kHysteresisDb = 8.0;
+    static constexpr double kHoldMs = 60.0;
+    static constexpr double kReopenMs = 25.0;
 
     void prepare(double sampleRate);
     void reset() noexcept;
@@ -34,16 +44,23 @@ public:
     bool isOpen() const noexcept { return open; }
 
 private:
+    void startRamp(double from, int samples) noexcept;
+
     double sr = 48000.0;
     bool enabled = true;
     double openLevel = 0.0005, closeLevel = 0.0003;
-    double env = 0.0, meanSquare = 0.0, envAttack = 0.0, envRelease = 0.0;
-    double gain = 1.0, attackCoef = 0.0, decayCoef = 0.0, releaseToOneCoef = 0.0;
-    double reopenCoef = 0.0;  // re-opening while a note still sounds: smooth, not a snap (no click)
-    bool fastOpen = true;
-    double rampFrom = 0.0; int rampPos = 0, rampSamples = 43; // S-shaped opening on a new note
-    double shaped = 1.0, shapeCoef = 0.0; // the gain actually applied (second smoothing stage)
+    double meanSquare = 0.0, envCoef = 0.0;
     double meanSquareSlow = 0.0, slowCoef = 0.0; // 30 ms average: tells a new pick attack from a fading note
+    double gain = 1.0;                           // gate gain before the last smoothing stage
+    double releaseToOneCoef = 0.0;               // switched off while closed: back to 1 in ~10 ms
+    // closing: dB curve -60 * (t / decay)^2 (S-shaped start), then fully closed
+    int closePos = 0, decaySamples = 5760;
+    double closeFrom = 1.0;                      // gain when the closing started
+    // opening: raised-cosine ramp from rampFrom to 1
+    double rampFrom = 0.0;
+    int rampPos = 0, rampLen = 1, fastSamples = 43, reopenSamples = 1200;
+    bool ramping = false, fastOpen = false;
+    double shaped = 1.0, shapeCoef = 0.0;        // the gain actually applied (second smoothing stage)
     int holdSamples = 0, holdCounter = 0;
     bool open = true;
 };

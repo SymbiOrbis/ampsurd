@@ -166,9 +166,10 @@ void MixFader::paint(juce::Graphics& g)
     g.fillRect(cx - 0.5f, t.getY(), 1.0f, t.getHeight());
     if (!enabled)
         return;
+    const bool muted = proc.isSlotMuted(slot); // MUTE: the fader sits at 0 % (dimmed) until un-muted
     g.setColour(textDim);
     g.fillRect(cx - 1.0f, y, 2.0f, t.getBottom() - y);
-    g.setColour(text);
+    g.setColour(muted ? textFaint : text);
     g.fillRoundedRectangle(cx - 12.0f, y - 4.0f, 24.0f, 8.0f, 1.5f);
     g.setColour(background);
     g.fillRect(cx - 8.0f, y - 0.5f, 16.0f, 1.0f);
@@ -176,7 +177,7 @@ void MixFader::paint(juce::Graphics& g)
 
 void MixFader::mouseDown(const juce::MouseEvent& e)
 {
-    if (!isEnabled()) return;
+    if (!isEnabled() || proc.isSlotMuted(slot)) return; // muted: un-mute to change the share
     dragging = true;
     proc.beginMixGesture(slot);
     proc.setMixLinked(slot, valueFromY((float) e.position.y));
@@ -198,11 +199,11 @@ void MixFader::mouseUp(const juce::MouseEvent&)
 
 void MixFader::mouseDoubleClick(const juce::MouseEvent&)
 {
-    if (!isEnabled()) return;
+    if (!isEnabled() || proc.isSlotMuted(slot)) return; // muted: un-mute to change the share
     // equal share of all loaded slots
     int loaded = 0;
     for (int s = 0; s < AmpsurdProcessor::kNumSlots; ++s)
-        if (isLoadedState(proc.getSlotStatus(s).state)) ++loaded;
+        if (isLoadedState(proc.getSlotStatus(s).state) && !proc.isSlotMuted(s)) ++loaded;
     proc.beginMixGesture(slot);
     proc.setMixLinked(slot, 100.0f / (float) juce::jmax(1, loaded));
     proc.endMixGesture(slot);
@@ -210,7 +211,7 @@ void MixFader::mouseDoubleClick(const juce::MouseEvent&)
 
 void MixFader::mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails& w)
 {
-    if (!isEnabled()) return;
+    if (!isEnabled() || proc.isSlotMuted(slot)) return; // muted: un-mute to change the share
     const float v = paramValue(proc, AmpsurdProcessor::slotParamId(slot, "mix"));
     proc.beginMixGesture(slot);
     proc.setMixLinked(slot, v + (w.deltaY > 0 ? 1.0f : -1.0f));
@@ -250,8 +251,9 @@ SlotComponent::SlotComponent(AmpsurdProcessor& p, int s) : proc(p), slot(s), fad
     editButton.onClick = [this] { if (onEditClicked) onEditClicked(slot); };
     loadButton.setTooltip("Load a .nam capture (or drop a file onto this slot)");
     soloButton.setTooltip("Hear only the soloed amps");
-    muteButton.setTooltip("Silence this amp (its mix share is kept)");
-    editButton.setTooltip("Open EQ and alignment for this amp");
+    muteButton.setTooltip("Silence this amp: its fader goes to 0 % and the others show their real shares. "
+                          "Un-muting brings its previous share back");
+    editButton.setTooltip("Open EQ, alignment and INPUT / OUTPUT level for this amp");
     // ECO: run the A2 Lite model (less CPU) - only for captures that contain one
     addAndMakeVisible(ecoButton);
     ecoButton.setClickingTogglesState(true);
@@ -909,35 +911,37 @@ void AlignPanel::setSlot(int s)
 
 void AlignPanel::resized()
 {
+    // ALIGNMENT label, AUTO | FREE | RESET, two lines of measurement info, TIME, PHASE
     auto r = getLocalBounds();
-    r.removeFromTop(24);
-    auto modes = r.removeFromTop(28);
-    const int bw = (modes.getWidth() - 8) / 2;
+    r.removeFromTop(20);
+    auto modes = r.removeFromTop(26);
+    const int bw = (modes.getWidth() - 16) / 3;
     autoButton.setBounds(modes.removeFromLeft(bw));
-    freeButton.setBounds(modes.removeFromRight(bw));
-    r.removeFromTop(52);
-    auto t = r.removeFromTop(24);
-    t.removeFromLeft(52);
+    modes.removeFromLeft(8);
+    freeButton.setBounds(modes.removeFromLeft(bw));
+    modes.removeFromLeft(8);
+    resetButton.setBounds(modes);
+    r.removeFromTop(42);
+    auto t = r.removeFromTop(22);
+    t.removeFromLeft(56);
     timeSlider.setBounds(t);
-    r.removeFromTop(8);
-    auto ph = r.removeFromTop(24);
-    ph.removeFromLeft(52);
+    r.removeFromTop(6);
+    auto ph = r.removeFromTop(22);
+    ph.removeFromLeft(56);
     phaseSlider.setBounds(ph);
-    r.removeFromTop(12);
-    resetButton.setBounds(r.removeFromTop(26).removeFromLeft(bw));
 }
 
 void AlignPanel::paint(juce::Graphics& g)
 {
-    drawLabel(g, "ALIGNMENT", { 0, 0, getWidth(), 18 }, textDim);
+    drawLabel(g, "ALIGNMENT", { 0, 0, getWidth(), 16 }, textDim);
     g.setColour(text);
     g.setFont(Fonts::get().regular(12.0f));
-    g.drawText(line1, 0, 62, getWidth(), 18, juce::Justification::centredLeft, true);
+    g.drawText(line1, 0, 50, getWidth(), 16, juce::Justification::centredLeft, true);
     g.setColour(textDim);
-    g.drawText(line2, 0, 80, getWidth(), 18, juce::Justification::centredLeft, true);
+    g.drawText(line2, 0, 66, getWidth(), 16, juce::Justification::centredLeft, true);
     const bool free = slot >= 0 && paramValue(proc, AmpsurdProcessor::slotParamId(slot, "align")) > 0.5f;
-    drawLabel(g, "TIME", { 0, timeSlider.getY(), 50, timeSlider.getHeight() }, free ? text : textFaint);
-    drawLabel(g, "PHASE", { 0, phaseSlider.getY(), 50, phaseSlider.getHeight() }, free ? text : textFaint);
+    drawLabel(g, "TIME", { 0, timeSlider.getY(), 54, timeSlider.getHeight() }, free ? text : textFaint);
+    drawLabel(g, "PHASE", { 0, phaseSlider.getY(), 54, phaseSlider.getHeight() }, free ? text : textFaint);
 }
 
 void AlignPanel::refresh()
@@ -976,12 +980,93 @@ void AlignPanel::refresh()
 }
 
 // =============================================================================================
+// LevelPanel: per-amp INPUT / OUTPUT
+// =============================================================================================
+LevelPanel::LevelPanel(AmpsurdProcessor& p) : proc(p)
+{
+    for (auto* s : { &inputSlider, &outputSlider })
+    {
+        s->setSliderStyle(juce::Slider::LinearHorizontal);
+        s->setTextBoxStyle(juce::Slider::TextBoxRight, false, 74, 20);
+        s->setTextBoxIsEditable(true);
+        s->setDoubleClickReturnValue(true, 0.0);
+        s->setWantsKeyboardFocus(false);
+        addAndMakeVisible(*s);
+    }
+    inputSlider.setTooltip("INPUT: drives this amp harder or softer, like turning up its own input. Its loudness in the "
+                           "mix stays the same - AMPSURD compensates automatically. Double-click: 0 dB");
+    outputSlider.setTooltip("OUTPUT: makes this amp louder or quieter in the mix. Double-click: 0 dB");
+}
+
+void LevelPanel::setSlot(int s)
+{
+    slot = s;
+    inputAtt.reset();
+    outputAtt.reset();
+    if (slot >= 0)
+    {
+        inputAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(proc.params, AmpsurdProcessor::slotParamId(slot, "drive"), inputSlider);
+        outputAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(proc.params, AmpsurdProcessor::slotParamId(slot, "level"), outputSlider);
+        for (auto* sl : { &inputSlider, &outputSlider })
+        {
+            sl->textFromValueFunction = [](double v) { return (v > 0.04 ? "+" : "") + juce::String(v, 1) + " dB"; };
+            sl->valueFromTextFunction = [](const juce::String& t) { return t.retainCharacters("+-.0123456789").getDoubleValue(); };
+            sl->updateText();
+        }
+    }
+    refresh();
+}
+
+void LevelPanel::resized()
+{
+    auto r = getLocalBounds();
+    r.removeFromTop(20);
+    auto a = r.removeFromTop(22);
+    a.removeFromLeft(56);
+    inputSlider.setBounds(a);
+    r.removeFromTop(6);
+    auto b = r.removeFromTop(22);
+    b.removeFromLeft(56);
+    outputSlider.setBounds(b);
+}
+
+void LevelPanel::paint(juce::Graphics& g)
+{
+    drawLabel(g, "LEVEL", { 0, 0, getWidth(), 16 }, textDim);
+    drawLabel(g, "INPUT", { 0, inputSlider.getY(), 54, inputSlider.getHeight() }, text);
+    drawLabel(g, "OUTPUT", { 0, outputSlider.getY(), 54, outputSlider.getHeight() }, text);
+    g.setColour(textDim);
+    g.setFont(Fonts::get().regular(11.5f));
+    g.drawText(info, 0, outputSlider.getBottom() + 4, getWidth(), 16, juce::Justification::centredLeft, true);
+}
+
+void LevelPanel::refresh()
+{
+    juce::String t;
+    if (slot >= 0)
+    {
+        const float drive = paramValue(proc, AmpsurdProcessor::slotParamId(slot, "drive"));
+        if (std::abs(drive) < 0.05f)
+            t = "Loudness is kept when you turn INPUT";
+        else if (!proc.isDriveCompensationReady(slot))
+            t = "Measuring the capture's loudness...";
+        else
+        {
+            const double c = proc.getDriveCompensationDb(slot);
+            t = "Same loudness kept (" + juce::String(c >= 0.05 ? "+" : "") + juce::String(c, 1) + " dB)";
+        }
+    }
+    if (t != info) { info = t; repaint(); }
+}
+
+// =============================================================================================
 // EditPanel
 // =============================================================================================
-EditPanel::EditPanel(AmpsurdProcessor& p) : proc(p), graph(p), align(p)
+EditPanel::EditPanel(AmpsurdProcessor& p) : proc(p), graph(p), align(p), level(p)
 {
     addAndMakeVisible(graph);
     addAndMakeVisible(align);
+    addAndMakeVisible(level);
     for (auto* b : { &eqOnButton, &flatButton, &removeButton, &closeButton })
         addAndMakeVisible(*b);
     closeButton.onClick = [this] { if (onClose) onClose(); };
@@ -1008,10 +1093,11 @@ void EditPanel::setSlot(int s)
     slot = s;
     graph.setSlot(s);
     align.setSlot(s);
+    level.setSlot(s);
     eqOnAtt.reset();
     if (s >= 0)
         eqOnAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(proc.params, AmpsurdProcessor::slotParamId(s, "eqOn"), eqOnButton);
-    for (juce::Component* c : { (juce::Component*) &graph, (juce::Component*) &align, (juce::Component*) &eqOnButton,
+    for (juce::Component* c : { (juce::Component*) &graph, (juce::Component*) &align, (juce::Component*) &level, (juce::Component*) &eqOnButton,
                                 (juce::Component*) &flatButton, (juce::Component*) &removeButton,
                                 (juce::Component*) &closeButton })
         c->setVisible(s >= 0);
@@ -1034,7 +1120,9 @@ void EditPanel::resized()
     auto right = r.removeFromRight(300);
     r.removeFromRight(24);
     graph.setBounds(r);
-    align.setBounds(right);
+    align.setBounds(right.removeFromTop(140));
+    right.removeFromTop(10);
+    level.setBounds(right.removeFromTop(90));
 }
 
 void EditPanel::paint(juce::Graphics& g)
@@ -1045,7 +1133,7 @@ void EditPanel::paint(juce::Graphics& g)
     {
         g.setColour(textFaint);
         g.setFont(Fonts::get().regular(13.0f));
-        g.drawText("Press EDIT on an amp to adjust its EQ and alignment. The blend works without it.",
+        g.drawText("Press EDIT on an amp to adjust its EQ, alignment and level. The blend works without it.",
                    getLocalBounds(), juce::Justification::centred, false);
         return;
     }
@@ -1069,6 +1157,7 @@ void EditPanel::refresh()
         }
         graph.refreshIfChanged();
         align.refresh();
+        level.refresh();
     }
 }
 
@@ -2281,7 +2370,8 @@ GatePanel::GatePanel(AmpsurdProcessor& p) : proc(p)
     decaySlider.setDoubleClickReturnValue(true, ampsurd::NoiseGate::kDefaultDecayMs);
     thresholdSlider.updateText();
     decaySlider.updateText();
-    thresholdSlider.setTooltip("Below this guitar level the gate closes. Set it just above the noise you hear between notes");
+    thresholdSlider.setTooltip("The gate opens above this guitar level and closes gently when the guitar has faded about 8 dB "
+                               "below it. Set it just above the noise you hear between notes");
     decaySlider.setTooltip("How quickly the sound fades out when the gate closes");
     onButton.setTooltip("Gate on/off");
 }
@@ -3095,6 +3185,7 @@ void HeaderBar::showSettings()
                        true, std::abs(v - dbu) < 0.01);
     }
     m.addSubMenu("My interface's input level: " + juce::String(dbu, 1) + " dBu", levels, true);
+    m.addItem(50, "Load A2 captures as Lite (ECO) - like TONE3000", true, proc.isEcoByDefault());
     m.addSeparator();
     const bool mc = proc.isMultiCoreOn();
     m.addItem(30, "Show dragon", true, proc.isDragonShown());
@@ -3108,6 +3199,7 @@ void HeaderBar::showSettings()
         if (r == 10) proc.setInputCalibration(!cal, dbu);
         if (r == 20) proc.setMultiCore(!proc.isMultiCoreOn());
         if (r == 30) proc.setDragonShown(!proc.isDragonShown());
+        if (r == 50) proc.setEcoByDefault(!proc.isEcoByDefault());
         if (r == 40)
             ampsurd::checkForUpdates([](const ampsurd::UpdateInfo& u) {
                 const juce::String current = JucePlugin_VersionString;
@@ -3232,6 +3324,29 @@ BrandingFooter::BrandingFooter()
                         logos[(size_t) i] = juce::Drawable::createFromImageData(data, (size_t) size);
                 }
         }
+    shopButton.setWantsKeyboardFocus(false);
+    shopButton.setColour(juce::TextButton::textColourOffId, accent);
+    shopButton.setTooltip("Opens www.ampsurd.com in your web browser");
+    shopButton.onClick = [] { juce::URL(kShopUrl).launchInDefaultBrowser(); };
+    addAndMakeVisible(shopButton);
+}
+
+namespace
+{
+constexpr int kLogoBoxW = 168, kLogoBoxH = 26, kLogoGap = 12, kLogoLabelW = 140, kShopW = 184, kFooterMargin = 24;
+}
+
+juce::Rectangle<int> BrandingFooter::logoArea() const
+{
+    // a little left of centre, never closer than 24 px to the shop button
+    const int total = kLogoLabelW + 3 * kLogoBoxW + 2 * kLogoGap;
+    const int x = juce::jmax(kFooterMargin + kShopW + 24, (getWidth() - total) / 2 - 40);
+    return { x, (getHeight() - kLogoBoxH) / 2 + 1, total, kLogoBoxH };
+}
+
+void BrandingFooter::resized()
+{
+    shopButton.setBounds(kFooterMargin, (getHeight() - kLogoBoxH) / 2 + 1, kShopW, kLogoBoxH);
 }
 
 void BrandingFooter::paint(juce::Graphics& g)
@@ -3244,10 +3359,10 @@ void BrandingFooter::paint(juce::Graphics& g)
     g.drawText(cpuText, getLocalBounds().reduced(24, 0), juce::Justification::centredRight, false);
 
     static const char* names[3] = { "THE BLACK DEATH ENSEMBLE", "DARK MATTERS", "SYMBIORBIS" };
-    const int boxW = 168, boxH = 26, gap = 12, labelW = 140;
-    const int total = labelW + 3 * boxW + 2 * gap;
-    int x = (getWidth() - total) / 2;
-    const int y = (getHeight() - boxH) / 2 + 1;
+    const int boxW = kLogoBoxW, boxH = kLogoBoxH, gap = kLogoGap, labelW = kLogoLabelW;
+    const auto area = logoArea();
+    int x = area.getX();
+    const int y = area.getY();
     drawLabel(g, "BROUGHT TO YOU BY", { x, y, labelW - 12, boxH }, text, juce::Justification::centredRight, 10.5f);
     x += labelW;
     for (int i = 0; i < 3; ++i)

@@ -72,7 +72,10 @@ int main(int argc, char** argv)
     const double wasDbu = proc->getInterfaceInputDbu();
     proc->setInputCalibration(calibrate, interfaceDbu);
     if (calibrate) std::printf("input calibration: interface %+.1f dBu -> capture driven %+.2f dB\n", interfaceDbu, trimDb);
+    const bool ecoWas = proc->isEcoByDefault();
+    proc->setEcoByDefault(false); // compare the full model with NAM Core (A2 Lite is a different model)
     proc->loadCapture(0, juce::File(argv[1]));
+    proc->setEcoByDefault(ecoWas);
     for (int t = 0; t < 400 && proc->getSlotStatus(0).state == AmpsurdProcessor::SlotState::loading; ++t)
         juce::Thread::sleep(50);
     juce::AudioBuffer<float> buf(2, block);

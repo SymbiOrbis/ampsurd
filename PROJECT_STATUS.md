@@ -1,6 +1,6 @@
 # AMPSURD — Project Status
 
-_Last updated: 2026-10-08 evening (Claude, session 2j)_
+_Last updated: 2026-10-14 (Claude, session 2p)_
 
 **Product name:** AMPSURD (formerly MONSTROSITY / QUINQUEPLEX).
 **What it is:** free, open-source (GNU AGPLv3) guitar plugin: one DI signal → up to five Neural
@@ -36,7 +36,10 @@ zoom, navigation, punch-in corrections with movable edges and crossfaded joins, 
 Owner 2026-10-11: AMPSURD no longer sounds worse than TONE3000 (after re-capturing). Session 2m:
 visual polish (red accent, 2 px outlines, icon), smoother gate opening, INPUT -30...+15, EQ band
 count per EQ + AUTO LEVEL, ECO per slot, timeline scrollbar, keyboard shortcuts, PITCH (tuning before
-the amps, ~5 ms).
+the amps, ~5 ms). Session 2p (2026-10-14): owner's backlog - per-amp INPUT (loudness kept) / OUTPUT in
+EDIT, MUTE -> fader 0 % and back, gentler gate, BUY AMPSURD AMP PACKS, A2 captures as Lite by default
+(TONE3000's default, found in its source). Code signing: SignPath Foundation application next (project
+doc CODE_SIGNING_PLAN). Awaiting test: BUILD_WINDOWS.md checklist 25-29.
 
 ## Implemented and tested
 

@@ -15,6 +15,7 @@
 
 #include <array>
 #include <complex>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -93,6 +94,24 @@ public:
     static constexpr double kTargetLoudnessDb = -18.0;
     static double loudnessDb(const Measurement& m);
     static double levelMatchGain(double loudnessDb);
+
+    // ---- Per-amp INPUT (drive) -> loudness --------------------------------------------
+    // Captures are non-linear: driving one harder makes it louder by a different amount for every capture
+    // (a clean amp follows the input, a high-gain amp hardly changes). The curve stores the capture's
+    // perceived loudness (same measure as level match) for drives of -24 ... +24 dB in 6 dB steps, so the
+    // plugin can keep the amp's loudness constant while its INPUT is turned (interpolated, in dB).
+    static constexpr int kDriveCurvePoints = 9;
+    static constexpr double kDriveCurveMinDb = -24.0, kDriveCurveStepDb = 6.0;
+    struct DriveCurve
+    {
+        std::array<double, kDriveCurvePoints> loudnessDb {};
+    };
+    // `signal`: the test signal as the capture receives it at drive 0 (INPUT + calibration applied).
+    // `ir`: the slot's cabinet IR (or nullptr). The model's state is reset before every render.
+    // Returns false when `shouldStop` returned true (the result is then incomplete).
+    static bool driveCurve(CaptureModel& model, const std::vector<double>& signal, const std::vector<double>* ir,
+                           DriveCurve& result, const std::function<bool()>& shouldStop = {});
+    static double loudnessAtDrive(const DriveCurve& c, double driveDb); // clamped to the curve's range
 
     // ---- Whole-rig analysis (everything the plugin needs, computed off the audio thread) ----
     struct RigAnalysis

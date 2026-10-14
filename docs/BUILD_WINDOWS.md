@@ -190,6 +190,22 @@ REAPER picks up the new version.
 24. Standalone keys: Space = play / stop, R = record / punch in / out, W or Home = back to the start.
     The wide bar under the guitar track scrolls through the song.
 
+25. Per-amp LEVEL (EDIT -> LEVEL): turn an amp's INPUT to +12 dB - it distorts more, but stays about as
+    loud (the line below says how much AMPSURD compensates; "Measuring..." for a second or two after
+    loading). OUTPUT makes the amp louder / quieter in the mix. Double-click = 0 dB.
+
+26. MUTE an amp: its fader drops to 0 %, the others show the real shares (e.g. 50 / 50). Un-mute: the
+    old shares come back. Also try: mute, SAVE the preset, load another, load it again, un-mute.
+
+27. Gate: play a long note and let it ring out near the threshold (or with vibrato) - the gate should
+    close once, softly, without stuttering; a note that swells back fades in instead of snapping open.
+
+28. Footer: BUY AMPSURD AMP PACKS (bottom left) opens www.ampsurd.com in the browser.
+
+29. Tone vs. TONE3000: settings menu "Load A2 captures as Lite (ECO) - like TONE3000" is on by default
+    (TONE3000 also plays A2 captures as Lite). Load the same capture in both, gate off, same input,
+    level matched - do they sound alike now? Switch ECO off on the slot to hear the full model.
+
 Expected latency shown by REAPER: 104 samples at 48 kHz, 123 at 44.1 kHz.
 
 Optional measurements (in Developer PowerShell):

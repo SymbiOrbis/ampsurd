@@ -1,4 +1,5 @@
 #include "ampsurd/CaptureAnalyzer.h"
+#include "ampsurd/Convolver.h"
 
 #include <algorithm>
 #include <cmath>
@@ -301,6 +302,40 @@ double CaptureAnalyzer::loudnessDb(const Measurement& m)
             acc += 2.0 * w[(size_t) k] * std::norm(f[(size_t) k]);
     const double p = m.frames.empty() ? 0.0 : acc / ((double) m.frames.size() * kFftSize * wsum);
     return p > 1e-20 ? 10.0 * std::log10(p) : -200.0;
+}
+
+bool CaptureAnalyzer::driveCurve(CaptureModel& model, const std::vector<double>& signal, const std::vector<double>* ir,
+                                 DriveCurve& result, const std::function<bool()>& shouldStop)
+{
+    const double sr = model.getPreparedSampleRate();
+    const int block = model.getPreparedBlockSize();
+    std::vector<double> x(signal.size()), y;
+    for (int k = 0; k < kDriveCurvePoints; ++k)
+    {
+        if (shouldStop && shouldStop()) return false;
+        const double g = std::pow(10.0, (kDriveCurveMinDb + kDriveCurveStepDb * k) / 20.0);
+        for (size_t i = 0; i < signal.size(); ++i) x[i] = signal[i] * g;
+        model.prepare(sr, block); // fresh internal state, like a newly loaded capture
+        y = render(model, x, false);
+        if (ir != nullptr && !ir->empty())
+        {
+            Convolver c(*ir);
+            std::vector<double> z(y.size());
+            c.process(y.data(), z.data(), (int) y.size());
+            y.swap(z);
+        }
+        result.loudnessDb[(size_t) k] = loudnessDb(*measure(y, sr));
+    }
+    model.prepare(sr, block);
+    return true;
+}
+
+double CaptureAnalyzer::loudnessAtDrive(const DriveCurve& c, double driveDb)
+{
+    const double pos = std::clamp((driveDb - kDriveCurveMinDb) / kDriveCurveStepDb, 0.0, (double) (kDriveCurvePoints - 1));
+    const int i = std::min((int) pos, kDriveCurvePoints - 2);
+    const double t = pos - i;
+    return c.loudnessDb[(size_t) i] * (1.0 - t) + c.loudnessDb[(size_t) i + 1] * t;
 }
 
 double CaptureAnalyzer::levelMatchGain(double loudness)

@@ -251,6 +251,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout AmpsurdProcessor::createLayo
                 const int i = juce::roundToInt(v);
                 return i == 0 ? juce::String("C") : (i < 0 ? "L" : "R") + juce::String(std::abs(i));
             })));
+        // per-amp INPUT (drive, loudness kept automatically) and OUTPUT (level in the mix), EDIT panel
+        group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { slotParamId(s, "drive"), 1 }, n + "Input",
+                                                              NormalisableRange<float>(-24.0f, 24.0f, 0.1f), 0.0f, unitAttr("dB", 1)));
+        group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { slotParamId(s, "level"), 1 }, n + "Output",
+                                                              NormalisableRange<float>(-24.0f, 12.0f, 0.1f), 0.0f, unitAttr("dB", 1)));
         addEqBandParams(*group, s, n);
         // cabinet IR of this slot and its own EQ (same ten bands)
         group->addChild(std::make_unique<AudioParameterBool>(ParameterID { slotParamId(s, "irOn"), 1 }, n + "IR On", true));
@@ -353,6 +358,7 @@ AmpsurdProcessor::AmpsurdProcessor()
         interfaceDbu.store(pf.getDoubleValue("interfaceInputDbu", 12.0));
         multiCore.store(pf.getBoolValue("multiCore", true));
         showDragon.store(pf.getBoolValue("showDragon", true));
+        ecoByDefault.store(pf.getBoolValue("ecoByDefault", true));
     }
     engine.setMultiCore(multiCore.load() ? -1 : 0);
     bypassParamObj = params.getParameter("bypass");
@@ -380,6 +386,8 @@ AmpsurdProcessor::AmpsurdProcessor()
         sp.pan = params.getRawParameterValue(slotParamId(s, "pan"));
         sp.irOn = params.getRawParameterValue(slotParamId(s, "irOn"));
         sp.eco = params.getRawParameterValue(slotParamId(s, "eco"));
+        sp.drive = params.getRawParameterValue(slotParamId(s, "drive"));
+        sp.level = params.getRawParameterValue(slotParamId(s, "level"));
         auto& ie = irEqParams[(size_t) s];
         ie.eqOn = params.getRawParameterValue(slotParamId(irEqTarget(s), "eqOn"));
         for (int b = 0; b < kNumBands; ++b)
@@ -447,6 +455,7 @@ AmpsurdProcessor::~AmpsurdProcessor()
 {
     stopTimer();
     alive->store(false);
+    curvePool.removeAllJobs(true, 20000);
     loaderPool.removeAllJobs(true, 20000);
     for (int s = 0; s < kNumSlots; ++s)
         engine.getSlot(s).collectGarbage();
@@ -564,8 +573,8 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         ss.delaySamples = a.delaySamples;
         ss.polarity = a.polarity;
         ss.phaseRadians = a.phaseRadians;
-        ss.levelGain = levelMatch ? derived[(size_t) s].levelGain.load(std::memory_order_relaxed) : 1.0;
-        ss.inputTrim = std::pow(10.0, getCalibrationTrimDb(s) / 20.0);
+        ss.levelGain = slotOutputGain(s, levelMatch);
+        ss.inputTrim = std::pow(10.0, (getCalibrationTrimDb(s) + (double) sp.drive->load()) / 20.0);
         rotation = rotation || (engine.isSlotLoaded(s) && std::abs(a.phaseRadians) > 1e-4);
     }
     settings.rotationActive = rotation;
@@ -692,10 +701,24 @@ void AmpsurdProcessor::loadCapture(int slot, const juce::File& file)
 {
     const auto previous = getSlotStatus(slot).state;
     const bool wasEmpty = previous == SlotState::empty || previous == SlotState::missing || previous == SlotState::error;
+    // a capture loaded by hand starts as the setting says (ECO only matters for files with a Lite model)
+    if (file != juce::File(getSlotStatus(slot).path))
+    {
+        setParam(params, slotParamId(slot, "eco"), ecoByDefault.load() ? 1.0f : 0.0f);
+        lastEco[(size_t) slot] = ecoByDefault.load();
+    }
     const int gen = ++slotGeneration[(size_t) slot];
     setSlotStatus(slot, { SlotState::loading, file.getFullPathName(), file.getFileNameWithoutExtension(), "Loading..." });
     if (wasEmpty)
+    {
+        if (isSlotMuted(slot)) // a new capture in an empty slot plays (a leftover MUTE would hide it)
+        {
+            setParam(params, slotParamId(slot, "mute"), 0.0f);
+            lastMute[(size_t) slot] = false;
+        }
+        mutedShare[(size_t) slot] = 0.0f;
         renormaliseMixAfterChange(slot, true); // inaudible: the slot does not play until it is loaded
+    }
 
     auto aliveFlag = alive;
     loaderPool.addJob([this, slot, file, gen, aliveFlag] {
@@ -730,7 +753,8 @@ void AmpsurdProcessor::loadJob(int slot, juce::File file, int gen, bool /*adjust
     const auto& mi = result.model->getInfo();
     const double newDbu = mi.hasInputLevel ? mi.inputLevelDbu : std::numeric_limits<double>::quiet_NaN();
     auto test = CaptureAnalyzer::makeTestSignal(sr);
-    const double g = std::pow(10.0, (gainDb + trimDbFor(calibrateOn.load(), interfaceDbu.load(), newDbu)) / 20.0);
+    const double driveDb = slotParams[(size_t) slot].drive->load();
+    const double g = std::pow(10.0, (gainDb + trimDbFor(calibrateOn.load(), interfaceDbu.load(), newDbu) + driveDb) / 20.0);
     for (double& v : test) v *= g;
     auto raw = std::make_shared<const std::vector<double>>(CaptureAnalyzer::render(*result.model, test, false));
     const auto meas = measureWithIr(slot, *raw, sr); // with the slot's cabinet IR, if any
@@ -744,6 +768,7 @@ void AmpsurdProcessor::loadJob(int slot, juce::File file, int gen, bool /*adjust
         rawRenders[(size_t) slot] = raw;
     }
     storeMeasurement(slot, meas, gainDb);
+    derived[(size_t) slot].measuredDriveDb.store(driveDb);
 
     const auto info = describe(*result.model, file);
     captureDbu[(size_t) slot].store(newDbu);
@@ -751,6 +776,12 @@ void AmpsurdProcessor::loadJob(int slot, juce::File file, int gen, bool /*adjust
     lastEco[(size_t) slot] = eco;
     engine.getSlot(slot).submit(std::move(result.model));
     setSlotStatus(slot, { SlotState::loaded, file.getFullPathName(), file.getFileNameWithoutExtension(), info, canEco, ecoActive });
+    {
+        std::lock_guard<std::mutex> al(analysisMutex);
+        auto& c = driveCurves[(size_t) slot];
+        if (c.path != file.getFullPathName()) c.valid = false; // another capture: new curve (ECO reload keeps the old one meanwhile)
+    }
+    requestDriveCurve(slot);
 
     auto aliveFlag = alive;
     juce::MessageManager::callAsync([this, aliveFlag] {
@@ -800,16 +831,18 @@ void AmpsurdProcessor::remeasureJob(int gen)
     std::array<std::shared_ptr<const CaptureAnalyzer::Measurement>, kNumSlots> fresh {};
     std::array<std::shared_ptr<const std::vector<double>>, kNumSlots> renders {};
     std::array<int, kNumSlots> gens {};
+    std::array<double, kNumSlots> drives {};
     for (int s = 0; s < kNumSlots; ++s)
     {
         if (gen != remeasureGeneration.load()) return;
+        drives[(size_t) s] = slotParams[(size_t) s].drive->load();
         const auto st = getSlotStatus(s);
         gens[(size_t) s] = slotGeneration[(size_t) s].load();
         if (st.state != SlotState::loaded) continue;
         auto r = CaptureModel::load(toStdPath(juce::File(st.path)), sr, currentMaxBlock, slotParams[(size_t) s].eco->load() > 0.5f);
         if (!r.model) continue;
         const auto& mi = r.model->getInfo();
-        const double g = std::pow(10.0, (gainDb + trimDbFor(calibrateOn.load(), interfaceDbu.load(),
+        const double g = std::pow(10.0, (gainDb + drives[(size_t) s] + trimDbFor(calibrateOn.load(), interfaceDbu.load(),
                                                             mi.hasInputLevel ? mi.inputLevelDbu : std::numeric_limits<double>::quiet_NaN())) / 20.0);
         auto driven = test;
         for (double& v : driven) v *= g;
@@ -831,6 +864,106 @@ void AmpsurdProcessor::remeasureJob(int gen)
     }
     measuredCalibrationVersion.store(calVersion);
     applyRig(CaptureAnalyzer::analyseRig(snapshot));
+    for (int s = 0; s < kNumSlots; ++s)
+        if (fresh[(size_t) s] && gens[(size_t) s] == slotGeneration[(size_t) s].load())
+            derived[(size_t) s].measuredDriveDb.store(drives[(size_t) s]); // together with the new level gains
+    for (int s = 0; s < kNumSlots; ++s)
+        if (fresh[(size_t) s]) requestDriveCurve(s); // skipped inside when INPUT / calibration did not change
+}
+
+// ---------------------------------------------------------------------------------------------
+// Per-amp INPUT / OUTPUT
+// ---------------------------------------------------------------------------------------------
+double AmpsurdProcessor::slotOutputGain(int s, bool levelMatch) const noexcept
+{
+    const auto& d = derived[(size_t) s];
+    const double base = levelMatch ? d.levelGain.load(std::memory_order_relaxed) : 1.0;
+    const double db = d.driveCompDb.load(std::memory_order_relaxed) + (double) slotParams[(size_t) s].level->load();
+    return base * std::pow(10.0, db / 20.0);
+}
+
+bool AmpsurdProcessor::isDriveCompensationReady(int slot) const
+{
+    std::lock_guard<std::mutex> al(analysisMutex);
+    return driveCurves[(size_t) slot].valid;
+}
+
+void AmpsurdProcessor::requestDriveCurve(int slot)
+{
+    const int gen = ++curveGeneration[(size_t) slot];
+    auto aliveFlag = alive;
+    curvePool.addJob([this, slot, gen, aliveFlag] {
+        if (aliveFlag->load()) driveCurveJob(slot, gen);
+    });
+}
+
+void AmpsurdProcessor::driveCurveJob(int slot, int gen)
+{
+    // what the curve depends on: the capture (and ECO), INPUT + calibration, the cabinet IR
+    double sr = 0.0, baseDb = 0.0;
+    int block = 0;
+    std::shared_ptr<const std::vector<double>> ir;
+    bool eco = false;
+    juce::String path;
+    {
+        std::lock_guard<std::mutex> lock(configMutex);
+        if (gen != curveGeneration[(size_t) slot].load()) return;
+        const auto st = getSlotStatus(slot);
+        if (st.state != SlotState::loaded) return;
+        path = st.path;
+        sr = currentSampleRate.load();
+        block = currentMaxBlock;
+        eco = slotParams[(size_t) slot].eco->load() > 0.5f;
+        baseDb = inputParam->load() + getCalibrationTrimDb(slot);
+        if (isIrOn(slot)) ir = irPrepared[(size_t) slot];
+    }
+    {
+        std::lock_guard<std::mutex> al(analysisMutex);
+        const auto& c = driveCurves[(size_t) slot];
+        if (c.valid && std::abs(c.baseDb - baseDb) < 0.25 && c.eco == eco && c.irData == (const void*) ir.get())
+            return; // nothing changed
+    }
+    auto r = CaptureModel::load(toStdPath(juce::File(path)), sr, block, eco);
+    if (!r.model) return;
+    auto test = CaptureAnalyzer::makeTestSignal(sr);
+    const double g = std::pow(10.0, baseDb / 20.0);
+    for (double& v : test) v *= g;
+    CaptureAnalyzer::DriveCurve curve;
+    const bool done = CaptureAnalyzer::driveCurve(*r.model, test, ir.get(), curve, [this, slot, gen] {
+        return gen != curveGeneration[(size_t) slot].load() || !alive->load();
+    });
+    if (!done) return;
+    std::lock_guard<std::mutex> al(analysisMutex);
+    if (gen != curveGeneration[(size_t) slot].load()) return;
+    auto& c = driveCurves[(size_t) slot];
+    c.valid = true;
+    c.curve = curve;
+    c.baseDb = baseDb;
+    c.eco = eco;
+    c.irData = ir.get();
+    c.ir = ir != nullptr;
+    c.path = path;
+}
+
+void AmpsurdProcessor::updateDriveCompensation()
+{
+    const bool levelMatch = levelMatchParam->load() > 0.5f;
+    std::lock_guard<std::mutex> al(analysisMutex);
+    for (int s = 0; s < kNumSlots; ++s)
+    {
+        auto& d = derived[(size_t) s];
+        const auto& c = driveCurves[(size_t) s];
+        double comp = 0.0;
+        if (c.valid && getSlotStatus(s).state == SlotState::loaded)
+        {
+            const double now = CaptureAnalyzer::loudnessAtDrive(c.curve, slotParams[(size_t) s].drive->load());
+            // LEVEL MATCH on: the measured level gain already holds the loudness at the measured INPUT;
+            // off: the amp stays as loud as at INPUT 0 dB
+            const double ref = CaptureAnalyzer::loudnessAtDrive(c.curve, levelMatch ? d.measuredDriveDb.load() : 0.0);
+            comp = juce::jlimit(-30.0, 30.0, ref - now);
+        }
+        d.driveCompDb.store(comp);
+    }
 }
 
 void AmpsurdProcessor::setDragonShown(bool on)
@@ -840,6 +973,16 @@ void AmpsurdProcessor::setDragonShown(bool on)
     o.applicationName = "AMPSURD"; o.filenameSuffix = ".settings"; o.osxLibrarySubFolder = "Application Support";
     juce::PropertiesFile pf(o);
     pf.setValue("showDragon", on);
+    pf.saveIfNeeded();
+}
+
+void AmpsurdProcessor::setEcoByDefault(bool on)
+{
+    ecoByDefault.store(on);
+    juce::PropertiesFile::Options o;
+    o.applicationName = "AMPSURD"; o.filenameSuffix = ".settings"; o.osxLibrarySubFolder = "Application Support";
+    juce::PropertiesFile pf(o);
+    pf.setValue("ecoByDefault", on);
     pf.saveIfNeeded();
 }
 
@@ -926,6 +1069,7 @@ void AmpsurdProcessor::measureSlotJob(int slot)
     if (!raw || getSlotStatus(slot).state != SlotState::loaded)
         return; // nothing measured yet: the capture's own load will include the IR
     storeMeasurement(slot, measureWithIr(slot, *raw, currentSampleRate.load()), gainDb);
+    requestDriveCurve(slot); // the IR is part of the INPUT -> loudness curve
 }
 
 AmpsurdProcessor::IrStatus AmpsurdProcessor::getIrStatus(int slot) const
@@ -999,7 +1143,10 @@ void AmpsurdProcessor::irJob(int slot, juce::File file, int gen)
         gainDb = measuredInputGainDb;
     }
     if (raw && getSlotStatus(slot).state == SlotState::loaded)
+    {
         storeMeasurement(slot, measureWithIr(slot, *raw, sr), gainDb);
+        requestDriveCurve(slot);
+    }
 }
 
 void AmpsurdProcessor::removeIr(int slot)
@@ -1065,7 +1212,7 @@ void AmpsurdProcessor::updateCovariance(bool force)
         delays[(size_t) s] = a.delaySamples;
         pol[(size_t) s] = a.polarity;
         phase[(size_t) s] = a.phaseRadians;
-        lg[(size_t) s] = levelMatch ? derived[(size_t) s].levelGain.load() : 1.0;
+        lg[(size_t) s] = slotOutputGain(s, levelMatch);
         key[(size_t) (4 * s)] = delays[(size_t) s];
         key[(size_t) (4 * s + 1)] = pol[(size_t) s];
         key[(size_t) (4 * s + 2)] = phase[(size_t) s];
@@ -1131,11 +1278,17 @@ bool AmpsurdProcessor::isSlotAudible(int slot) const
     return countsAsLoaded(getSlotStatus(slot).state) && sp.mute->load() < 0.5f && (!anySolo || sp.solo->load() > 0.5f);
 }
 
+bool AmpsurdProcessor::mixesWith(int slot) const
+{
+    return countsAsLoaded(getSlotStatus(slot).state) && !isSlotMuted(slot);
+}
+
 void AmpsurdProcessor::renormaliseMixAfterChange(int changed, bool added)
 {
+    // muted amps keep their fader at 0 % and are not part of the 100 %
     std::vector<int> others;
     for (int s = 0; s < kNumSlots; ++s)
-        if (s != changed && countsAsLoaded(getSlotStatus(s).state))
+        if (s != changed && mixesWith(s))
             others.push_back(s);
 
     float newShare = 0.0f;
@@ -1153,6 +1306,39 @@ void AmpsurdProcessor::renormaliseMixAfterChange(int changed, bool added)
     setParam(params, slotParamId(changed, "mix"), added ? newShare : 0.0f);
 }
 
+void AmpsurdProcessor::applyMuteToFaders(int slot, bool muted)
+{
+    if (!countsAsLoaded(getSlotStatus(slot).state))
+        return;
+    std::vector<int> others;
+    float sum = 0.0f;
+    for (int s = 0; s < kNumSlots; ++s)
+        if (s != slot && mixesWith(s))
+        {
+            others.push_back(s);
+            sum += slotParams[(size_t) s].mix->load();
+        }
+    const float current = slotParams[(size_t) slot].mix->load();
+    float share = 0.0f;
+    if (muted)
+    {
+        if (current > 0.01f) mutedShare[(size_t) slot] = current; // remembered for un-muting
+    }
+    else
+    {
+        // previous share; an amp muted in an older preset still has its fader up: keep it
+        share = current > 0.01f ? current
+              : (mutedShare[(size_t) slot] > 0.01f ? mutedShare[(size_t) slot] : 100.0f / (float) (others.size() + 1));
+        if (sum < 0.01f) share = 100.0f; // the only amp that plays
+        share = juce::jlimit(0.0f, 100.0f, share);
+        mutedShare[(size_t) slot] = 0.0f;
+    }
+    if (sum >= 0.01f)
+        for (int s : others)
+            setParam(params, slotParamId(s, "mix"), slotParams[(size_t) s].mix->load() * (100.0f - share) / sum);
+    setParam(params, slotParamId(slot, "mix"), share);
+}
+
 void AmpsurdProcessor::beginMixGesture(int slot)
 {
     mixGestureSlot = slot;
@@ -1168,7 +1354,7 @@ void AmpsurdProcessor::setMixLinked(int slot, float v)
 {
     std::vector<int> others;
     for (int s = 0; s < kNumSlots; ++s)
-        if (s != slot && countsAsLoaded(getSlotStatus(s).state))
+        if (s != slot && mixesWith(s))
             others.push_back(s);
     if (others.empty())
         v = 100.0f;
@@ -1355,6 +1541,17 @@ void AmpsurdProcessor::timerCallback()
     updateCovariance(false);
     updateLatency();
 
+    // MUTE (button or automation): fader to 0 %, the others to their real shares; un-mute restores
+    if (resyncMute.exchange(false))
+        for (int sl = 0; sl < kNumSlots; ++sl) lastMute[(size_t) sl] = isSlotMuted(sl);
+    for (int sl = 0; sl < kNumSlots; ++sl)
+    {
+        const bool m = isSlotMuted(sl);
+        if (m == lastMute[(size_t) sl]) continue;
+        lastMute[(size_t) sl] = m;
+        applyMuteToFaders(sl, m);
+    }
+
     // ECO switched: reload the capture with the Lite (or full) model - crossfaded like any swap
     for (int sl = 0; sl < kNumSlots; ++sl)
     {
@@ -1384,9 +1581,27 @@ void AmpsurdProcessor::timerCallback()
         }
     }
 
+    updateDriveCompensation();
+
     // Captures are non-linear: when the input gain changes, re-measure (debounced).
     const float g = inputParam->load();
     const double now = juce::Time::getMillisecondCounterHiRes();
+    // the same for an amp's own INPUT (alignment and mix law follow its new sound)
+    for (int sl = 0; sl < kNumSlots; ++sl)
+    {
+        const float dv = slotParams[(size_t) sl].drive->load();
+        if (std::abs(dv - lastSeenDrive[(size_t) sl]) > 0.01f)
+        {
+            lastSeenDrive[(size_t) sl] = dv;
+            driveChangedAt[(size_t) sl] = now;
+        }
+        if (getSlotStatus(sl).state == SlotState::loaded && std::abs(dv - derived[(size_t) sl].measuredDriveDb.load()) > 0.5
+            && std::abs(dv - queuedDrive[(size_t) sl]) > 0.01f && now - driveChangedAt[(size_t) sl] > 400.0)
+        {
+            queuedDrive[(size_t) sl] = dv; // queued once
+            needsRemeasure.store(true);
+        }
+    }
     if (std::abs(g - lastSeenInputGainDb) > 0.01f)
     {
         lastSeenInputGainDb = g;
@@ -1438,6 +1653,8 @@ juce::ValueTree AmpsurdProcessor::createStateTree() const
         // Only a REFERENCE to the capture is stored, never the capture data itself.
         t.setProperty(kPathId, getSlotStatus(s).path, nullptr);
         t.setProperty("irPath", getIrStatus(s).path, nullptr); // reference to the cabinet IR file (or empty)
+        if (mutedShare[(size_t) s] > 0.01f)
+            t.setProperty("mutedShare", mutedShare[(size_t) s], nullptr); // fader position to return to on un-mute
         slots.appendChild(t, nullptr);
     }
     state.appendChild(slots, nullptr);
@@ -1464,6 +1681,7 @@ void AmpsurdProcessor::restoreState(const juce::ValueTree& tree, const juce::Fil
                 paramsOnly.appendChild(child, nullptr);
             }
     params.replaceState(paramsOnly);
+    resyncMute.store(true); // the loaded MUTE states are taken as they are (no fader moves)
 
     {
         const juce::ScopedLock sl(statusLock);
@@ -1474,12 +1692,15 @@ void AmpsurdProcessor::restoreState(const juce::ValueTree& tree, const juce::Fil
     for (int s = 0; s < kNumSlots; ++s)
     {
         juce::String path, irPath;
+        float share = 0.0f;
         for (const auto& t : slots)
             if ((int) t.getProperty(kIndexId) == s + 1)
             {
                 path = t.getProperty(kPathId).toString();
                 irPath = t.getProperty("irPath").toString();
+                share = (float) (double) t.getProperty("mutedShare", 0.0);
             }
+        mutedShare[(size_t) s] = share;
 
         // cabinet IR (queued after the capture on the same loader thread)
         auto restoreIr = [this, s, irPath, presetFile] {
@@ -1640,6 +1861,8 @@ void AmpsurdProcessor::loadInitPreset()
     for (int s = 0; s < kNumSlots; ++s)
         if (getSlotStatus(s).state != SlotState::empty)
             unloadCapture(s);
+    mutedShare = {};
+    resyncMute.store(true);
     const juce::ScopedLock sl(statusLock);
     currentPresetName = "Init";
     currentPresetFile = juce::File();

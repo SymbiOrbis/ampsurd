@@ -93,6 +93,39 @@ int main(int argc, char** argv)
     }
     std::cout << "  (total " << total << " %)\n";
 
+    // MUTE moves the fader to 0 % (the others show their real shares); un-mute restores the old share
+    if (n >= 3)
+    {
+        auto mix = [&](int i) { return proc->params.getRawParameterValue(AmpsurdProcessor::slotParamId(i, "mix"))->load(); };
+        proc->runHousekeeping(); // the 30 Hz timer has been running in the app (takes the current MUTE states)
+        const float a0 = mix(0), a1 = mix(1), a2 = mix(2);
+        setP(*proc, AmpsurdProcessor::slotParamId(0, "mute"), 1.0f);
+        proc->runHousekeeping();
+        const float m0 = mix(0), m1 = mix(1), m2 = mix(2);
+        const bool mutedOk = m0 == 0.0f && std::abs(m1 + m2 - 100.0f) < 0.05f && std::abs(m1 / m2 - a1 / a2) < 1e-3f;
+        // saved in a preset while muted, the old share comes back after loading it
+        const auto presetFile = out.getChildFile("Muted.ampsurd");
+        proc->savePreset(presetFile);
+        proc->loadPreset(presetFile);
+        for (int t = 0; t < 400; ++t)
+        {
+            bool busy = false;
+            for (int i = 0; i < n; ++i) busy = busy || proc->getSlotStatus(i).state == AmpsurdProcessor::SlotState::loading;
+            if (!busy) break;
+            pump(50);
+        }
+        proc->runHousekeeping();
+        const bool reloadedOk = mix(0) == 0.0f && proc->isSlotMuted(0);
+        setP(*proc, AmpsurdProcessor::slotParamId(0, "mute"), 0.0f);
+        proc->runHousekeeping();
+        const bool restoredOk = std::abs(mix(0) - a0) < 0.05f && std::abs(mix(1) - a1) < 0.05f && std::abs(mix(2) - a2) < 0.05f;
+        std::cout << (mutedOk && reloadedOk && restoredOk ? "[PASS]" : "[FAIL]")
+                  << " MUTE: amp 1 muted -> faders " << m0 << " / " << m1 << " / " << m2 << " % (real shares); saved + reloaded muted"
+                  << (reloadedOk ? "" : " (WRONG)") << "; un-muted -> " << mix(0) << " / " << mix(1) << " / " << mix(2)
+                  << " % (before: " << a0 << " / " << a1 << " / " << a2 << ")\n";
+        for (int b = 0; b < 4; ++b) { buf.clear(); proc->processBlock(buf, midi); }
+    }
+
     // a little EQ on slot 2 and a mute on slot 4
     setP(*proc, AmpsurdProcessor::bandParamId(1, 1, "gain"), -4.5f);
     setP(*proc, AmpsurdProcessor::bandParamId(1, 4, "gain"), 3.0f);
@@ -127,6 +160,15 @@ int main(int argc, char** argv)
         e->refreshAll();
         save(*ed, out.getChildFile("02_loaded.png"));
         e->selectSlot(1);
+        setP(*proc, AmpsurdProcessor::slotParamId(1, "drive"), 6.0f); // per-amp INPUT / OUTPUT in EDIT
+        setP(*proc, AmpsurdProcessor::slotParamId(1, "level"), -2.0f);
+        for (int t = 0; t < 600 && !proc->isDriveCompensationReady(1); ++t) pump(50);
+        proc->runHousekeeping();
+        {
+            const double c = proc->getDriveCompensationDb(1);
+            std::cout << (proc->isDriveCompensationReady(1) && std::abs(c) > 1e-3 && std::abs(c) < 12.0 ? "[PASS]" : "[FAIL]")
+                      << " INPUT: amp 2 driven +6 dB -> loudness compensation " << juce::String(c, 2).toStdString() << " dB\n";
+        }
         e->refreshAll();
         save(*ed, out.getChildFile("03_edit_slot2.png"));
         {

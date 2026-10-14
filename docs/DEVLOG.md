@@ -6,6 +6,36 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-14 — Session 2p: owner's backlog (per-amp level, mute -> 0 %, gentler gate, shop button, TONE3000) — Claude (Opus 5.5)
+
+- **Per-amp INPUT / OUTPUT** (EDIT -> LEVEL, params `s{n}_drive` -24...+24 dB, `s{n}_level` -24...+12 dB).
+  INPUT multiplies the slot's input trim (with calibration); loudness is kept by a measured curve:
+  `CaptureAnalyzer::driveCurve` renders the test signal at -24...+24 dB (6 dB steps, with the slot's IR)
+  on a background thread ("AMPSURD level curves", low priority, own model copy), `loudnessAtDrive`
+  interpolates. Compensation = curve(0) - curve(INPUT) (level match off) or curve(measured INPUT) -
+  curve(INPUT) (level match on: the level gain already holds the measured level). Applied as part of the
+  slot's level gain (also in the mix-law covariance); recomputed when INPUT / calibration / ECO / IR change.
+  An amp's INPUT change also re-measures alignment and mix law (debounced, like the main INPUT).
+  Defaults (0 dB) are bit-identical to before. AlignPanel compacted (AUTO / FREE / RESET in one row).
+- **MUTE -> fader 0 %** (button and automation, handled in the 30 Hz housekeeping): the muted share is
+  remembered (saved in presets as slot property `mutedShare`), the others are rescaled to 100 %;
+  un-mute restores it. Muted amps are left out of linked-fader rescaling; muted fader is dimmed and
+  not draggable; a capture loaded into an empty slot clears a leftover MUTE. Older presets with a muted
+  amp whose fader is up keep it on un-mute.
+- **Gate**: hysteresis 4 -> 8 dB, hold 15 -> 60 ms, closing = -60 dB * (t / DECAY)^2 (zero slope at the
+  start) then fully closed, gentle 25 ms raised-cosine fade-in when a note swells back without a pick,
+  pick attack: 0.9 ms S-curve as before.
+- **Footer**: BUY AMPSURD AMP PACKS (bottom left, opens https://www.ampsurd.com/), logo group 34 px left.
+- **TONE3000 comparison**: read their open-source plugin. Default A2 size = Lite. New per-computer setting
+  "Load A2 captures as Lite (ECO) - like TONE3000" (default on) sets ECO when a capture is loaded by hand.
+- Tests (Linux): gate_tuner_test +3 (fading wobbling note closes once; closing -1.5 dB after 20 ms, old
+  -9 dB; swell-back fade-in 26 ms; all three failed with the old gate), engine_test INPUT (two captures,
+  two guitar levels: within 0.18 dB, uncompensated up to 11.4 dB), ui_snapshot MUTE (0 / 50 / 50 ->
+  saved / reloaded muted -> 42 / 29 / 29 restored) and INPUT compensation; tone_test compares the full
+  model (Lite measured: -1.1 dB at 44 Hz, +0.3...+0.8 dB 700 Hz - 11 kHz). All other tests pass.
+- Code signing research: project doc CODE_SIGNING_PLAN (SignPath Foundation first, Certum Open Source
+  as fallback; no business registration needed).
+
 ## 2026-10-11 — Session 2o: Windows release package — Claude (Opus 5.5)
 
 Owner: publisher = Radovan Glovňa (Slovak sole trader being set up).

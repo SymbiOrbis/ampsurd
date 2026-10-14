@@ -82,22 +82,22 @@ AUTO LEVEL, ECO per slot, timeline scrollbar, shortcuts (Space / R / W, Home), P
 - Standalone Windows app: File (open/save preset), Audio settings, Help (Check for updates — asks
   GitHub Releases for the latest version only when chosen; disclosed in the privacy note; About).
 
-## Backlog from the owner (recorded 2026-10-13, NOT implemented yet - wait for the go-ahead)
-1. **Input and output level per amp** in EDIT, with automatic loudness compensation (changing an amp's
-   input drive must not change its loudness in the mix; its output level is the deliberate change).
-2. **MUTE moves the fader to 0 %**: the other faders show the real percentages without the muted amp;
-   un-muting brings the amp back to its previous share and the others are rescaled accordingly
-   (today: stored faders unchanged, only the effective percentages change).
-3. **Gate: gentler action**, no step-like closing / re-opening (smoother attack and release curves).
-4. **Footer:** move "BROUGHT TO YOU BY" a little to the left; new button bottom left
-   **"Buy Ampsurd amp packs"** -> opens https://www.ampsurd.com/ in the default browser.
-5. **Tone vs. the TONE3000 app** (owner 2026-10-13: TONE3000 sounds fuller, more natural, less scooped,
-   juicier). Facts: AMPSURD with one capture is sample-identical to NAM Core (tone_test). Differences
-   found in TONE3000's guide: new blocks default to **A2-Lite** (AMPSURD: Full unless ECO), captures with
-   calibration data may use input calibration, optional oversampling (2x), per-block normalisation on,
-   gate at the chain start, tone stack / EQs, Spread. Next: owner compares with matched settings (ECO,
-   same input drive, gate off, single amp, equal loudness); then a recorded null test (same DI through
-   both, outputs analysed band by band). TONE3000's plugin is open source: check its processing chain.
+## Backlog from the owner (recorded 2026-10-13) — IMPLEMENTED 2026-10-14 (session 2p), awaiting test
+1. **Input and output level per amp** in EDIT (LEVEL: INPUT -24...+24 dB, OUTPUT -24...+12 dB). INPUT keeps
+   the amp's loudness automatically: each capture's INPUT -> loudness curve is measured in the background
+   (9 points, with its IR), interpolated; tested within 0.2 dB from -15 to +21 dB.
+2. **MUTE moves the fader to 0 %**, the others show their real shares; un-muting restores the previous share
+   (also after saving / loading a preset). A muted fader cannot be dragged.
+3. **Gate: gentler action**: 8 dB hysteresis, 60 ms hold, S-shaped closing (starts at zero slope), 25 ms
+   fade-in when a note swells back without a new pick; a new pick still opens in 0.9 ms.
+4. **Footer:** "BUY AMPSURD AMP PACKS" bottom left (opens https://www.ampsurd.com/), logos moved left.
+5. **Tone vs. the TONE3000 app**: TONE3000's source (MIT, github.com/tone-3000/tone3000-plugin) checked.
+   Its default A2 size is **Lite** (namSlimSizeDefault 0.0); otherwise the same NAM Core, a 5 Hz DC blocker
+   (inaudible), flat tone stack at 5, loudness normalisation from metadata (+-12 dB), cab IRs normalised to
+   unit energy with a -18 dB pad (level only). Measured with the example A2: Lite vs Full differs by
+   -1.1 dB at 44 Hz and +0.3...+0.8 dB from 700 Hz to 11 kHz (more mids / presence). New setting
+   "Load A2 captures as Lite (ECO) - like TONE3000", on by default; presets keep their own ECO state.
+   Owner: compare again (same capture, both Lite, gate off, level matched).
 
 ## Later / not planned
 - Frankenstein FOLLOW (whole note routed by detected pitch) - postponed by the owner.
