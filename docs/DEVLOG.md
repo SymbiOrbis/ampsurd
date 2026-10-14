@@ -6,6 +6,16 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-14 — Session 2t: beta feedback channels — Claude (Opus 5.5)
+
+- README + release notes (v0.9.0 release and docs/RELEASE_NOTES.md): Discussions / Issues links and the
+  star request, below the not-signed warning (which stays first in the release notes).
+- .github/workflows/maintenance.yml (Run workflow by hand): update-release-notes (gh release edit from
+  docs/RELEASE_NOTES.md; used for v0.9.0) and create-feedback-discussion ("AMPSURD beta feedback",
+  text docs/FEEDBACK_DISCUSSION.md, category General). Claude's environment may not change repository
+  settings: the owner enables Discussions (Settings -> General -> Features) and pins the discussion.
+- Checked README / release notes / docs: no claim that AMPSURD is signed (installer/README wording fixed).
+
 ## 2026-10-14 — Session 2s: public beta 0.9.0 released — Claude (Opus 5.5)
 
 - Release notes start with the owner's beta / not-signed warning; README and CODE_SIGNING.md state that
