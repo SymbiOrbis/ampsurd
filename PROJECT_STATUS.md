@@ -41,7 +41,9 @@ EDIT, MUTE -> fader 0 % and back, gentler gate, BUY AMPSURD AMP PACKS, A2 captur
 (TONE3000's default, found in its source). Code signing: SignPath Foundation application next (project
 doc CODE_SIGNING_PLAN). Awaiting test: BUILD_WINDOWS.md checklist 25-29. Session 2q (2026-10-14): MIDI
 footswitches (program change, MIDI learn), preset packs, undo / redo, A/B, fast preset switching
-(checklist 30-33). Bundled IRs (Jester Dyne) pending licence confirmation.
+(checklist 30-33). Bundled IRs on hold (no IRs without the author's explicit consent).
+**Public beta v0.9.0 released 2026-10-14** (GitHub pre-release, unsigned):
+https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.0
 
 ## Implemented and tested
 

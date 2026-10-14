@@ -6,6 +6,16 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-14 — Session 2s: public beta 0.9.0 released — Claude (Opus 5.5)
+
+- Release notes start with the owner's beta / not-signed warning; README and CODE_SIGNING.md state that
+  releases are NOT code-signed yet (no claim of signing anywhere).
+- CI green on aab5913. Pushing a tag is not allowed from Claude's environment, so the workflow got a
+  manual "publish_release" run (main only, refuses an existing release, creates tag v<CMake version>).
+  Run 38617499224 created tag v0.9.0 on 7e7e765 and the pre-release "AMPSURD 0.9.0 (beta)" with
+  AMPSURD-Setup-0.9.0.exe and the VST3 / Standalone zips. Unsigned.
+- This fulfils SignPath Foundation's "already released" condition (project doc CODE_SIGNING_PLAN).
+
 ## 2026-10-14 — Session 2r: PAN by keyboard, stereo output meter — Claude (Opus 5.5)
 
 - PAN value under each amp is an editable label: click, type L30 / R20 / C (or -30 / 20 / 0), Enter.
