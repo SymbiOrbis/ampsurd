@@ -30,3 +30,5 @@ blocking it.
 
 Licence: GNU AGPLv3 (`LICENSE.md`). Third-party components: `THIRD_PARTY.md`. The AMPSURD name,
 the footer logos and capture packs are not covered by the code licence.
+
+Author: Radovan Glovňa

@@ -3531,14 +3531,15 @@ void HeaderBar::showSettings()
         if (r == 3)
             juce::AlertWindow::showMessageBoxAsync(
                 juce::MessageBoxIconType::NoIcon, "AMPSURD " JucePlugin_VersionString,
-                "Five NAM captures, blended into one guitar sound.\n\n"
+                juce::String("Five NAM captures, blended into one guitar sound.\n\n"
                 "Free software under the GNU AGPLv3.\n"
                 "Uses NeuralAmpModelerCore (MIT), JUCE (AGPLv3), the VST3 SDK (MIT), Eigen (MPL-2.0) "
                 "and the Inter typeface (SIL OFL 1.1).\n\n"
                 "Level match: every capture is measured by AMPSURD and played at the same perceived loudness.\n"
                 "Calibrate input: captures that store their recording input level (dBu) are driven exactly as "
                 "recorded - set your interface's input level (the dBu that gives 0 dBFS) once.\n"
-                "Mix: percentages are kept at a constant overall loudness.");
+                "Mix: percentages are kept at a constant overall loudness.\n\n")
+                    + juce::String::fromUTF8("Author: Radovan Glov\xc5\x88" "a"));
     });
 }
 
