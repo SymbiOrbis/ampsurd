@@ -222,6 +222,10 @@ REAPER picks up the new version.
 34. PAN by keyboard: click the PAN value of an amp (C / L40 / R35), type e.g. L30, R20 or C, Enter.
     OUTPUT meter: two bars, L above R - pan one amp hard left: the L bar is higher.
 
+35. Metronome (standalone, PLAYER / REC): CLICK on - it clicks also while stopped. Set the tempo (type it or
+    TAP at least twice), 4/4 / 3/4 / 6/8, VOL. COUNT-IN 1 BAR + REC from STOP: one bar of clicks, then the
+    recording starts. Save the recording: the click must not be in it.
+
 Expected latency shown by REAPER: 104 samples at 48 kHz, 123 at 44.1 kHz.
 
 Optional measurements (in Developer PowerShell):

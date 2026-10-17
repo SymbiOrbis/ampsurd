@@ -82,6 +82,13 @@ preset whose files moved is found again by file name (next to the preset, then i
 - Presets switch without reloading captures / IRs that stay the same (fast between rigs that share captures).
 - Undo / redo of all settings (50 steps, Ctrl+Z / Ctrl+Y, header buttons), A/B compare with copy.
 
+## 3k. Metronome in the recorder — IMPLEMENTED 2026-10-17, awaiting test
+
+## 3l. Preset banks for MIDI pedals — PROPOSED 2026-10-17 (waiting for the owner's pedal details)
+Bank = sub-folder of the preset folder; footswitch actions Bank up / down and Preset 1..N of the bank;
+standard Bank Select (CC 0 / 32) + Program Change; banks as groups in the preset menu; header shows
+"Bank 2 - Preset 3".
+
 ## 3j. Bundled cabinet IRs — ON HOLD (owner decision 2026-10-14)
 No IRs ship with AMPSURD until an author gives explicit written consent to redistribution (Jester
 Dyne's packs: pages say "free even for commercial use", no redistribution wording; the site was

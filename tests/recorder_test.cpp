@@ -385,6 +385,54 @@ int main()
         ed.reset();
     }
 
+    // 9. metronome: on the beat grid, accented first beat, heard but never recorded; count-in before REC
+    {
+        pl->stop();
+        pl->clearTake();
+        pl->removeBacking();
+        pl->renderNow();
+        waitIdle();
+        pl->toStart();
+        pl->setMetronome(true, 120.0, 4, false, -6.0f, 0);
+        run(0.3, nullptr);
+        pl->play();
+        const auto o = run(2.2, nullptr);
+        pl->stop();
+        // clicks every 0.5 s at song positions 0, 24000, 48000 ... (+ limiter latency); beat 1 louder
+        std::vector<int> onsets;
+        std::vector<float> levels;
+        for (int i = 0; i < o.getNumSamples(); ++i)
+            if (std::abs(o.getSample(0, i)) > 0.003f && (onsets.empty() || i - onsets.back() > 4000))
+            {
+                onsets.push_back(i);
+                levels.push_back(o.getMagnitude(0, i, std::min(1200, o.getNumSamples() - i)));
+            }
+        bool grid = onsets.size() >= 4;
+        for (size_t k = 1; k < onsets.size(); ++k) grid = grid && std::abs(onsets[k] - onsets[k - 1] - 24000) <= 1;
+        const bool accent = levels.size() >= 4 && levels[0] > levels[1] * 1.4f && levels[1] > 0.02f;
+        check(grid && accent, "METRONOME: 120 BPM -> a click every 0.5 s (" + juce::String((int) onsets.size()) + " clicks), the bar's first beat accented");
+
+        // count-in 1 bar (2 s at 120 BPM, 4/4), then recording; the take must contain no click
+        pl->setMetronome(true, 120.0, 4, false, -6.0f, 1);
+        pl->toStart();
+        pl->record();
+        const auto during = run(1.0, nullptr);
+        const bool counting = pl->isCountingIn() && pl->getPositionSeconds() == 0.0 && during.getMagnitude(0, 0, during.getNumSamples()) > 0.02f;
+        run(1.2, nullptr);
+        const bool started = !pl->isCountingIn() && pl->getPositionSeconds() > 0.1;
+        run(1.5, nullptr);
+        pl->stop();
+        pl->renderNow();
+        waitIdle();
+        juce::AudioBuffer<float> take;
+        int off = 0;
+        pl->renderMix(false, take, off);
+        const float takePeak = take.getNumSamples() > 0 ? take.getMagnitude(0, take.getNumSamples()) : 1.0f;
+        check(counting && started && pl->hasTake() && takePeak < 1e-4f,
+              "METRONOME: count-in plays 1 bar before recording starts; the recording contains no click (peak " + juce::String(takePeak, 6) + ")");
+        pl->setMetronome(false, 120.0, 4, false, -6.0f, 0);
+    }
+
     proc.reset();
     tmp.deleteRecursively();
     std::cout << (failures == 0 ? "\nALL PASS\n" : "\n" + juce::String(failures) + " FAILURE(S)\n");

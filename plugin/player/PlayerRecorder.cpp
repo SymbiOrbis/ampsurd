@@ -218,6 +218,16 @@ void PlayerRecorder::process(double* L, double* R, int n, int ampsurdLatency, bo
     const auto st = (State) state.load(std::memory_order_acquire);
     const bool running = st == State::playing || st == State::recording;
 
+    // count-in (REC from STOP): only clicks; the song does not move and nothing is recorded yet
+    if (running && countInLeft.load(std::memory_order_relaxed) > 0)
+    {
+        const juce::int64 left = countInLeft.load(std::memory_order_relaxed);
+        addClicks(L, R, n, (double) (countInEnd - left), 2);
+        countInLeft.store(std::max<juce::int64>(0, left - n), std::memory_order_relaxed);
+        limiter.process(L, R, n);
+        return;
+    }
+
     if (running)
     {
         const juce::int64 pos = songPos.load(std::memory_order_relaxed);
@@ -305,12 +315,82 @@ void PlayerRecorder::process(double* L, double* R, int n, int ampsurdLatency, bo
                 if (pk > takePeak.load(std::memory_order_relaxed)) takePeak.store(pk, std::memory_order_relaxed);
             }
         }
+        // 4. metronome (after the guitar was recorded: heard, never in the recording)
+        if (clickOn.load(std::memory_order_relaxed)) addClicks(L, R, n, (double) pos, 1);
         juce::int64 expected = pos; // only advance if the message thread did not move the position meanwhile
         songPos.compare_exchange_strong(expected, pos + n, std::memory_order_relaxed);
     }
+    else if (st == State::stopped && clickOn.load(std::memory_order_relaxed))
+    {
+        addClicks(L, R, n, (double) freeClickPos, 0); // practising without the transport
+        freeClickPos += n;
+    }
+    else
+    {
+        currentBeat.store(-1, std::memory_order_relaxed);
+        clickSource = -1;
+    }
 
-    // 4. the sum never clips (always in the path, so the latency is constant)
+    // 5. the sum never clips (always in the path, so the latency is constant)
     limiter.process(L, R, n);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Metronome
+// ---------------------------------------------------------------------------------------------
+void PlayerRecorder::setMetronome(bool on, double bpm, int beatsPerBar, bool compound, float volumeDb, int bars)
+{
+    if (on && !clickOn.load()) { freeClickPos = 0; lastBeatIndex = std::numeric_limits<juce::int64>::min(); }
+    clickBpm.store(juce::jlimit(20.0, 400.0, bpm));
+    clickBeats.store(juce::jlimit(1, 16, beatsPerBar));
+    clickCompound.store(compound);
+    clickVolDb.store(volumeDb);
+    countInBars.store(juce::jlimit(0, 4, bars));
+    clickOn.store(on);
+}
+
+int PlayerRecorder::getCountInBeatsLeft() const
+{
+    const auto left = countInLeft.load();
+    if (left <= 0) return 0;
+    const double spb = sampleRate * 60.0 / clickBpm.load();
+    return (int) std::ceil((double) left / spb - 1e-9);
+}
+
+void PlayerRecorder::addClicks(double* L, double* R, int n, double s0, int source) noexcept
+{
+    if (source != clickSource) { clickSource = source; lastBeatIndex = std::numeric_limits<juce::int64>::min(); }
+    const double spb = sampleRate * 60.0 / clickBpm.load(std::memory_order_relaxed);
+    const int beats = clickBeats.load(std::memory_order_relaxed);
+    const bool compound = clickCompound.load(std::memory_order_relaxed);
+    const double vol = 0.5 * juce::Decibels::decibelsToGain((double) clickVolDb.load(std::memory_order_relaxed), -100.0);
+    const int clickLen = (int) (0.045 * sampleRate);
+    const double decay = std::exp(-1.0 / (0.009 * sampleRate)), attack = 1.0 / std::max(1.0, 0.001 * sampleRate);
+    for (int i = 0; i < n; ++i)
+    {
+        const double sPos = s0 + i;
+        const auto beat = (juce::int64) std::floor(sPos / spb + 1e-9);
+        if (beat != lastBeatIndex)
+        {
+            const bool onTheBeat = sPos - (double) beat * spb < 1.0 + 1e-6; // not after a jump into the middle of a beat
+            lastBeatIndex = beat;
+            if (!onTheBeat) continue;
+            const int inBar = (int) (((beat % beats) + beats) % beats);
+            const bool accent = inBar == 0, second = compound && beats == 6 && inBar == 3;
+            clickFreq = accent ? 1600.0 : second ? 1250.0 : 1000.0;
+            clickAmp = vol * (accent ? 1.0 : second ? 0.8 : 0.6);
+            clickPos = 0;
+            currentBeat.store(inBar, std::memory_order_relaxed);
+        }
+        if (clickPos >= 0)
+        {
+            const double env = clickAmp * std::min(1.0, clickPos * attack) * std::pow(decay, (double) clickPos);
+            const double v = env * std::sin(2.0 * juce::MathConstants<double>::pi * clickFreq * clickPos / sampleRate);
+            L[i] += v;
+            R[i] += v;
+            if (++clickPos >= clickLen) clickPos = -1;
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -456,6 +536,7 @@ void PlayerRecorder::pause()
 
 void PlayerRecorder::stop()
 {
+    countInLeft.store(0);
     closePunch();
     state.store((int) State::stopped, std::memory_order_release);
     endPass();
@@ -513,9 +594,16 @@ void PlayerRecorder::record()
             playStartPos = songPos.load();
             positionTransports(songPos.load());
             startPass();
+            if (countInBars.load() > 0) // the count-in ends exactly on the beat grid at the start position
+            {
+                const double spb = sampleRate * 60.0 / clickBpm.load();
+                countInEnd = songPos.load();
+                lastBeatIndex = std::numeric_limits<juce::int64>::min();
+                countInLeft.store((juce::int64) std::llround(spb * clickBeats.load() * countInBars.load()));
+            }
             break;
     }
-    if (!passActive.load()) return;
+    if (!passActive.load()) { countInLeft.store(0); return; }
     const bool firstTake = clips.empty() && !takeReady.load();
     punchIn = firstTake ? -1 : std::max<juce::int64>(0, songPos.load() - compensationSamples());
     muteTakeFrom.store(songPos.load());

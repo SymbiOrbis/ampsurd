@@ -1955,6 +1955,84 @@ PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), pla
     contentBox.addItem("GUITAR ONLY", 2);
     contentBox.setSelectedId(1, juce::dontSendNotification);
     for (auto* c : { &formatBox, &rateBox, &contentBox }) addAndMakeVisible(*c);
+
+    // ---- metronome (settings of this computer; the tempo is AMPSURD's TEMPO, also used by delay SYNC)
+    juce::PropertiesFile::Options po;
+    po.applicationName = "AMPSURD"; po.filenameSuffix = ".settings"; po.osxLibrarySubFolder = "Application Support";
+    juce::PropertiesFile pf(po);
+    for (auto* c : { (juce::Component*) &clickButton, (juce::Component*) &tapButton, (juce::Component*) &bpmSlider,
+                     (juce::Component*) &clickVol, (juce::Component*) &meterBox, (juce::Component*) &countInBox })
+        addAndMakeVisible(*c);
+    clickButton.setClickingTogglesState(true);
+    clickButton.setToggleState(pf.getBoolValue("clickOn", false), juce::dontSendNotification);
+    clickButton.setWantsKeyboardFocus(false);
+    tapButton.setWantsKeyboardFocus(false);
+    clickButton.setTooltip("Metronome on / off. Heard, but never recorded. Runs also while stopped (to practise)");
+    tapButton.setTooltip("Tap the tempo: click TAP in time, at least twice");
+    bpmSlider.setSliderStyle(juce::Slider::LinearHorizontal);
+    bpmSlider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 64, 20);
+    bpmSlider.setTextBoxIsEditable(true);
+    bpmAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.params, "tempo", bpmSlider);
+    bpmSlider.textFromValueFunction = [](double v) { return juce::String(v, 1) + " BPM"; };
+    bpmSlider.valueFromTextFunction = [](const juce::String& t) { return t.retainCharacters("0123456789.").getDoubleValue(); };
+    bpmSlider.updateText();
+    bpmSlider.setTooltip("Tempo (also the tempo of the delays in SYNC). Click the value to type it");
+    clickVol.setSliderStyle(juce::Slider::LinearHorizontal);
+    clickVol.setTextBoxStyle(juce::Slider::TextBoxRight, false, 56, 20);
+    clickVol.setRange(-40.0, 0.0, 0.5);
+    clickVol.setValue(pf.getDoubleValue("clickVol", -12.0), juce::dontSendNotification);
+    clickVol.setTextValueSuffix(" dB");
+    clickVol.setDoubleClickReturnValue(true, -12.0);
+    const juce::StringArray meters { "2/4", "3/4", "4/4", "5/4", "6/8", "7/8" };
+    meterBox.addItemList(meters, 1);
+    meterBox.setSelectedItemIndex(juce::jlimit(0, meters.size() - 1, pf.getIntValue("clickMeter", 2)), juce::dontSendNotification);
+    meterBox.setTooltip("Time signature (the first beat of each bar is accented)");
+    countInBox.addItem("NO COUNT-IN", 1);
+    countInBox.addItem("COUNT-IN 1 BAR", 2);
+    countInBox.addItem("COUNT-IN 2 BARS", 3);
+    countInBox.setSelectedId(juce::jlimit(1, 3, pf.getIntValue("clickCountIn", 1)), juce::dontSendNotification);
+    countInBox.setTooltip("REC from STOP first plays 1 or 2 bars of clicks, then recording starts");
+    auto changed = [this] {
+        applyMetronome();
+        juce::PropertiesFile::Options o;
+        o.applicationName = "AMPSURD"; o.filenameSuffix = ".settings"; o.osxLibrarySubFolder = "Application Support";
+        juce::PropertiesFile f(o);
+        f.setValue("clickOn", clickButton.getToggleState());
+        f.setValue("clickVol", clickVol.getValue());
+        f.setValue("clickMeter", meterBox.getSelectedItemIndex());
+        f.setValue("clickCountIn", countInBox.getSelectedId());
+        f.saveIfNeeded();
+    };
+    clickButton.onClick = changed;
+    clickVol.onValueChange = changed;
+    meterBox.onChange = changed;
+    countInBox.onChange = changed;
+    bpmSlider.onValueChange = [this] { applyMetronome(); };
+    tapButton.onClick = [this] {
+        const double now = juce::Time::getMillisecondCounterHiRes();
+        if (!taps.empty() && now - taps.back() > 2000.0) taps.clear(); // a pause starts a new tapping
+        taps.push_back(now);
+        if (taps.size() > 8) taps.erase(taps.begin());
+        if (taps.size() >= 2)
+        {
+            const double avg = (taps.back() - taps.front()) / (double) (taps.size() - 1);
+            if (auto* prm = proc.params.getParameter("tempo"))
+            {
+                prm->beginChangeGesture();
+                prm->setValueNotifyingHost(prm->convertTo0to1((float) juce::jlimit(40.0, 240.0, 60000.0 / avg)));
+                prm->endChangeGesture();
+            }
+        }
+    };
+    applyMetronome();
+}
+
+void PlayerPanel::applyMetronome()
+{
+    static constexpr int beats[] = { 2, 3, 4, 5, 6, 7 };
+    const int m = juce::jlimit(0, 5, meterBox.getSelectedItemIndex());
+    player.setMetronome(clickButton.getToggleState(), bpmSlider.getValue(), beats[m], m == 4, (float) clickVol.getValue(),
+                        countInBox.getSelectedId() - 1);
 }
 
 void PlayerPanel::resized()
@@ -1986,6 +2064,8 @@ void PlayerPanel::resized()
     auto save = r.removeFromBottom(26);
     r.removeFromBottom(6);
     auto mix = r.removeFromBottom(26);
+    r.removeFromBottom(6);
+    auto click = r.removeFromBottom(26);
     r.removeFromBottom(8);
     r.removeFromTop(6);
     timeline.setBounds(r);
@@ -2004,6 +2084,23 @@ void PlayerPanel::resized()
         takeMeter = row.removeFromLeft(60).withSizeKeepingCentre(60, 8);
         row.removeFromLeft(24);
         offset.setBounds(row.removeFromLeft(220).withTrimmedLeft(52));
+    }
+    // row: metronome
+    {
+        auto row = click;
+        clickButton.setBounds(row.removeFromLeft(70));
+        row.removeFromLeft(10);
+        bpmSlider.setBounds(row.removeFromLeft(220));
+        row.removeFromLeft(6);
+        tapButton.setBounds(row.removeFromLeft(52));
+        row.removeFromLeft(10);
+        meterBox.setBounds(row.removeFromLeft(74));
+        row.removeFromLeft(14);
+        clickVol.setBounds(row.removeFromLeft(190).withTrimmedLeft(34));
+        row.removeFromLeft(14);
+        countInBox.setBounds(row.removeFromLeft(160));
+        row.removeFromLeft(14);
+        beatArea = row.removeFromLeft(140);
     }
     // row: save
     {
@@ -2032,7 +2129,7 @@ void PlayerPanel::paint(juce::Graphics& g)
 
     using S = PlayerRecorder::State;
     const auto st = player.getState();
-    const juce::String stateText = st == S::playing ? "PLAYING" : st == S::recording ? "RECORDING" : st == S::pausedPlay ? "PAUSED"
+    const juce::String stateText = player.isCountingIn() ? "COUNT-IN" : st == S::playing ? "PLAYING" : st == S::recording ? "RECORDING" : st == S::pausedPlay ? "PAUSED"
                                  : st == S::pausedRec ? "RECORDING PAUSED" : "STOPPED";
     g.setColour(text);
     g.setFont(Fonts::get().semibold(17.0f));
@@ -2051,6 +2148,28 @@ void PlayerPanel::paint(juce::Graphics& g)
     g.drawText("VOL", backVol.getBounds().withX(backVol.getX() - 34).withWidth(30), juce::Justification::centredLeft, false);
     g.drawText("GUITAR VOL", takeVol.getBounds().withX(takeVol.getX() - 74).withWidth(72), juce::Justification::centredLeft, false);
     g.drawText("OFFSET", offset.getBounds().withX(offset.getX() - 52).withWidth(50), juce::Justification::centredLeft, false);
+    g.drawText("VOL", clickVol.getBounds().withX(clickVol.getX() - 34).withWidth(30), juce::Justification::centredLeft, false);
+
+    // metronome: one dot per beat, the current beat lit (accent = first dot); count-in shows the beats left
+    {
+        static constexpr int beatsOf[] = { 2, 3, 4, 5, 6, 7 };
+        const int beats = beatsOf[juce::jlimit(0, 5, meterBox.getSelectedItemIndex())];
+        const int cur = player.getCurrentBeat();
+        const bool active = clickButton.getToggleState() || player.isCountingIn();
+        auto a = beatArea.toFloat();
+        const float d = 9.0f, gap = 6.0f;
+        for (int b = 0; b < beats; ++b)
+        {
+            const juce::Rectangle<float> dot(a.getX() + (float) b * (d + gap), a.getCentreY() - d * 0.5f, d, d);
+            const bool lit = active && b == cur;
+            g.setColour(lit ? (b == 0 ? accent : text) : line);
+            if (lit) g.fillEllipse(dot); else g.drawEllipse(dot, 1.2f);
+        }
+        if (player.isCountingIn())
+            drawLabel(g, "COUNT-IN " + juce::String(player.getCountInBeatsLeft()),
+                      juce::Rectangle<int>(beatArea.getX() + (int) ((d + gap) * beats) + 4, beatArea.getY(), 90, beatArea.getHeight()),
+                      accent, juce::Justification::centredLeft, 10.5f);
+    }
 
     auto meter = [&](juce::Rectangle<int> m, float lvl) {
         g.setColour(line);

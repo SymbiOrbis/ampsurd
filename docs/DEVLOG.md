@@ -6,6 +6,20 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-17 — Session 2v: metronome in the player / recorder — Claude (Opus 5.5)
+
+- PlayerRecorder: metronome added after the guitar is written to disk (heard, never recorded), before the
+  sum limiter. Grid from the song start (bar 1 = 0:00) while playing / recording, free running while
+  stopped (practice), silent while paused. Accented first beat (1.6 kHz), 6/8 secondary accent on 4,
+  45 ms sine clicks. Count-in (0 / 1 / 2 bars) for REC from STOP: the song waits, nothing is recorded,
+  the count-in ends on the beat grid at the start position. A jump into the middle of a beat does not click.
+- PlayerPanel row: CLICK, tempo (AMPSURD's TEMPO parameter, shared with delay SYNC; type or TAP), 2/4 ... 7/8,
+  VOL, COUNT-IN, beat dots (+ "COUNT-IN n"). Click settings stored per computer.
+- recorder_test: METRONOME grid + accent (a click every 24000 samples at 120 BPM), count-in 1 bar then
+  recording, recorded take contains no click (peak 0). All tests pass.
+- MIDI banks proposed to the owner (folders as banks, bank up / down, preset 1-5 in bank, Bank Select);
+  waiting for the owner's pedal details before implementing.
+
 ## 2026-10-14 — Session 2u: undo / redo as arrow icons — Claude (Opus 5.5)
 
 - Owner: in the standalone app PLAYER / REC overlapped UNDO. UNDO / REDO are now curved-arrow icon buttons

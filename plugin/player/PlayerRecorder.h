@@ -137,6 +137,17 @@ public:
     // for tests: render what an export would contain, at the session rate (no file)
     juce::String renderMix(bool withBacking, juce::AudioBuffer<float>& out, int& startOffset);
 
+    // ---- Metronome (heard, never recorded: added after the guitar is written to disk) ----
+    // ON: clicks while stopped (free running), playing and recording; the grid starts at the song's
+    // start (bar 1, beat 1 = 0:00). Count-in: REC from STOP first plays 1 or 2 bars of clicks.
+    // Message thread (any time); the audio thread reads atomics.
+    void setMetronome(bool on, double bpm, int beatsPerBar, bool compound, float volumeDb, int countInBars);
+    bool isCountingIn() const { return countInLeft.load(std::memory_order_relaxed) > 0; }
+    int getCountInBeatsLeft() const;
+    int getCurrentBeat() const { return currentBeat.load(std::memory_order_relaxed); } // 0-based in the bar, -1 = silent
+    // Audio thread helper (public for tests): adds clicks for samples [s0, s0 + n) of the beat grid.
+    void addClicks(double* L, double* R, int n, double s0, int source) noexcept; // source: 0 free, 1 song, 2 count-in
+
 private:
     void startPass();
     void endPass();                     // closes the pass file and adds its punched parts as clips
@@ -207,6 +218,16 @@ private:
     std::atomic<float> offsetMs { 0.0f }, backingGainDb { 0.0f }, takeGainDb { 0.0f };
     std::atomic<float> backingPeak { 0.0f }, takePeak { 0.0f };
     double gB = 1.0, gT = 1.0;
+    // metronome
+    std::atomic<bool> clickOn { false }, clickCompound { false };
+    std::atomic<double> clickBpm { 120.0 };
+    std::atomic<int> clickBeats { 4 }, countInBars { 0 }, currentBeat { -1 };
+    std::atomic<float> clickVolDb { -12.0f };
+    std::atomic<juce::int64> countInLeft { 0 };
+    juce::int64 countInEnd = 0, freeClickPos = 0, lastBeatIndex = std::numeric_limits<juce::int64>::min();
+    int clickPos = -1;            // samples since the current click started (-1: none)
+    int clickSource = -1;         // which grid the last clicks came from (a change restarts the grid)
+    double clickFreq = 1000.0, clickAmp = 0.0;
 
     double sampleRate = 48000.0;
     int maxBlock = 512;

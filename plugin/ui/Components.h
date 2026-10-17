@@ -552,6 +552,14 @@ private:
                      closeButton { "CLOSE" };
     juce::Slider backVol, takeVol, offset;
     juce::ComboBox formatBox, rateBox, contentBox;
+    // metronome row: CLICK, tempo (shared with delay SYNC), TAP, time signature, volume, count-in
+    void applyMetronome();
+    juce::TextButton clickButton { "CLICK" }, tapButton { "TAP" };
+    juce::Slider bpmSlider, clickVol;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> bpmAtt;
+    juce::ComboBox meterBox, countInBox;
+    std::vector<double> taps;
+    juce::Rectangle<int> beatArea;
     std::unique_ptr<juce::FileChooser> chooser;
     juce::String status;
     double clearArmedAt = -1.0;
