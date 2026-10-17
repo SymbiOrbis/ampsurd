@@ -1983,10 +1983,10 @@ PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), pla
     clickVol.setValue(pf.getDoubleValue("clickVol", -12.0), juce::dontSendNotification);
     clickVol.setTextValueSuffix(" dB");
     clickVol.setDoubleClickReturnValue(true, -12.0);
-    const juce::StringArray meters { "2/4", "3/4", "4/4", "5/4", "6/8", "7/8" };
+    const juce::StringArray meters { "2/4", "3/4", "4/4", "5/4", "6/8", "7/8", "EVEN" };
     meterBox.addItemList(meters, 1);
     meterBox.setSelectedItemIndex(juce::jlimit(0, meters.size() - 1, pf.getIntValue("clickMeter", 2)), juce::dontSendNotification);
-    meterBox.setTooltip("Time signature (the first beat of each bar is accented)");
+    meterBox.setTooltip("Time signature (the first beat of each bar is accented). EVEN: every click sounds the same");
     countInBox.addItem("NO COUNT-IN", 1);
     countInBox.addItem("COUNT-IN 1 BAR", 2);
     countInBox.addItem("COUNT-IN 2 BARS", 3);
@@ -2029,8 +2029,8 @@ PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), pla
 
 void PlayerPanel::applyMetronome()
 {
-    static constexpr int beats[] = { 2, 3, 4, 5, 6, 7 };
-    const int m = juce::jlimit(0, 5, meterBox.getSelectedItemIndex());
+    static constexpr int beats[] = { 2, 3, 4, 5, 6, 7, 1 };
+    const int m = juce::jlimit(0, 6, meterBox.getSelectedItemIndex());
     player.setMetronome(clickButton.getToggleState(), bpmSlider.getValue(), beats[m], m == 4, (float) clickVol.getValue(),
                         countInBox.getSelectedId() - 1);
 }
@@ -2152,8 +2152,8 @@ void PlayerPanel::paint(juce::Graphics& g)
 
     // metronome: one dot per beat, the current beat lit (accent = first dot); count-in shows the beats left
     {
-        static constexpr int beatsOf[] = { 2, 3, 4, 5, 6, 7 };
-        const int beats = beatsOf[juce::jlimit(0, 5, meterBox.getSelectedItemIndex())];
+        static constexpr int beatsOf[] = { 2, 3, 4, 5, 6, 7, 1 };
+        const int beats = beatsOf[juce::jlimit(0, 6, meterBox.getSelectedItemIndex())];
         const int cur = player.getCurrentBeat();
         const bool active = clickButton.getToggleState() || player.isCountingIn();
         auto a = beatArea.toFloat();
@@ -2162,7 +2162,7 @@ void PlayerPanel::paint(juce::Graphics& g)
         {
             const juce::Rectangle<float> dot(a.getX() + (float) b * (d + gap), a.getCentreY() - d * 0.5f, d, d);
             const bool lit = active && b == cur;
-            g.setColour(lit ? (b == 0 ? accent : text) : line);
+            g.setColour(lit ? (b == 0 && beats > 1 ? accent : text) : line);
             if (lit) g.fillEllipse(dot); else g.drawEllipse(dot, 1.2f);
         }
         if (player.isCountingIn())

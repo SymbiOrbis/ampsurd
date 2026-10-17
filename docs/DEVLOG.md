@@ -17,6 +17,7 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
   VOL, COUNT-IN, beat dots (+ "COUNT-IN n"). Click settings stored per computer.
 - recorder_test: METRONOME grid + accent (a click every 24000 samples at 120 BPM), count-in 1 bar then
   recording, recorded take contains no click (peak 0). All tests pass.
+- EVEN (owner): every click the same sound (no accent); a count-in bar is then 4 clicks.
 - MIDI banks proposed to the owner (folders as banks, bank up / down, preset 1-5 in bank, Bank Select);
   waiting for the owner's pedal details before implementing.
 

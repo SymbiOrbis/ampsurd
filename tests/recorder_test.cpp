@@ -412,6 +412,21 @@ int main()
         const bool accent = levels.size() >= 4 && levels[0] > levels[1] * 1.4f && levels[1] > 0.02f;
         check(grid && accent, "METRONOME: 120 BPM -> a click every 0.5 s (" + juce::String((int) onsets.size()) + " clicks), the bar's first beat accented");
 
+        // EVEN (1 beat per bar): every click the same
+        pl->setMetronome(true, 120.0, 1, false, -6.0f, 0);
+        pl->toStart();
+        run(0.1, nullptr);
+        pl->play();
+        const auto e = run(2.2, nullptr);
+        pl->stop();
+        std::vector<float> lv;
+        int last = -100000;
+        for (int i = 0; i < e.getNumSamples(); ++i)
+            if (std::abs(e.getSample(0, i)) > 0.003f && i - last > 4000) { last = i; lv.push_back(e.getMagnitude(0, i, std::min(1200, e.getNumSamples() - i))); }
+        bool even = lv.size() >= 4;
+        for (float v : lv) even = even && std::abs(v - lv[0]) < 0.01f * lv[0] + 1e-4f;
+        check(even, "METRONOME: EVEN -> all " + juce::String((int) lv.size()) + " clicks sound the same");
+
         // count-in 1 bar (2 s at 120 BPM, 4/4), then recording; the take must contain no click
         pl->setMetronome(true, 120.0, 4, false, -6.0f, 1);
         pl->toStart();

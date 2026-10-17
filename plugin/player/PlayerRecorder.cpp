@@ -376,7 +376,7 @@ void PlayerRecorder::addClicks(double* L, double* R, int n, double s0, int sourc
             lastBeatIndex = beat;
             if (!onTheBeat) continue;
             const int inBar = (int) (((beat % beats) + beats) % beats);
-            const bool accent = inBar == 0, second = compound && beats == 6 && inBar == 3;
+            const bool accent = inBar == 0 && beats > 1, second = compound && beats == 6 && inBar == 3; // 1 beat = all clicks alike
             clickFreq = accent ? 1600.0 : second ? 1250.0 : 1000.0;
             clickAmp = vol * (accent ? 1.0 : second ? 0.8 : 0.6);
             clickPos = 0;
@@ -599,7 +599,8 @@ void PlayerRecorder::record()
                 const double spb = sampleRate * 60.0 / clickBpm.load();
                 countInEnd = songPos.load();
                 lastBeatIndex = std::numeric_limits<juce::int64>::min();
-                countInLeft.store((juce::int64) std::llround(spb * clickBeats.load() * countInBars.load()));
+                const int perBar = clickBeats.load() > 1 ? clickBeats.load() : 4; // EVEN: a count-in bar = 4 clicks
+                countInLeft.store((juce::int64) std::llround(spb * perBar * countInBars.load()));
             }
             break;
     }
