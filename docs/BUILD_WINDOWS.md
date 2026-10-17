@@ -224,7 +224,10 @@ REAPER picks up the new version.
 
 35. Metronome (standalone, PLAYER / REC): CLICK on - it clicks also while stopped. Set the tempo (type it or
     TAP at least twice), 4/4 / 3/4 / 6/8, VOL. COUNT-IN 1 BAR + REC from STOP: one bar of clicks, then the
-    recording starts. Save the recording: the click must not be in it.
+    recording starts. Save the recording: the click must not be in it. EVEN = every click the same.
+
+36. Move an amp: grab it by its name and drag it onto another slot - the two amps swap places (capture,
+    IR, EQ, pan, levels, mute ...). Frankenstein keeps each amp's section. Ctrl+Z undoes the move.
 
 Expected latency shown by REAPER: 104 samples at 48 kHz, 123 at 44.1 kHz.
 

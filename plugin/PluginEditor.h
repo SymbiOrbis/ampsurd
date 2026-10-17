@@ -11,7 +11,7 @@
 
 // AMPSURD main window: header / five fixed amp slots / edit area / master / branding footer.
 // Laid out at a fixed logical size (kWidth x kHeight) and scaled as a whole when resized.
-class AmpsurdEditor final : public juce::AudioProcessorEditor, private juce::Timer
+class AmpsurdEditor final : public juce::AudioProcessorEditor, public juce::DragAndDropContainer, private juce::Timer
 {
 public:
     static constexpr int kWidth = 1200, kHeight = 800;

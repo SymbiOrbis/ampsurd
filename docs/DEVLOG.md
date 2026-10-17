@@ -6,6 +6,16 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-17 — Session 2w: move amps between slots by mouse — Claude (Opus 5.5)
+
+- Drag an amp by its name / number onto another slot (JUCE drag and drop; the editor is the container,
+  slots are targets, highlighted while hovering). AmpsurdProcessor::swapSlots(a, b): swaps every s<a>_* /
+  s<b>_* parameter (incl. IR EQ s<n>_ir_*), the SLOT entries (capture, IR, muted share), remaps the
+  Frankenstein section amps, then restores through the normal restore (the two captures reload and are
+  re-measured, ~1-2 s; one undo step).
+- ui_snapshot MOVE: amp 1 -> slot 3 and back (capture, pan, mix share follow). The mouse gesture itself was
+  not driven by a test.
+
 ## 2026-10-17 — Session 2v: metronome in the player / recorder — Claude (Opus 5.5)
 
 - PlayerRecorder: metronome added after the guitar is written to disk (heard, never recorded), before the

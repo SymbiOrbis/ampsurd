@@ -472,7 +472,8 @@ void SlotComponent::refresh(bool isSelected, bool irEditorOpen)
     }
 
     juce::String tip = st.state == AmpsurdProcessor::SlotState::empty ? juce::String("Empty slot") : st.info;
-    if (st.state != AmpsurdProcessor::SlotState::empty) tip = st.path + "\n" + st.info.fromFirstOccurrenceOf("\n", false, false);
+    if (st.state != AmpsurdProcessor::SlotState::empty)
+        tip = st.path + "\n" + st.info.fromFirstOccurrenceOf("\n", false, false) + "\nDrag by the name to move this amp to another slot";
     if (tip != lastTooltip) { setTooltip(tip); lastTooltip = tip; }
 
     fader.repaint();
@@ -491,9 +492,33 @@ void SlotComponent::chooseFile()
                          });
 }
 
+void SlotComponent::mouseDrag(const juce::MouseEvent& e)
+{
+    if (e.mods.isPopupMenu() || e.getDistanceFromDragStart() < 10 || status.state == AmpsurdProcessor::SlotState::empty) return;
+    if (auto* c = juce::DragAndDropContainer::findParentDragContainerFor(this); c != nullptr && !c->isDragAndDropActive())
+    {
+        auto img = createComponentSnapshot(getLocalBounds()).rescaled(getWidth() / 2, getHeight() / 2);
+        img.multiplyAllAlphas(0.7f);
+        c->startDragging("ampsurdSlot:" + juce::String(slot), this, juce::ScaledImage(img), true);
+    }
+}
+
+bool SlotComponent::isInterestedInDragSource(const SourceDetails& d)
+{
+    const auto desc = d.description.toString();
+    return desc.startsWith("ampsurdSlot:") && desc.fromFirstOccurrenceOf(":", false, false).getIntValue() != slot;
+}
+
+void SlotComponent::itemDropped(const SourceDetails& d)
+{
+    dragHover = false;
+    repaint();
+    proc.swapSlots(d.description.toString().fromFirstOccurrenceOf(":", false, false).getIntValue(), slot);
+}
+
 void SlotComponent::mouseUp(const juce::MouseEvent& e)
 {
-    if (!e.mods.isPopupMenu()) return;
+    if (!e.mods.isPopupMenu() || e.mouseWasDraggedSinceMouseDown()) return;
     juce::PopupMenu m;
     m.addItem(1, "Load NAM...");
     m.addItem(2, "Remove NAM", status.state != AmpsurdProcessor::SlotState::empty);

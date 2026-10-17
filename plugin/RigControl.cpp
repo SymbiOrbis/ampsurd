@@ -127,6 +127,37 @@ void AmpsurdProcessor::copyAbToOther()
 }
 
 // =============================================================================================
+// Moving amps between slots
+// =============================================================================================
+void AmpsurdProcessor::swapSlots(int a, int b)
+{
+    if (a == b || a < 0 || b < 0 || a >= kNumSlots || b >= kNumSlots) return;
+    auto t = createStateTree();
+    const juce::String pa = "s" + juce::String(a + 1) + "_", pb = "s" + juce::String(b + 1) + "_";
+    for (auto child : t)
+    {
+        if (!child.hasType("PARAM")) continue;
+        const auto id = child.getProperty("id").toString();
+        if (id.startsWith(pa)) child.setProperty("id", pb + id.substring(pa.length()), nullptr);
+        else if (id.startsWith(pb)) child.setProperty("id", pa + id.substring(pb.length()), nullptr);
+        else if (id.startsWith("frankAmp")) // Frankenstein sections keep their amp
+        {
+            const int v = juce::roundToInt((double) child.getProperty("value"));
+            if (v == a) child.setProperty("value", b, nullptr);
+            else if (v == b) child.setProperty("value", a, nullptr);
+        }
+    }
+    if (auto slots = t.getChildWithName(kSlots); slots.isValid())
+        for (auto slot : slots)
+        {
+            const int idx = (int) slot.getProperty("index");
+            if (idx == a + 1) slot.setProperty("index", b + 1, nullptr);
+            else if (idx == b + 1) slot.setProperty("index", a + 1, nullptr);
+        }
+    restoreState(t, getCurrentPresetFile()); // one undo step, like any other change
+}
+
+// =============================================================================================
 // MIDI
 // =============================================================================================
 const std::vector<AmpsurdProcessor::MidiAction>& AmpsurdProcessor::midiActions()

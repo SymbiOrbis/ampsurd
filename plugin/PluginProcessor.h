@@ -213,6 +213,10 @@ public:
 
     juce::AudioProcessorValueTreeState params;
 
+    // --- move an amp to another slot by mouse (message thread): the two slots swap everything (capture, IR,
+    //     mix share, mute / solo, EQs, alignment, pan, levels, ECO); Frankenstein sections follow the amps ---
+    void swapSlots(int a, int b);
+
     // --- undo / redo of all settings, A/B compare (message thread) ---
     // A settled change (nothing moved for 0.4 s) becomes one undo step; captures / IRs that stay the same
     // are not reloaded. A and B are two complete rigs of this session (not saved in presets).

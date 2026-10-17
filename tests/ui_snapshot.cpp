@@ -426,6 +426,23 @@ int main(int argc, char** argv)
             std::cout << (kz && ky ? "[PASS]" : "[FAIL]") << " UNDO keys: Ctrl+Z undoes, Ctrl+Y redoes\n";
         }
 
+        {
+            // move amp 1 to slot 3 (swap): capture, pan and mix share travel with it
+            const auto n1 = p2.getSlotStatus(0).path, n3 = p2.getSlotStatus(2).path;
+            const float pan1 = val("s1_pan"), pan3 = val("s3_pan"), mix1 = val("s1_mix");
+            p2.swapSlots(0, 2);
+            for (int t = 0; t < 400 && (p2.getSlotStatus(0).state == AmpsurdProcessor::SlotState::loading
+                                       || p2.getSlotStatus(2).state == AmpsurdProcessor::SlotState::loading); ++t) pump(50);
+            const bool moved = p2.getSlotStatus(2).path == n1 && p2.getSlotStatus(0).path == n3 && val("s3_pan") == pan1
+                               && val("s1_pan") == pan3 && val("s3_mix") == mix1
+                               && p2.getSlotStatus(2).state == AmpsurdProcessor::SlotState::loaded;
+            p2.swapSlots(0, 2); // back
+            for (int t = 0; t < 400 && (p2.getSlotStatus(0).state == AmpsurdProcessor::SlotState::loading
+                                       || p2.getSlotStatus(2).state == AmpsurdProcessor::SlotState::loading); ++t) pump(50);
+            std::cout << (moved && p2.getSlotStatus(0).path == n1 ? "[PASS]" : "[FAIL]")
+                      << " MOVE: amp 1 dragged to slot 3 -> capture, pan and mix share moved with it (and back)\n";
+            settle();
+        }
         p2.selectAb(1);                // B = copy of A
         setP(p2, "output", 3.0f);      // change B
         p2.selectAb(0);

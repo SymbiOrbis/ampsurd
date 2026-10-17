@@ -53,6 +53,7 @@ private:
 // ---------------------------------------------------------------------------------------------
 class SlotComponent final : public juce::Component,
                             public juce::FileDragAndDropTarget,
+                            public juce::DragAndDropTarget,
                             public juce::SettableTooltipClient
 {
 public:
@@ -67,6 +68,13 @@ public:
     void fileDragEnter(const juce::StringArray&, int, int) override { dragHover = true; repaint(); }
     void fileDragExit(const juce::StringArray&) override { dragHover = false; repaint(); }
     void filesDropped(const juce::StringArray&, int, int) override;
+
+    // drag an amp onto another slot (grab it by its name / number): the two slots swap
+    void mouseDrag(const juce::MouseEvent&) override;
+    bool isInterestedInDragSource(const SourceDetails&) override;
+    void itemDragEnter(const SourceDetails&) override { dragHover = true; repaint(); }
+    void itemDragExit(const SourceDetails&) override { dragHover = false; repaint(); }
+    void itemDropped(const SourceDetails&) override;
 
     void refresh(bool isSelected, bool irEditorOpen = false);
     bool isSelected() const { return selected; } // the editor fills a selected slot (under the dragon)
