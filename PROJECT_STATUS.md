@@ -44,6 +44,8 @@ footswitches (program change, MIDI learn), preset packs, undo / redo, A/B, fast 
 (checklist 30-33). Bundled IRs on hold (no IRs without the author's explicit consent).
 **Public beta v0.9.0 released 2026-10-14** (GitHub pre-release, unsigned):
 https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.0
+**Public beta v0.9.1 released 2026-10-17** (metronome, move amps by drag and drop, PAN typing, L/R meter):
+https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.1
 
 ## Implemented and tested
 

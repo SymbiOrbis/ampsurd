@@ -6,6 +6,11 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-17 — Session 2x: public beta 0.9.1 — Claude (Opus 5.5)
+
+- Version 0.9.1 (CMake), release notes for 0.9.1 (not-signed warning and feedback paragraph stay first),
+  CODE_SIGNING: 0.9.x betas unsigned. Published with the build workflow's publish_release run.
+
 ## 2026-10-17 — Session 2w: move amps between slots by mouse — Claude (Opus 5.5)
 
 - Drag an amp by its name / number onto another slot (JUCE drag and drop; the editor is the container,

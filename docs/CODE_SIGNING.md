@@ -1,6 +1,6 @@
 # Code signing policy
 
-> **Current status: releases are NOT code-signed yet** (including the 0.9.0 public beta). Signing through
+> **Current status: releases are NOT code-signed yet** (including the 0.9.x public betas). Signing through
 > the SignPath Foundation is being applied for. This policy describes how releases will be signed once
 > it is granted.
 
@@ -31,7 +31,7 @@ Third-party components are compiled from source as part of the build (see `THIRD
 ## Verifying a download
 
 Signed releases (once signing is active): right-click the downloaded file -> Properties -> Digital
-Signatures: the signer must be **SignPath Foundation**. Releases up to and including 0.9.0 have no
+Signatures: the signer must be **SignPath Foundation**. Releases up to and including 0.9.1 have no
 signature. Windows SmartScreen may still warn about a new release for a while,
 until the file has built up a reputation.
 

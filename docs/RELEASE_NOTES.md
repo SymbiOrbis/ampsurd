@@ -14,22 +14,27 @@ If you like AMPSURD, a star on GitHub helps a lot: it's how a small
 open-source project qualifies for free code signing, so Windows stops
 blocking it.
 
-## AMPSURD 0.9.0 (beta)
+## AMPSURD 0.9.1 (beta)
 
-First public beta for Windows 10 / 11 (64-bit): **AMPSURD-Setup-0.9.0.exe** installs the VST3
-plugin and the standalone app (with player / recorder). Your presets and recordings
-(Documents\AMPSURD) stay untouched when you update or uninstall.
+Second public beta for Windows 10 / 11 (64-bit): **AMPSURD-Setup-0.9.1.exe** installs the VST3
+plugin and the standalone app (with player / recorder). Installing it over 0.9.0 is fine: your presets
+and recordings (Documents\AMPSURD) stay untouched when you update or uninstall.
+
+New in 0.9.1:
+- Metronome in the standalone player / recorder: tempo (type it or TAP), time signature (2/4 ... 7/8) or
+  EVEN (every click the same), volume, count-in of 1 or 2 bars before recording. The click is heard,
+  never recorded.
+- Move an amp to another slot by dragging it by its name (everything moves with it; Ctrl+Z undoes it).
+- PAN can be typed (click the value: L30, R20, C).
+- OUTPUT meter with separate left / right bars.
+- UNDO / REDO as arrow buttons (no longer overlapping PLAYER / REC); Ctrl+Z / Ctrl+Y.
+- Author shown in About.
 
 Highlights: up to five NAM captures blended (any NAM architecture), Create Frankenstein (TONE / NOTES),
-per-amp EQ / PAN / cabinet IR with IR EQ, Global EQ, gate + tuner, delays / reverb / flanger /
-PITCH (re-tuning), input calibration, ECO (A2 Lite), safety limiter (never above -1 dBFS),
-standalone player / recorder with punch-in corrections and crossfaded edits, presets.
-
-New since the first test builds: per-amp INPUT (loudness kept automatically) and OUTPUT in EDIT,
-MUTE moves the fader to 0 % and back, a gentler gate, A2 captures load as Lite (ECO) by default like
-in TONE3000 (settings menu), BUY AMPSURD AMP PACKS link, MIDI footswitches (program change, MIDI
-learn), preset packs (.ampsurdpack with captures and IRs), undo / redo and A/B compare, PAN typed by keyboard,
-left / right output meter, metronome with tap tempo and count-in (standalone recorder), amps moved
-between slots by drag and drop.
+per-amp EQ / PAN / cabinet IR with IR EQ, per-amp INPUT (loudness kept automatically) and OUTPUT,
+Global EQ, gate + tuner, delays / reverb / flanger / PITCH (re-tuning), input calibration, ECO (A2 Lite,
+the default like in TONE3000), MIDI footswitches (program change, MIDI learn), preset packs
+(.ampsurdpack), undo / redo, A/B compare, safety limiter (never above -1 dBFS), standalone player /
+recorder with punch-in corrections and crossfaded edits, presets.
 
 Portable zips (no installer) are attached as well.
