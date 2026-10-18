@@ -29,6 +29,7 @@ New in 0.9.1:
 - OUTPUT meter with separate left / right bars.
 - UNDO / REDO as arrow buttons (no longer overlapping PLAYER / REC); Ctrl+Z / Ctrl+Y.
 - Author shown in About.
+- EQ COPY / PASTE between any EQs (amp, IR, Global).
 
 Highlights: up to five NAM captures blended (any NAM architecture), Create Frankenstein (TONE / NOTES),
 per-amp EQ / PAN / cabinet IR with IR EQ, per-amp INPUT (loudness kept automatically) and OUTPUT,

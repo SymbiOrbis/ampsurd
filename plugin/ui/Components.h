@@ -110,6 +110,36 @@ private:
 };
 
 // ---------------------------------------------------------------------------------------------
+// COPY / COPIED / PASTE / SURE? button of an EQ (amp EQ, IR EQ, Global EQ). The clipboard lives in the
+// processor (session only), so every EQ's button knows what is copied. PASTE needs a second click
+// within 3 s (SURE?); a click anywhere else cancels SURE?.
+class EqCopyButton final : public juce::TextButton, private juce::Timer
+{
+public:
+    explicit EqCopyButton(AmpsurdProcessor&);
+    ~EqCopyButton() override;
+    void setTarget(int t) { target = t; armedAt = -1.0; update(); }
+    void clicked() override;
+
+private:
+    void timerCallback() override { update(); }
+    void update();
+    struct ClickWatcher final : juce::MouseListener // a click anywhere else cancels SURE?
+    {
+        explicit ClickWatcher(EqCopyButton& b) : owner(b) {}
+        void mouseDown(const juce::MouseEvent& e) override
+        {
+            if (e.eventComponent != &owner && owner.armedAt > 0.0) { owner.armedAt = -1.0; owner.update(); }
+        }
+        EqCopyButton& owner;
+    };
+    AmpsurdProcessor& proc;
+    int target = -1;
+    double armedAt = -1.0;
+    ClickWatcher watcher { *this };
+};
+
+// ---------------------------------------------------------------------------------------------
 // 10-band parametric EQ graph, monochrome. Drag a node: horizontal = frequency, vertical = gain.
 // Mouse wheel = Q. Double-click a node = reset that band.
 class EqGraph final : public juce::Component
@@ -208,6 +238,7 @@ private:
     AlignPanel align;
     LevelPanel level;
     juce::TextButton eqOnButton { "EQ ON" }, flatButton { "FLAT" }, removeButton { "REMOVE" }, closeButton { "CLOSE" };
+    EqCopyButton copyButton;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> eqOnAtt;
     juce::String title;
 };
@@ -278,6 +309,7 @@ private:
     EqGraph graph;
     FxSection fx;
     juce::TextButton eqOnButton { "EQ ON" }, flatButton { "FLAT" }, closeButton { "CLOSE" };
+    EqCopyButton copyButton;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> eqOnAtt;
 };
 
@@ -304,6 +336,7 @@ private:
     EqGraph graph;
     juce::TextButton loadButton { "LOAD IR" }, irOnButton { "IR ON" }, removeButton { "REMOVE IR" },
                      eqOnButton { "EQ ON" }, flatButton { "FLAT" }, closeButton { "CLOSE" };
+    EqCopyButton copyButton;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> irOnAtt, eqOnAtt;
     std::unique_ptr<juce::FileChooser> chooser;
     AmpsurdProcessor::IrStatus shown;

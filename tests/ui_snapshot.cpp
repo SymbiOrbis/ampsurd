@@ -443,6 +443,58 @@ int main(int argc, char** argv)
                       << " MOVE: amp 1 dragged to slot 3 -> capture, pan and mix share moved with it (and back)\n";
             settle();
         }
+        {
+            // EQ COPY / PASTE: amp 1 -> amp 3 and -> Global EQ; SURE? expires after 3 s; undo restores
+            using AP = AmpsurdProcessor;
+            setP(p2, AP::slotParamId(0, "bands"), 6.0f);
+            setP(p2, AP::bandParamId(0, 1, "gain"), 5.0f);
+            setP(p2, AP::bandParamId(0, 2, "freq"), 900.0f);
+            setP(p2, AP::bandParamId(0, 2, "q"), 2.0f);
+            setP(p2, AP::bandParamId(0, 9, "freq"), 7000.0f);
+            settle();
+            auto same = [&](int a, int b) {
+                bool ok = p2.getEqBandCount(a) == p2.getEqBandCount(b)
+                          && val(AP::slotParamId(a, "eqOn").toRawUTF8()) == val(AP::slotParamId(b, "eqOn").toRawUTF8());
+                for (int k = 0; k < 10; ++k)
+                    for (const char* f : { "freq", "gain", "q" })
+                    {
+                        // equal up to float rounding of the parameter's range conversion (inaudible, < 0.001 %)
+                        const float x = val(AP::bandParamId(a, k, f).toRawUTF8()), y = val(AP::bandParamId(b, k, f).toRawUTF8());
+                        ok = ok && std::abs(x - y) <= 1e-5f * std::max(1.0f, std::abs(x));
+                    }
+                return ok;
+            };
+            ampsurd::ui::EqCopyButton c1(p2), c3(p2), cg(p2);
+            c1.setTarget(0);
+            c3.setTarget(2);
+            cg.setTarget(AP::kGlobalEq);
+            c1.clicked();                                     // COPY
+            const bool copied = p2.getEqClipboardSource() == 0 && c1.getButtonText() == "COPIED";
+            c3.clicked();                                     // PASTE -> SURE?
+            const bool sure = c3.getButtonText() == "SURE?" && !same(0, 2);
+            c3.clicked();                                     // paste
+            const bool amp3 = same(0, 2);
+            settle();
+            const bool globalBefore = !same(0, AP::kGlobalEq);
+            cg.clicked();                                     // SURE? ...
+            pump(3200);                                       // ... expires
+            cg.clicked();                                     // only arms again
+            const bool noPaste = !same(0, AP::kGlobalEq) && cg.getButtonText() == "SURE?";
+            cg.clicked();                                     // paste
+            const bool global = same(0, AP::kGlobalEq);
+            settle();
+            p2.undo();                                        // the Global EQ paste is one step
+            const bool undone = !same(0, AP::kGlobalEq) && same(0, 2);
+            c1.clicked();                                     // COPIED: cancel
+            const bool cleared = p2.getEqClipboardSource() < 0;
+            if (!(copied && sure && amp3 && globalBefore && noPaste && global && undone && cleared))
+                std::cout << "  (copied " << copied << " sure " << sure << " amp3 " << amp3 << " globalBefore " << globalBefore << " noPaste "
+                          << noPaste << " global " << global << " undone " << undone << " cleared " << cleared << ")\n";
+            std::cout << (copied && sure && amp3 && globalBefore && noPaste && global && undone && cleared ? "[PASS]" : "[FAIL]")
+                      << " EQ COPY / PASTE: amp 1 -> amp 3 and -> Global EQ identical (bands, count, on), SURE? expires after 3 s"
+                         " without pasting, undo restores, COPIED click clears\n";
+            settle();
+        }
         p2.selectAb(1);                // B = copy of A
         setP(p2, "output", 3.0f);      // change B
         p2.selectAb(0);

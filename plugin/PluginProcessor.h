@@ -213,6 +213,12 @@ public:
 
     juce::AudioProcessorValueTreeState params;
 
+    // --- EQ clipboard (session only): COPY one EQ, PASTE it into any other (amp, IR, Global EQ) ---
+    void copyEq(int target);
+    void clearEqClipboard() { eqClip.source = -1; }
+    int getEqClipboardSource() const { return eqClip.source; } // -1 = nothing copied
+    bool pasteEq(int target);                                   // EQ on/off, band count, all bands; one undo step
+
     // --- move an amp to another slot by mouse (message thread): the two slots swap everything (capture, IR,
     //     mix share, mute / solo, EQs, alignment, pan, levels, ECO); Frankenstein sections follow the amps ---
     void swapSlots(int a, int b);
@@ -416,6 +422,13 @@ private:
     std::array<SlotStatus, kNumSlots> slotStatus;
     juce::File currentPresetFile;
     juce::String currentPresetName { "Init" };
+
+    struct EqClip
+    {
+        int source = -1;
+        float eqOn = 1.0f, bands = 10.0f;
+        std::array<float, kNumBands> freq {}, gain {}, q {};
+    } eqClip;
 
     // undo / A-B
     std::vector<juce::ValueTree> undoStack, redoStack;

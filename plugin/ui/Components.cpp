@@ -919,6 +919,56 @@ void EqGraph::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDe
 }
 
 // =============================================================================================
+// EqCopyButton: COPY -> (source) COPIED / (others) PASTE -> SURE? -> pasted
+// =============================================================================================
+EqCopyButton::EqCopyButton(AmpsurdProcessor& p) : juce::TextButton("COPY"), proc(p)
+{
+    setWantsKeyboardFocus(false);
+    juce::Desktop::getInstance().addGlobalMouseListener(&watcher); // a click anywhere else cancels SURE?
+    startTimerHz(10);
+    update();
+}
+
+EqCopyButton::~EqCopyButton()
+{
+    juce::Desktop::getInstance().removeGlobalMouseListener(&watcher);
+}
+
+void EqCopyButton::clicked()
+{
+    update(); // a SURE? older than 3 s has expired
+    if (target < 0) return;
+    const int src = proc.getEqClipboardSource();
+    if (src < 0) proc.copyEq(target);                   // COPY
+    else if (src == target) proc.clearEqClipboard();    // COPIED: cancel
+    else if (armedAt > 0.0)                             // SURE?: paste
+    {
+        armedAt = -1.0;
+        proc.pasteEq(target);
+    }
+    else armedAt = juce::Time::getMillisecondCounterHiRes(); // PASTE -> SURE?
+    update();
+}
+
+void EqCopyButton::update()
+{
+    if (armedAt > 0.0 && juce::Time::getMillisecondCounterHiRes() - armedAt > 3000.0) armedAt = -1.0;
+    const int src = proc.getEqClipboardSource();
+    if (src < 0 || src == target) armedAt = -1.0;
+    const juce::String t = src < 0 ? "COPY" : src == target ? "COPIED" : armedAt > 0.0 ? "SURE?" : "PASTE";
+    if (getButtonText() != t)
+    {
+        setButtonText(t);
+        setColour(juce::TextButton::textColourOffId, t == "SURE?" ? colours::accent : colours::text);
+        setToggleState(t == "COPIED", juce::dontSendNotification);
+        setTooltip(t == "COPY" ? "Copy this EQ (on / off, bands, every band's settings)"
+                 : t == "COPIED" ? "This EQ is copied - click to cancel"
+                 : t == "PASTE" ? "Paste the copied EQ here (click twice: PASTE, then SURE?)"
+                                : "Click again to replace this EQ with the copied one");
+    }
+}
+
+// =============================================================================================
 // AlignPanel
 // =============================================================================================
 AlignPanel::AlignPanel(AmpsurdProcessor& p) : proc(p)
@@ -1112,13 +1162,14 @@ void LevelPanel::refresh()
 // =============================================================================================
 // EditPanel
 // =============================================================================================
-EditPanel::EditPanel(AmpsurdProcessor& p) : proc(p), graph(p), align(p), level(p)
+EditPanel::EditPanel(AmpsurdProcessor& p) : proc(p), graph(p), align(p), level(p), copyButton(p)
 {
     addAndMakeVisible(graph);
     addAndMakeVisible(align);
     addAndMakeVisible(level);
     for (auto* b : { &eqOnButton, &flatButton, &removeButton, &closeButton })
         addAndMakeVisible(*b);
+    addAndMakeVisible(copyButton);
     closeButton.onClick = [this] { if (onClose) onClose(); };
     closeButton.setTooltip("Close EDIT and return to the gate and tuner");
     eqOnButton.setClickingTogglesState(true);
@@ -1144,11 +1195,12 @@ void EditPanel::setSlot(int s)
     graph.setSlot(s);
     align.setSlot(s);
     level.setSlot(s);
+    copyButton.setTarget(s);
     eqOnAtt.reset();
     if (s >= 0)
         eqOnAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(proc.params, AmpsurdProcessor::slotParamId(s, "eqOn"), eqOnButton);
     for (juce::Component* c : { (juce::Component*) &graph, (juce::Component*) &align, (juce::Component*) &level, (juce::Component*) &eqOnButton,
-                                (juce::Component*) &flatButton, (juce::Component*) &removeButton,
+                                (juce::Component*) &flatButton, (juce::Component*) &removeButton, (juce::Component*) &copyButton,
                                 (juce::Component*) &closeButton })
         c->setVisible(s >= 0);
     refresh();
@@ -1164,6 +1216,8 @@ void EditPanel::resized()
     removeButton.setBounds(header.removeFromRight(100));
     header.removeFromRight(8);
     flatButton.setBounds(header.removeFromRight(64));
+    header.removeFromRight(8);
+    copyButton.setBounds(header.removeFromRight(72));
     header.removeFromRight(8);
     eqOnButton.setBounds(header.removeFromRight(64));
     r.removeFromTop(10);
@@ -1191,7 +1245,7 @@ void EditPanel::paint(juce::Graphics& g)
     drawLabel(g, "EDIT  /  AMP " + juce::String(slot + 1), header.removeFromLeft(130), accent, juce::Justification::centredLeft, 11.0f);
     g.setColour(textDim);
     g.setFont(Fonts::get().regular(12.5f));
-    g.drawText(title, header.withTrimmedRight(340), juce::Justification::centredLeft, true);
+    g.drawText(title, header.withTrimmedRight(420), juce::Justification::centredLeft, true);
 }
 
 void EditPanel::refresh()
@@ -1501,8 +1555,10 @@ void FxSection::refresh()
 // =============================================================================================
 // GlobalEqPanel: the same EQ as the amps, on the complete blend; no alignment.
 // =============================================================================================
-GlobalEqPanel::GlobalEqPanel(AmpsurdProcessor& p) : proc(p), graph(p), fx(p)
+GlobalEqPanel::GlobalEqPanel(AmpsurdProcessor& p) : proc(p), graph(p), fx(p), copyButton(p)
 {
+    addAndMakeVisible(copyButton);
+    copyButton.setTarget(AmpsurdProcessor::kGlobalEq);
     addAndMakeVisible(graph);
     addAndMakeVisible(fx);
     graph.setSlot(AmpsurdProcessor::kGlobalEq);
@@ -1537,6 +1593,8 @@ void GlobalEqPanel::resized()
     fx.setBounds(r);
     auto eqHeader = left.removeFromTop(26);
     flatButton.setBounds(eqHeader.removeFromRight(64));
+    eqHeader.removeFromRight(8);
+    copyButton.setBounds(eqHeader.removeFromRight(72));
     eqHeader.removeFromRight(8);
     eqOnButton.setBounds(eqHeader.removeFromRight(64));
     left.removeFromTop(8);
@@ -2285,8 +2343,9 @@ void PlayerPanel::saveAs()
 // =============================================================================================
 // IrPanel
 // =============================================================================================
-IrPanel::IrPanel(AmpsurdProcessor& p) : proc(p), graph(p)
+IrPanel::IrPanel(AmpsurdProcessor& p) : proc(p), graph(p), copyButton(p)
 {
+    addAndMakeVisible(copyButton);
     addAndMakeVisible(graph);
     for (auto* b : { &loadButton, &irOnButton, &removeButton, &eqOnButton, &flatButton, &closeButton })
         addAndMakeVisible(*b);
@@ -2321,6 +2380,7 @@ void IrPanel::setSlot(int s)
     irOnAtt.reset();
     eqOnAtt.reset();
     graph.setSlot(s >= 0 ? AmpsurdProcessor::irEqTarget(s) : -1);
+    copyButton.setTarget(s >= 0 ? AmpsurdProcessor::irEqTarget(s) : -1);
     if (s >= 0)
     {
         irOnAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(proc.params, AmpsurdProcessor::slotParamId(s, "irOn"), irOnButton);
@@ -2343,6 +2403,8 @@ void IrPanel::resized()
     // right: IR EQ
     auto eqHeader = r.removeFromTop(26);
     flatButton.setBounds(eqHeader.removeFromRight(64));
+    eqHeader.removeFromRight(8);
+    copyButton.setBounds(eqHeader.removeFromRight(72));
     eqHeader.removeFromRight(8);
     eqOnButton.setBounds(eqHeader.removeFromRight(64));
     r.removeFromTop(8);
@@ -2419,6 +2481,7 @@ void IrPanel::refresh()
         const bool eqUsable = st.state == AmpsurdProcessor::IrState::loaded && on;
         eqOnButton.setEnabled(eqUsable);
         flatButton.setEnabled(st.state == AmpsurdProcessor::IrState::loaded);
+        copyButton.setEnabled(st.state == AmpsurdProcessor::IrState::loaded);
         graph.setAlpha(eqUsable ? 1.0f : 0.45f);
         repaint();
     }

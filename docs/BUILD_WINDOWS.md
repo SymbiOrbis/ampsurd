@@ -229,6 +229,10 @@ REAPER picks up the new version.
 36. Move an amp: grab it by its name and drag it onto another slot - the two amps swap places (capture,
     IR, EQ, pan, levels, mute ...). Frankenstein keeps each amp's section. Ctrl+Z undoes the move.
 
+37. EQ COPY / PASTE (amp EQ in EDIT, IR EQ, Global EQ): COPY on one EQ (it shows COPIED), every other EQ
+    shows PASTE; PASTE -> SURE? -> click again within 3 s. The EQ glides to the copied curve; Ctrl+Z
+    undoes it. Clicking COPIED again (or waiting / clicking elsewhere on SURE?) cancels.
+
 Expected latency shown by REAPER: 104 samples at 48 kHz, 123 at 44.1 kHz.
 
 Optional measurements (in Developer PowerShell):

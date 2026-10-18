@@ -6,6 +6,17 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-18 — Session 2y: EQ COPY / PASTE — Claude (Opus 5.5)
+
+- Every EQ (amp EQ 1-5 in EDIT, IR EQ 1-5, Global EQ) has a COPY button next to FLAT (EqCopyButton).
+  Clipboard in the processor, session only (copyEq / pasteEq / clearEqClipboard): EQ on / off, band count
+  and every band's frequency / gain / Q, as normalised values (all EQs share the parameter ranges).
+  Source shows COPIED (click = cancel), all others PASTE -> SURE? (accent) -> paste within 3 s; SURE?
+  expires after 3 s and a click anywhere else cancels it (global mouse listener). The EQ glides
+  (ParametricEq smoothing); one undo step (snapshot history).
+- ui_snapshot EQ COPY / PASTE: amp 1 -> amp 3 and -> Global EQ equal (float rounding of the range
+  conversion < 0.001 %), SURE? timeout does not paste, undo restores, COPIED click clears.
+
 ## 2026-10-17 — Session 2x: public beta 0.9.1 — Claude (Opus 5.5)
 
 - Version 0.9.1 (CMake), release notes for 0.9.1 (not-signed warning and feedback paragraph stay first),

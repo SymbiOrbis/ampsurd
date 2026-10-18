@@ -127,6 +127,43 @@ void AmpsurdProcessor::copyAbToOther()
 }
 
 // =============================================================================================
+// EQ clipboard
+// =============================================================================================
+void AmpsurdProcessor::copyEq(int target)
+{
+    if (target < 0 || target >= kNumEqTargets) return;
+    // normalised values: every EQ uses the same parameter ranges, so a paste is exact
+    auto norm = [this](const juce::String& id) { auto* p = params.getParameter(id); return p != nullptr ? p->getValue() : 0.0f; };
+    eqClip.eqOn = norm(slotParamId(target, "eqOn"));
+    eqClip.bands = norm(slotParamId(target, "bands"));
+    for (int b = 0; b < kNumBands; ++b)
+    {
+        eqClip.freq[(size_t) b] = norm(bandParamId(target, b, "freq"));
+        eqClip.gain[(size_t) b] = norm(bandParamId(target, b, "gain"));
+        eqClip.q[(size_t) b] = norm(bandParamId(target, b, "q"));
+    }
+    eqClip.source = target;
+}
+
+bool AmpsurdProcessor::pasteEq(int target)
+{
+    if (eqClip.source < 0 || target < 0 || target >= kNumEqTargets || target == eqClip.source) return false;
+    // all values at once: the EQ glides to them (smoothed like any EQ move); trackUndo makes it one step
+    auto set = [this](const juce::String& id, float v) {
+        if (auto* p = params.getParameter(id)) { p->beginChangeGesture(); p->setValueNotifyingHost(v); p->endChangeGesture(); }
+    };
+    set(slotParamId(target, "bands"), eqClip.bands);
+    for (int b = 0; b < kNumBands; ++b)
+    {
+        set(bandParamId(target, b, "freq"), eqClip.freq[(size_t) b]);
+        set(bandParamId(target, b, "gain"), eqClip.gain[(size_t) b]);
+        set(bandParamId(target, b, "q"), eqClip.q[(size_t) b]);
+    }
+    set(slotParamId(target, "eqOn"), eqClip.eqOn);
+    return true;
+}
+
+// =============================================================================================
 // Moving amps between slots
 // =============================================================================================
 void AmpsurdProcessor::swapSlots(int a, int b)
