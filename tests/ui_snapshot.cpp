@@ -473,7 +473,7 @@ int main(int argc, char** argv)
             c3.clicked();                                     // PASTE -> SURE?
             const bool sure = c3.getButtonText() == "SURE?" && !same(0, 2);
             c3.clicked();                                     // paste
-            const bool amp3 = same(0, 2);
+            const bool amp3 = same(0, 2) && c3.getButtonText() == "COPY" && c1.getButtonText() == "COPIED";
             settle();
             const bool globalBefore = !same(0, AP::kGlobalEq);
             cg.clicked();                                     // SURE? ...
@@ -492,7 +492,7 @@ int main(int argc, char** argv)
                           << noPaste << " global " << global << " undone " << undone << " cleared " << cleared << ")\n";
             std::cout << (copied && sure && amp3 && globalBefore && noPaste && global && undone && cleared ? "[PASS]" : "[FAIL]")
                       << " EQ COPY / PASTE: amp 1 -> amp 3 and -> Global EQ identical (bands, count, on), SURE? expires after 3 s"
-                         " without pasting, undo restores, COPIED click clears\n";
+                         " without pasting, undo restores, COPIED click clears; a pasted EQ shows COPY again\n";
             settle();
         }
         p2.selectAb(1);                // B = copy of A

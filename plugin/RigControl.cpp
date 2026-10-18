@@ -143,6 +143,7 @@ void AmpsurdProcessor::copyEq(int target)
         eqClip.q[(size_t) b] = norm(bandParamId(target, b, "q"));
     }
     eqClip.source = target;
+    eqClip.pasted = 0;
 }
 
 bool AmpsurdProcessor::pasteEq(int target)
@@ -160,6 +161,7 @@ bool AmpsurdProcessor::pasteEq(int target)
         set(bandParamId(target, b, "q"), eqClip.q[(size_t) b]);
     }
     set(slotParamId(target, "eqOn"), eqClip.eqOn);
+    eqClip.pasted |= 1u << target;
     return true;
 }
 

@@ -939,7 +939,7 @@ void EqCopyButton::clicked()
     update(); // a SURE? older than 3 s has expired
     if (target < 0) return;
     const int src = proc.getEqClipboardSource();
-    if (src < 0) proc.copyEq(target);                   // COPY
+    if (src < 0 || proc.wasEqPastedInto(target)) proc.copyEq(target); // COPY (also after this EQ received a paste)
     else if (src == target) proc.clearEqClipboard();    // COPIED: cancel
     else if (armedAt > 0.0)                             // SURE?: paste
     {
@@ -954,8 +954,9 @@ void EqCopyButton::update()
 {
     if (armedAt > 0.0 && juce::Time::getMillisecondCounterHiRes() - armedAt > 3000.0) armedAt = -1.0;
     const int src = proc.getEqClipboardSource();
-    if (src < 0 || src == target) armedAt = -1.0;
-    const juce::String t = src < 0 ? "COPY" : src == target ? "COPIED" : armedAt > 0.0 ? "SURE?" : "PASTE";
+    const bool pastedHere = proc.wasEqPastedInto(target);
+    if (src < 0 || src == target || pastedHere) armedAt = -1.0;
+    const juce::String t = src < 0 || pastedHere ? "COPY" : src == target ? "COPIED" : armedAt > 0.0 ? "SURE?" : "PASTE";
     if (getButtonText() != t)
     {
         setButtonText(t);

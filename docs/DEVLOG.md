@@ -14,6 +14,8 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
   Source shows COPIED (click = cancel), all others PASTE -> SURE? (accent) -> paste within 3 s; SURE?
   expires after 3 s and a click anywhere else cancels it (global mouse listener). The EQ glides
   (ParametricEq smoothing); one undo step (snapshot history).
+- Owner: after a paste the target shows COPY again (the copy stays for the other EQs; COPY there copies
+  that EQ).
 - ui_snapshot EQ COPY / PASTE: amp 1 -> amp 3 and -> Global EQ equal (float rounding of the range
   conversion < 0.001 %), SURE? timeout does not paste, undo restores, COPIED click clears.
 

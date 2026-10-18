@@ -215,8 +215,9 @@ public:
 
     // --- EQ clipboard (session only): COPY one EQ, PASTE it into any other (amp, IR, Global EQ) ---
     void copyEq(int target);
-    void clearEqClipboard() { eqClip.source = -1; }
+    void clearEqClipboard() { eqClip.source = -1; eqClip.pasted = 0; }
     int getEqClipboardSource() const { return eqClip.source; } // -1 = nothing copied
+    bool wasEqPastedInto(int target) const { return target >= 0 && target < 32 && ((eqClip.pasted >> target) & 1u) != 0; }
     bool pasteEq(int target);                                   // EQ on/off, band count, all bands; one undo step
 
     // --- move an amp to another slot by mouse (message thread): the two slots swap everything (capture, IR,
@@ -426,6 +427,7 @@ private:
     struct EqClip
     {
         int source = -1;
+        unsigned pasted = 0; // EQs this copy was pasted into (their button shows COPY again)
         float eqOn = 1.0f, bands = 10.0f;
         std::array<float, kNumBands> freq {}, gain {}, q {};
     } eqClip;
