@@ -3,7 +3,8 @@
 > **Current status:** Windows releases are signed by **Open Source Developer Radovan Glovňa (Certum)**
 > (Certum "Open Source Code Signing in the Cloud" certificate, RSA 3072, valid until 2027-10-19).
 > A signed release says "Signed by Open Source Developer Radovan Glovňa (Certum)" at the top of its
-> release page. A release without that line (0.9.0, and every release before its signing step) is
+> release page (first: 0.9.1, signed 2026-10-19). A release without that line (0.9.0, and every
+> release before its signing step) is
 > **not** signed. macOS files are not signed by Apple (see below).
 
 AMPSURD's Windows releases (installer `AMPSURD-Setup-<version>.exe`, the VST3 plugin and the

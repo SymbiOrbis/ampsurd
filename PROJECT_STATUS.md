@@ -91,8 +91,8 @@ core at 64–128 samples; the full plugin with 5 mixed captures ran at 30 % of r
   Apple Silicon (same tests as Windows, Rosetta run, Apple auval). **Not yet tried by a person on a Mac**
   (interface, Logic / GarageBand); not signed / notarized by Apple. See docs/BUILD_MACOS.md.
 - Windows code signing (2026-10-19): Certum certificate, signed on the owner's PC with
-  installer/sign_release.ps1 (docs/RELEASE_SIGNING.md). Script written and partly checked here; first real
-  run = re-signing v0.9.1 by the owner. SignPath Foundation stays a later option.
+  installer/sign_release.ps1 (docs/RELEASE_SIGNING.md). v0.9.1 re-signed this way on 2026-10-19
+  (first real run, all signature checks passed). SignPath Foundation stays a later option.
 - Later: About/Easter egg.
 
 ## Files changed in session 2

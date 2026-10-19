@@ -23,6 +23,8 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 - Docs: RELEASE_SIGNING.md (owner steps), CODE_SIGNING.md (Certum now, SignPath later option), README
   (signed only when the release page says so), installer/README.md.
 - Repo RELEASE_NOTES.md keeps the unsigned warning: CI publishes unsigned, the script swaps it.
+- First real run by the owner (2026-10-19 20:33): v0.9.1 re-signed - DONE, all checks passed; the
+  release now has the signed installer + zips (uploaded 18:33 UTC) and the "Signed by ..." notes.
 
 ## 2026-10-19 — Session 2z: macOS build — Claude (Opus 5.5)
 
