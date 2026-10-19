@@ -9,6 +9,11 @@ standalone app inside it) are built from this repository by GitHub Actions only
 (`.github/workflows/build-windows.yml`). Once signing is active, they are signed in that same
 automated build.
 
+**macOS** builds (`AMPSURD-<version>-macOS.pkg`, made by the same workflow) are not signed or
+notarized by Apple either: the app and plugins carry only an ad-hoc signature (needed to run on Apple
+Silicon, it identifies no one). Apple signing needs an Apple Developer Program membership (99 USD per
+year); SignPath does not cover macOS. Not planned before the Windows signing is done.
+
 Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by
 [SignPath Foundation](https://signpath.org/) *(applied for; until it is granted, releases are unsigned)*.
 

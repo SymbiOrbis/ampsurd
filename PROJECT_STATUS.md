@@ -1,6 +1,6 @@
 # AMPSURD — Project Status
 
-_Last updated: 2026-10-14 (Claude, session 2q)_
+_Last updated: 2026-10-19 (Claude, session 2z)_
 
 **Product name:** AMPSURD (formerly MONSTROSITY / QUINQUEPLEX).
 **What it is:** free, open-source (GNU AGPLv3) guitar plugin: one DI signal → up to five Neural
@@ -87,7 +87,10 @@ core at 64–128 samples; the full plugin with 5 mixed captures ran at 30 % of r
 - Real footer logos (official artwork only).
 - Mix-law and alignment validation with real amp captures (only NAM test models so far).
 - Product decision pending: default window size on small screens.
-- Later: installer, ECO (A2 Lite) mode, macOS/AU, About/Easter egg.
+- macOS (since 2026-10-19): universal app + VST3 + AU and a .pkg installer are built and tested by CI on
+  Apple Silicon (same tests as Windows, Rosetta run, Apple auval). **Not yet tried by a person on a Mac**
+  (interface, Logic / GarageBand); not signed / notarized by Apple. See docs/BUILD_MACOS.md.
+- Later: About/Easter egg.
 
 ## Files changed in session 2
 

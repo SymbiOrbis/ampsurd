@@ -6,6 +6,20 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-19 — Session 2z: macOS build — Claude (Opus 5.5)
+
+- Owner asked for the app on Apple: same code, features, layout and design. macOS 11+, universal
+  (arm64 + x86_64): standalone app, VST3 and Audio Unit (aumf, MIDI in for footswitches).
+- CMake: CMAKE_OSX_DEPLOYMENT_TARGET 11.0 (std::atomic::wait), AU format on Apple, microphone
+  permission text. ParallelRunner: ARM FPCR.FZ denormal flush, QoS USER_INTERACTIVE on Apple.
+  Multi-core off by default on macOS (worker threads are not in the audio workgroup yet; can be
+  switched on). Tooltips say Cmd+Z / Cmd+Shift+Z on the Mac (shortcuts already used Cmd).
+- installer/macos: build_pkg.sh (ad-hoc signed bundles, component pkgs, non-relocatable, choices,
+  licence, welcome page, AU registrar refresh) -> AMPSURD-<version>-macOS.pkg + zips.
+- CI: macos job (same tests as Windows + tone_test under Rosetta + auval -strict), release moved to a
+  separate job that publishes Windows and macOS files together.
+- Not tested by a person on a Mac. iPad / iPhone not done (ROADMAP: AUv3 app, App Store).
+
 ## 2026-10-18 — Session 2y: EQ COPY / PASTE — Claude (Opus 5.5)
 
 - Every EQ (amp EQ 1-5 in EDIT, IR EQ 1-5, Global EQ) has a COPY button next to FLAT (EqCopyButton).

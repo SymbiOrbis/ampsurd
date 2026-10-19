@@ -11,12 +11,17 @@ editing. Play.
 - Linked mix faders with constant perceived loudness, automatic level match and alignment,
   per-amp 10-band EQ, never clips (−1 dBFS safety limiter), complete-rig presets.
 
-**Status:** `PROJECT_STATUS.md` · **Build on Windows:** `docs/BUILD_WINDOWS.md` ·
+**Status:** `PROJECT_STATUS.md` · **Build:** `docs/BUILD_WINDOWS.md`, `docs/BUILD_MACOS.md` ·
 **Design:** `docs/ARCHITECTURE.md`, `docs/UI_SPEC.md`, `docs/REVIEW.md`, `docs/ROADMAP.md` · **Log:** `docs/DEVLOG.md`
 
 **Download (Windows 10 / 11, 64-bit):** [Releases](https://github.com/SymbiOrbis/ampsurd/releases) - installer
 `AMPSURD-Setup-<version>.exe` (VST3 plugin + standalone app). [Code signing policy](docs/CODE_SIGNING.md) ·
 [Privacy](PRIVACY.md)
+
+**macOS 11 or newer (Apple Silicon and Intel):** from the next beta on, `AMPSURD-<version>-macOS.pkg`
+installs the standalone app, the VST3 plugin and the Audio Unit (Logic Pro, GarageBand, MainStage). It is
+not signed or notarized by Apple: macOS first refuses to open it, then System Settings → Privacy &
+Security → "Open Anyway" (on macOS 14 and older: right-click the .pkg → Open).
 
 > **Public beta, not code-signed yet.** Signing through the SignPath Foundation is in progress. Until
 > then, Windows 11 Smart App Control blocks the installer (it only runs with Smart App Control turned

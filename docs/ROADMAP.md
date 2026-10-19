@@ -123,5 +123,8 @@ unreachable for the owner on 2026-10-14). Users load their own IRs (ADD IR) as b
 - Frankenstein FOLLOW (whole note routed by detected pitch) - postponed by the owner.
 - Octave / harmony effects (PITCH only re-tunes).
 - Stereo input processing (not planned: guitar DI is mono, doubles CPU).
-- macOS (VST3 + AU + standalone) after 1.0: needs an Apple Developer account and someone with a Mac
-  for testing / notarisation.
+- macOS signing / notarisation: needs an Apple Developer account (99 USD / year). The macOS build itself
+  (VST3 + AU + standalone, universal, .pkg) exists since 2026-10-19 (docs/BUILD_MACOS.md); it still needs
+  a person with a Mac to test it with an interface and in Logic / GarageBand.
+- iPad / iPhone (AUv3 app): not planned - a separate touch layout, App Store only (Apple Developer
+  account, review), and the iOS audio-input / sandbox limits.
