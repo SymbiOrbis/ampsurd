@@ -168,7 +168,10 @@ jobs:
       - name: Installer (.pkg) and zips
         run: |
           VER=$(sed -nE 's/^project\(AMPSURD VERSION ([0-9.]+).*/\1/p' CMakeLists.txt)
-          installer/macos/build_pkg.sh "$VER" build/plugin/Ampsurd_artefacts/Release installer/output
+          set -o pipefail
+          if ! installer/macos/build_pkg.sh "$VER" build/plugin/Ampsurd_artefacts/Release installer/output 2>&1 | tee pkg.txt; then
+            tail -15 pkg.txt | sed 's/^/::error title=pkg::/'; exit 1
+          fi
 
       - name: Upload installer
         uses: actions/upload-artifact@v4

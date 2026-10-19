@@ -8,6 +8,8 @@
 # code without any signature); the .pkg is unsigned and not notarized, so macOS asks the user to
 # allow it in System Settings -> Privacy & Security ("Open Anyway"). See docs/CODE_SIGNING.md.
 set -euo pipefail
+# in GitHub Actions the failing command shows up as an annotation (readable without the log)
+trap 'echo "::error title=build_pkg.sh::line $LINENO failed: $BASH_COMMAND"' ERR
 
 VERSION="$1"
 ART="$2"
