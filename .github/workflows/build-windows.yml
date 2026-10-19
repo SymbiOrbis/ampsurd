@@ -79,8 +79,8 @@ jobs:
           path: build/plugin/Ampsurd_artefacts/Release/Standalone/
 
       # ---- installer (every build) and GitHub Release (tags v<version>) ----
-      # Code signing goes here once the certificate is available (docs/CODE_SIGNING.md): the VST3, the
-      # app and then the installer are signed before they are uploaded.
+      # Code signing is NOT done here: the Certum key needs an interactive SimplySign login, so the
+      # maintainer signs the published release on his PC (installer/sign_release.ps1, docs/RELEASE_SIGNING.md).
       - name: Installer
         shell: pwsh
         run: |

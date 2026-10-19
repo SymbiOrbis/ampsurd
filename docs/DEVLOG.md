@@ -6,6 +6,24 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-19 — Session 3a: Windows code signing with Certum — Claude (Opus 5.5)
+
+- Owner has a Certum "Open Source Code Signing in the Cloud" certificate (Open Source Developer Radovan
+  Glovňa, RSA 3072, until 2027-10-19) via SimplySign Desktop; signing must run on his PC, not in CI.
+- installer/sign_release.ps1 (Windows PowerShell 5.1, ASCII only): checks signtool / Inno Setup 6 / gh
+  and the certificate (by subject, /sha1 thumbprint, else /a); downloads the release's unsigned VST3 and
+  standalone zips plus the tag's source archive; signs AMPSURD.exe and the DLL in AMPSURD.vst3; builds the
+  installer from the tag's AMPSURD.iss with SignTool=ampsurdsign + SignedUninstaller=yes injected (ISCC /S,
+  sha256, Certum TSA); signtool verify /pa /all + Get-AuthenticodeSignature (Valid, Certum subject,
+  timestamp) on every file; zips; gh release upload --clobber; replaces the "NOT code-signed" warning
+  in the release notes with "Windows: Signed by Open Source Developer Radovan Glovňa (Certum) ..."
+  plus a SmartScreen-reputation sentence. -NoUpload for a trial run.
+- Tested here: PowerShell parse, the notes replacement on the real v0.9.1 body, the [Setup] injection,
+  the ISCC /S string. Not tested: real signing / Inno / upload (needs the owner's PC).
+- Docs: RELEASE_SIGNING.md (owner steps), CODE_SIGNING.md (Certum now, SignPath later option), README
+  (signed only when the release page says so), installer/README.md.
+- Repo RELEASE_NOTES.md keeps the unsigned warning: CI publishes unsigned, the script swaps it.
+
 ## 2026-10-19 — Session 2z: macOS build — Claude (Opus 5.5)
 
 - Owner asked for the app on Apple: same code, features, layout and design. macOS 11+, universal

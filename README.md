@@ -23,9 +23,11 @@ installs the standalone app, the VST3 plugin and the Audio Unit (Logic Pro, Gara
 not signed or notarized by Apple: macOS first refuses to open it, then System Settings → Privacy &
 Security → "Open Anyway" (on macOS 14 and older: right-click the .pkg → Open).
 
-> **Public beta, not code-signed yet.** Signing through the SignPath Foundation is in progress. Until
-> then, Windows 11 Smart App Control blocks the installer (it only runs with Smart App Control turned
-> off), and SmartScreen may show "Windows protected your PC" (More info, Run anyway).
+> **Public beta. Code signing (Windows):** a signed release says "Signed by Open Source Developer
+> Radovan Glovňa (Certum)" at the top of its release page ([how to check](docs/CODE_SIGNING.md)). A
+> release without that line is not signed: Windows 11 Smart App Control blocks it (it only runs with
+> Smart App Control turned off), and SmartScreen may show "Windows protected your PC" (More info, Run
+> anyway).
 
 Feedback: please share your experience in [GitHub Discussions](https://github.com/SymbiOrbis/ampsurd/discussions/1)
 ("AMPSURD beta feedback") or report bugs as [Issues](https://github.com/SymbiOrbis/ampsurd/issues).

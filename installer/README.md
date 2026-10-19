@@ -7,8 +7,10 @@ hand on main (Actions -> Build Windows + macOS -> Run workflow -> publish_releas
 `v<CMake version>` on the commit and a pre-release with docs/RELEASE_NOTES.md.
 The version comes from `project(AMPSURD VERSION ...)` in the top-level CMakeLists.txt.
 
-Code signing: NOT active yet (releases so far are unsigned). Once SignPath Foundation signing is
-granted, the installer and the binaries inside it will be signed in CI before upload (docs/CODE_SIGNING.md).
+Code signing: the CI publishes the release unsigned; the maintainer then signs it on his PC with
+`sign_release.ps1` (Certum certificate via SimplySign Desktop): signed app, plugin DLL and installer
+(Inno Setup's SignTool setting also signs the uninstaller), verified, and uploaded over the unsigned
+files. Steps: docs/RELEASE_SIGNING.md.
 
 macOS: `macos/build_pkg.sh` builds `AMPSURD-<version>-macOS.pkg` (standalone app -> /Applications,
 VST3 -> /Library/Audio/Plug-Ins/VST3, AU -> /Library/Audio/Plug-Ins/Components; parts selectable) and
