@@ -3330,8 +3330,13 @@ HeaderBar::HeaderBar(AmpsurdProcessor& p) : proc(p)
     aButton.onClick = [this] { proc.selectAb(0); refresh(); };
     bButton.onClick = [this] { proc.selectAb(1); refresh(); };
     copyAbButton.onClick = [this] { proc.copyAbToOther(); refresh(); };
+   #if JUCE_MAC
+    undoButton.setTooltip("Undo (Cmd+Z): any change of the sound or the rig - not the recording (it has its own UNDO)");
+    redoButton.setTooltip("Redo (Cmd+Shift+Z or Cmd+Y)");
+   #else
     undoButton.setTooltip("Undo (Ctrl+Z): any change of the sound or the rig - not the recording (it has its own UNDO)");
     redoButton.setTooltip("Redo (Ctrl+Y)");
+   #endif
     aButton.setTooltip("A / B compare: two complete rigs of this session. Switch between them to compare");
     bButton.setTooltip("A / B compare: B starts as a copy of A the first time");
     copyAbButton.setTooltip("Copy the rig you hear now to the other side (A -> B or B -> A)");

@@ -1,0 +1,58 @@
+#!/bin/bash
+# Builds the macOS installer AMPSURD-<version>-macOS.pkg (standalone app + VST3 + Audio Unit) and
+# zips of the single bundles. Run on a Mac after the Release build (the CI does this):
+#   installer/macos/build_pkg.sh <version> <artefacts dir> <output dir>
+# e.g. installer/macos/build_pkg.sh 0.9.1 build/plugin/Ampsurd_artefacts/Release installer/output
+#
+# Code signing: NOT active. The bundles get an ad-hoc signature only (Apple Silicon refuses to run
+# code without any signature); the .pkg is unsigned and not notarized, so macOS asks the user to
+# allow it in System Settings -> Privacy & Security ("Open Anyway"). See docs/CODE_SIGNING.md.
+set -euo pipefail
+
+VERSION="$1"
+ART="$2"
+OUT="$3"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$HERE/../.." && pwd)"
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+mkdir -p "$OUT"
+
+APP="$ART/Standalone/AMPSURD.app"
+VST3="$ART/VST3/AMPSURD.vst3"
+AU="$ART/AU/AMPSURD.component"
+for b in "$APP" "$VST3" "$AU"; do
+  [ -d "$b" ] || { echo "missing $b"; exit 1; }
+  codesign --force --deep --sign - "$b"   # ad-hoc signature (not a Developer ID)
+  codesign --verify --deep --strict "$b"
+done
+
+# one component package per part; not relocatable, so macOS always installs to the given folder
+component() { # <id> <bundle> <install location> <pkg name> [scripts dir]
+  local id="$1" bundle="$2" location="$3" name="$4" scripts="${5:-}"
+  local stage="$WORK/stage-$name"
+  mkdir -p "$stage"
+  ditto "$bundle" "$stage/$(basename "$bundle")"
+  pkgbuild --analyze --root "$stage" "$WORK/$name.plist"
+  /usr/libexec/PlistBuddy -c "Set :0:BundleIsRelocatable false" "$WORK/$name.plist"
+  local extra=()
+  [ -n "$scripts" ] && extra=(--scripts "$scripts")
+  pkgbuild --root "$stage" --component-plist "$WORK/$name.plist" --identifier "$id" --version "$VERSION" \
+           --install-location "$location" ${extra[@]+"${extra[@]}"} "$WORK/$name.pkg"
+}
+component com.ampsurd.ampsurd.app  "$APP"  /Applications                       app
+component com.ampsurd.ampsurd.vst3 "$VST3" /Library/Audio/Plug-Ins/VST3       vst3
+component com.ampsurd.ampsurd.au   "$AU"   /Library/Audio/Plug-Ins/Components au "$HERE/scripts-au"
+
+mkdir -p "$WORK/resources"
+cp "$ROOT/LICENSE.md" "$WORK/resources/LICENSE.txt"
+sed "s/@VERSION@/$VERSION/g" "$HERE/welcome.html" > "$WORK/resources/welcome.html"
+sed "s/@VERSION@/$VERSION/g" "$HERE/distribution.xml" > "$WORK/distribution.xml"
+
+productbuild --distribution "$WORK/distribution.xml" --resources "$WORK/resources" --package-path "$WORK" \
+             "$OUT/AMPSURD-$VERSION-macOS.pkg"
+
+ditto -c -k --keepParent "$APP"  "$OUT/AMPSURD-$VERSION-Standalone-macOS.zip"
+ditto -c -k --keepParent "$VST3" "$OUT/AMPSURD-$VERSION-VST3-macOS.zip"
+ditto -c -k --keepParent "$AU"   "$OUT/AMPSURD-$VERSION-AU-macOS.zip"
+ls -l "$OUT"

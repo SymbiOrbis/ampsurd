@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>AMPSURD @VERSION@ (beta)</title>
+    <welcome file="welcome.html" mime-type="text/html"/>
+    <license file="LICENSE.txt"/>
+    <options customize="allow" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+    <domains enable_localSystem="true"/>
+    <os-version min="11.0"/>
+    <choices-outline>
+        <line choice="app"/>
+        <line choice="vst3"/>
+        <line choice="au"/>
+    </choices-outline>
+    <choice id="app" title="Standalone app" description="AMPSURD.app in Applications (with player / recorder and metronome).">
+        <pkg-ref id="com.ampsurd.ampsurd.app"/>
+    </choice>
+    <choice id="vst3" title="VST3 plugin" description="For REAPER, Ableton Live, Cubase, Studio One, Bitwig and other VST3 hosts.">
+        <pkg-ref id="com.ampsurd.ampsurd.vst3"/>
+    </choice>
+    <choice id="au" title="Audio Unit plugin" description="For Logic Pro, GarageBand and MainStage.">
+        <pkg-ref id="com.ampsurd.ampsurd.au"/>
+    </choice>
+    <pkg-ref id="com.ampsurd.ampsurd.app">app.pkg</pkg-ref>
+    <pkg-ref id="com.ampsurd.ampsurd.vst3">vst3.pkg</pkg-ref>
+    <pkg-ref id="com.ampsurd.ampsurd.au">au.pkg</pkg-ref>
+</installer-gui-script>

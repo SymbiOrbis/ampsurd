@@ -1,0 +1,4 @@
+#!/bin/bash
+# Logic / GarageBand see a new or updated Audio Unit only after the AU registry is refreshed.
+killall -9 AudioComponentRegistrar 2>/dev/null || true
+exit 0

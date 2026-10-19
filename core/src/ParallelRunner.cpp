@@ -18,6 +18,9 @@
   #include <pthread.h>
   #include <sched.h>
 #endif
+#if defined(__APPLE__)
+  #include <pthread/qos.h>
+#endif
 
 namespace ampsurd
 {
@@ -38,11 +41,19 @@ void makeRealtime() noexcept
 #if AMPSURD_X86
     // denormals: flush to zero / treat as zero (as JUCE's ScopedNoDenormals does on the audio thread)
     _mm_setcsr(_mm_getcsr() | 0x8040);
+#elif defined(__aarch64__)
+    // ARM (Apple Silicon): FPCR.FZ flushes denormals to zero
+    std::uint64_t fpcr = 0;
+    asm volatile("mrs %0, fpcr" : "=r"(fpcr));
+    asm volatile("msr fpcr, %0" : : "r"(fpcr | (1ull << 24)));
 #endif
 #if defined(_WIN32)
     DWORD taskIndex = 0;
     AvSetMmThreadCharacteristicsW(L"Pro Audio", &taskIndex); // same scheduling class as ASIO threads
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
+#elif defined(__APPLE__)
+    // highest normal priority; keeps the worker on the performance cores of Apple Silicon
+    pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
 #else
     sched_param p {};
     p.sched_priority = std::max(1, sched_get_priority_max(SCHED_FIFO) - 2);

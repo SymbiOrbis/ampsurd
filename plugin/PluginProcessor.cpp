@@ -356,7 +356,13 @@ AmpsurdProcessor::AmpsurdProcessor()
         juce::PropertiesFile pf(o);
         calibrateOn.store(pf.getBoolValue("calibrateInput", false));
         interfaceDbu.store(pf.getDoubleValue("interfaceInputDbu", 12.0));
+       #if JUCE_MAC
+        // macOS: one core by default. Extra worker threads are not yet in the host's audio workgroup,
+        // so Apple Silicon may run them on its efficiency cores; one fast performance core is safer.
+        multiCore.store(pf.getBoolValue("multiCore", false));
+       #else
         multiCore.store(pf.getBoolValue("multiCore", true));
+       #endif
         showDragon.store(pf.getBoolValue("showDragon", true));
         ecoByDefault.store(pf.getBoolValue("ecoByDefault", true));
     }

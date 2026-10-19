@@ -1,10 +1,21 @@
+# Windows: VST3 + standalone app. macOS: also Audio Unit (Logic Pro, GarageBand, MainStage).
+if(APPLE)
+  set(AMPSURD_FORMATS VST3 AU Standalone)
+else()
+  set(AMPSURD_FORMATS VST3 Standalone)
+endif()
+
 juce_add_plugin(Ampsurd
   PRODUCT_NAME              "AMPSURD"
   COMPANY_NAME              "AMPSURD"
   BUNDLE_ID                 "com.ampsurd.ampsurd"
   PLUGIN_MANUFACTURER_CODE  Amps
   PLUGIN_CODE               Amp5
-  FORMATS                   VST3 Standalone
+  FORMATS                   ${AMPSURD_FORMATS}
+  # macOS asks the user once before the app may use the audio interface input
+  MICROPHONE_PERMISSION_ENABLED TRUE
+  MICROPHONE_PERMISSION_TEXT "AMPSURD needs the audio input to hear your guitar through your audio interface."
+  AU_MAIN_TYPE              kAudioUnitType_MusicEffect
   IS_SYNTH                  FALSE
   NEEDS_MIDI_INPUT          TRUE
   NEEDS_MIDI_OUTPUT         FALSE

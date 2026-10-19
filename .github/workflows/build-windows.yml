@@ -1,4 +1,4 @@
-name: Build Windows (VST3 + standalone)
+name: Build Windows + macOS (VST3, AU, standalone)
 
 on:
   push:
@@ -101,22 +101,116 @@ jobs:
           name: AMPSURD-Setup-windows-x64
           path: installer/output/*.exe
 
+      - name: Keep the release files (used by the release job)
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: installer/output/*
+          retention-days: 3
+
+  macos:
+    runs-on: macos-latest   # Apple Silicon runner; the build is universal (arm64 + x86_64)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache downloaded dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: deps-macos-${{ hashFiles('cmake/Dependencies.cmake') }}
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DAMPSURD_BUILD_UI_SNAPSHOT=ON
+
+      - name: Build plugin and tools
+        run: cmake --build build --target Ampsurd_VST3 Ampsurd_AU Ampsurd_Standalone recorder_test tone_test ampsurd_render ampsurd_bench limiter_test engine_test gate_tuner_test frankenstein_test ir_test fx_test pitch_test --parallel
+
+      - name: Check the binaries are universal (Apple Silicon + Intel)
+        run: |
+          set -e
+          R=build/plugin/Ampsurd_artefacts/Release
+          for f in "$R/Standalone/AMPSURD.app/Contents/MacOS/AMPSURD" "$R/VST3/AMPSURD.vst3/Contents/MacOS/AMPSURD" "$R/AU/AMPSURD.component/Contents/MacOS/AMPSURD"; do
+            lipo -info "$f"
+            lipo "$f" -verify_arch arm64 x86_64 || { echo "::error title=universal::$f is not universal"; exit 1; }
+          done
+
+      - name: Tests (same as on Windows)
+        run: |
+          set -o pipefail
+          run() { local name; name=$(basename "$1"); if ! "$@" 2>&1 | tee out.txt; then grep -F FAIL out.txt | sed "s/^/::error title=$name::/" || tail -5 out.txt | sed "s/^/::error title=$name::/"; exit 1; fi; }
+          M=build/_deps/namcore-src/example_models
+          run build/tools/limiter_test
+          run build/tools/gate_tuner_test
+          run build/tools/frankenstein_test
+          run build/tools/ir_test
+          run build/tools/fx_test
+          run build/tools/pitch_test
+          AMPSURD_FORCE_PLAYER=1 run build/recorder_test
+          run build/tone_test $M/A2.nam 48000 128 12
+          run build/tools/engine_test $M/A2.nam $M/wavenet_a1_standard.nam
+          build/tools/ampsurd_bench $M/A2.nam --stress --seconds 5 $M/lstm.nam
+          build/tools/ampsurd_render $M/A2.nam build/_deps/namcore-src/example_audio/input.wav render.wav
+          # the Intel half too (Rosetta 2 on the Apple Silicon runner)
+          if arch -x86_64 /usr/bin/true 2>/dev/null; then run arch -x86_64 build/tone_test $M/A2.nam 48000 128 4; fi
+
+      - name: Audio Unit validation (Apple auval)
+        run: |
+          set -e
+          mkdir -p ~/Library/Audio/Plug-Ins/Components
+          codesign --force --deep --sign - build/plugin/Ampsurd_artefacts/Release/AU/AMPSURD.component
+          cp -R build/plugin/Ampsurd_artefacts/Release/AU/AMPSURD.component ~/Library/Audio/Plug-Ins/Components/
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+          sleep 3
+          auval -a | grep -i ampsurd || true
+          auval -strict -v aumf Amp5 Amps | tee auval.txt
+          grep -q "AU VALIDATION SUCCEEDED" auval.txt || { echo "::error title=auval::Audio Unit validation failed"; exit 1; }
+
+      - name: Installer (.pkg) and zips
+        run: |
+          VER=$(sed -nE 's/^project\(AMPSURD VERSION ([0-9.]+).*/\1/p' CMakeLists.txt)
+          installer/macos/build_pkg.sh "$VER" build/plugin/Ampsurd_artefacts/Release installer/output
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: AMPSURD-Setup-macOS
+          path: installer/output/*.pkg
+
+      - name: Keep the release files (used by the release job)
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: installer/output/*
+          retention-days: 3
+
+  release:
+    needs: [windows, macos]
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
       - name: GitHub Release (tag v<version>, or "Run workflow" with publish_release on main)
-        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release && github.ref == 'refs/heads/main')
-        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "v$env:AMPSURD_VERSION"
-          if ("${{ github.ref }}".StartsWith("refs/tags/") -and "${{ github.ref_name }}" -ne $tag) { Write-Output "::error title=release::tag ${{ github.ref_name }} does not match the CMake version $env:AMPSURD_VERSION"; exit 1 }
-          gh release view $tag --repo "${{ github.repository }}" 2>$null
-          if ($LASTEXITCODE -eq 0) {
-            if ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ inputs.replace_release }}" -eq "true") {
-              gh release delete $tag --repo "${{ github.repository }}" --cleanup-tag --yes
-              if ($LASTEXITCODE -ne 0) { Write-Output "::error title=release::could not delete $tag"; exit 1 }
-              Start-Sleep -Seconds 5
-            } else { Write-Output "::error title=release::release $tag already exists"; exit 1 }
-          }
+          VER=$(sed -nE 's/^project\(AMPSURD VERSION ([0-9.]+).*/\1/p' CMakeLists.txt)
+          TAG="v$VER"
+          REPO="${{ github.repository }}"
+          ls -l dist
+          if [[ "${{ github.ref }}" == refs/tags/* && "${{ github.ref_name }}" != "$TAG" ]]; then echo "::error title=release::tag ${{ github.ref_name }} does not match the CMake version $VER"; exit 1; fi
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.replace_release }}" == "true" ]]; then
+              gh release delete "$TAG" --repo "$REPO" --cleanup-tag --yes || { echo "::error title=release::could not delete $TAG"; exit 1; }
+              sleep 5
+            else echo "::error title=release::release $TAG already exists"; exit 1; fi
+          fi
           # creates the tag on this commit when it does not exist yet
-          gh release create $tag (Get-ChildItem installer/output/*).FullName --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "AMPSURD $env:AMPSURD_VERSION (beta)" --notes-file docs/RELEASE_NOTES.md --prerelease
-          if ($LASTEXITCODE -ne 0) { Write-Output "::error title=release::gh release create failed"; exit 1 }
+          gh release create "$TAG" dist/* --repo "$REPO" --target "${{ github.sha }}" --title "AMPSURD $VER (beta)" --notes-file docs/RELEASE_NOTES.md --prerelease \
+            || { echo "::error title=release::gh release create failed"; exit 1; }
