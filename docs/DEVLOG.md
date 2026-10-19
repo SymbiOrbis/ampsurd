@@ -18,6 +18,9 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
   licence, welcome page, AU registrar refresh) -> AMPSURD-<version>-macOS.pkg + zips.
 - CI: macos job (same tests as Windows + tone_test under Rosetta + auval -strict), release moved to a
   separate job that publishes Windows and macOS files together.
+- First green run 39225736530: universal binaries, all tests on Apple Silicon + Rosetta, auval
+  AU VALIDATION SUCCEEDED, .pkg ~30 MB. (pkgbuild does not list a .vst3 as a bundle without the
+  BundleIsRelocatable key: the script now adds it.)
 - Not tested by a person on a Mac. iPad / iPhone not done (ROADMAP: AUv3 app, App Store).
 
 ## 2026-10-18 — Session 2y: EQ COPY / PASTE — Claude (Opus 5.5)
