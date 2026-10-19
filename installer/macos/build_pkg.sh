@@ -7,7 +7,7 @@
 # Code signing: NOT active. The bundles get an ad-hoc signature only (Apple Silicon refuses to run
 # code without any signature); the .pkg is unsigned and not notarized, so macOS asks the user to
 # allow it in System Settings -> Privacy & Security ("Open Anyway"). See docs/CODE_SIGNING.md.
-set -euo pipefail
+set -Eeuo pipefail
 # in GitHub Actions the failing command shows up as an annotation (readable without the log)
 trap 'echo "::error title=build_pkg.sh::line $LINENO failed: $BASH_COMMAND"' ERR
 
@@ -36,7 +36,12 @@ component() { # <id> <bundle> <install location> <pkg name> [scripts dir]
   mkdir -p "$stage"
   ditto "$bundle" "$stage/$(basename "$bundle")"
   pkgbuild --analyze --root "$stage" "$WORK/$name.plist"
-  /usr/libexec/PlistBuddy -c "Set :0:BundleIsRelocatable false" "$WORK/$name.plist"
+  # (pkgbuild may not list a .vst3 as a bundle: then there is nothing that could be relocated)
+  local i=0
+  while /usr/libexec/PlistBuddy -c "Print :$i" "$WORK/$name.plist" >/dev/null 2>&1; do
+    /usr/libexec/PlistBuddy -c "Set :$i:BundleIsRelocatable false" "$WORK/$name.plist"
+    i=$((i + 1))
+  done
   local extra=()
   [ -n "$scripts" ] && extra=(--scripts "$scripts")
   pkgbuild --root "$stage" --component-plist "$WORK/$name.plist" --identifier "$id" --version "$VERSION" \
