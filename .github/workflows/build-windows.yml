@@ -132,6 +132,10 @@ jobs:
           for f in "$R/Standalone/AMPSURD.app/Contents/MacOS/AMPSURD" "$R/VST3/AMPSURD.vst3/Contents/MacOS/AMPSURD" "$R/AU/AMPSURD.component/Contents/MacOS/AMPSURD"; do
             lipo -info "$f"
             lipo "$f" -verify_arch arm64 x86_64 || { echo "::error title=universal::$f is not universal"; exit 1; }
+            # the Intel half must run on macOS 10.15 Catalina
+            minos=$(otool -l -arch x86_64 "$f" | awk '/LC_BUILD_VERSION/{b=1} b&&/minos/{print $2; exit}')
+            echo "x86_64 minimum macOS: $minos"
+            [ "$minos" = "10.15" ] || { echo "::error title=catalina::$f needs macOS $minos (expected 10.15)"; exit 1; }
           done
 
       - name: Tests (same as on Windows)

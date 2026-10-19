@@ -51,6 +51,10 @@ target_include_directories(ampsurd_core SYSTEM PRIVATE "${audiodsptools_SOURCE_D
 target_link_libraries(ampsurd_core PUBLIC "$<LINK_LIBRARY:WHOLE_ARCHIVE,nam_core>")
 find_package(Threads REQUIRED)
 target_link_libraries(ampsurd_core PUBLIC Threads::Threads)
+if(APPLE)
+  # std::atomic::wait / notify need macOS 11; AMPSURD runs from 10.15 Catalina (ParallelRunner polls instead)
+  target_compile_definitions(ampsurd_core PRIVATE AMPSURD_NO_ATOMIC_WAIT=1)
+endif()
 if(WIN32)
   target_link_libraries(ampsurd_core PRIVATE avrt) # MMCSS "Pro Audio" for the worker threads
 endif()

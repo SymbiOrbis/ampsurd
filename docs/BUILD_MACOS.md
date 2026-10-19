@@ -2,7 +2,9 @@
 
 Same code, same features and the same window as on Windows: standalone app (player / recorder,
 metronome), VST3 plugin and Audio Unit (AU, for Logic Pro / GarageBand / MainStage).
-macOS 11 Big Sur or newer; one universal build for Apple Silicon (M1 ... M4) and Intel Macs.
+macOS 10.15 Catalina or newer (Apple Silicon Macs: macOS 11 or newer, as Apple requires); one universal
+build for Apple Silicon (M1 ... M4) and Intel Macs. Catalina is built for but not tested by the CI (GitHub
+has no Catalina machines): first Catalina testers, please report how it goes.
 
 ## Download (testers)
 

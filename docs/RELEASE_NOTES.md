@@ -14,7 +14,7 @@ If you like AMPSURD, a star on GitHub helps a lot: it's how a small
 open-source project qualifies for free code signing, so Windows stops
 blocking it.
 
-macOS: AMPSURD-<version>-macOS.pkg (macOS 11 or newer, Apple Silicon and Intel) is NOT signed or
+macOS: AMPSURD-<version>-macOS.pkg (macOS 10.15 Catalina or newer, Apple Silicon and Intel) is NOT signed or
 notarized by Apple either. Double-click it; when macOS says it cannot verify it, open System Settings,
 Privacy & Security, scroll down and click "Open Anyway" (macOS 14 and older: right-click the .pkg, Open).
 The first start of the app asks for access to the audio input: allow it, or AMPSURD hears no guitar.

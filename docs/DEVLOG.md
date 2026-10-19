@@ -6,6 +6,16 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-19 — Session 3b: macOS 10.15 Catalina — Claude (Opus 5.5)
+
+- Owner asked whether AMPSURD runs on Catalina. Deployment target 11.0 -> 10.15 (JUCE supports 10.11+,
+  std::filesystem needs 10.15; the arm64 half stays 11 as Apple requires). The only macOS-11 API was
+  std::atomic::wait / notify in ParallelRunner: on Apple (AMPSURD_NO_ATOMIC_WAIT) sleeping workers poll
+  every 0.2 ms instead; the audio thread's wake-up becomes a no-op (still lock-free).
+- Tested here with the polling mode forced on Linux: engine_test all PASS incl. MULTI-CORE bit-identical,
+  ampsurd_bench stress OK. CI checks the x86_64 slices say minos 10.15. Not run on a real Catalina Mac.
+- Installer allows 10.15; README / BUILD_MACOS / RELEASE_NOTES say 10.15 Catalina or newer.
+
 ## 2026-10-19 — Session 3a: Windows code signing with Certum — Claude (Opus 5.5)
 
 - Owner has a Certum "Open Source Code Signing in the Cloud" certificate (Open Source Developer Radovan

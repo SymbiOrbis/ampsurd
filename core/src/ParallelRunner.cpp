@@ -62,6 +62,28 @@ void makeRealtime() noexcept
 }
 
 constexpr std::uint64_t kIndexMask = 0xffffffffull;
+
+// Wakes sleeping workers. Without std::atomic::wait (macOS before 11) the workers poll instead
+// (sleepUntilChanged), so there is nothing to wake.
+inline void wakeAll(std::atomic<std::uint64_t>& a) noexcept
+{
+#if AMPSURD_NO_ATOMIC_WAIT
+    (void) a;
+#else
+    a.notify_all();
+#endif
+}
+
+inline void sleepUntilChanged(std::atomic<std::uint64_t>& a, std::uint64_t old) noexcept
+{
+#if AMPSURD_NO_ATOMIC_WAIT
+    // checks every 0.2 ms; only while multi-core is on and no audio is running
+    while (a.load(std::memory_order_acquire) == old)
+        std::this_thread::sleep_for(std::chrono::microseconds(200));
+#else
+    a.wait(old, std::memory_order_acquire); // returns when `a` changes
+#endif
+}
 } // namespace
 
 ParallelRunner::~ParallelRunner() { stop(); }
@@ -88,7 +110,7 @@ void ParallelRunner::stop()
     if (threads.empty()) return;
     quit.store(true);
     work.fetch_add(1ull << 32); // new generation wakes everyone
-    work.notify_all();
+    wakeAll(work);
     for (auto& t : threads) t.join();
     threads.clear();
 }
@@ -124,7 +146,7 @@ void ParallelRunner::run(int numJobs, JobFn fn, void* context) noexcept
     const std::uint64_t old = work.load(std::memory_order_relaxed);
     const auto gen = (std::uint32_t) ((old >> 32) + 1);
     work.store((std::uint64_t) gen << 32, std::memory_order_seq_cst); // publish: index 0 of a new block
-    if (sleeping.load(std::memory_order_seq_cst) > 0) work.notify_all();
+    if (sleeping.load(std::memory_order_seq_cst) > 0) wakeAll(work);
 
     while (claimAndRun(gen)) {}                       // the audio thread works too
     while (jobsDone.load(std::memory_order_acquire) < numJobs) cpuRelax(); // jobs already started by workers
@@ -149,7 +171,7 @@ void ParallelRunner::workerLoop()
                 sleeping.fetch_add(1, std::memory_order_seq_cst);
                 v = work.load(std::memory_order_seq_cst);
                 if ((std::uint32_t) (v >> 32) == seen && !quit.load())
-                    work.wait(v, std::memory_order_acquire); // returns when `work` changes
+                    sleepUntilChanged(work, v);
                 sleeping.fetch_sub(1, std::memory_order_acq_rel);
                 v = work.load(std::memory_order_acquire);
             }

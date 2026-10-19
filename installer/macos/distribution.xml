@@ -5,7 +5,7 @@
     <license file="LICENSE.txt"/>
     <options customize="allow" require-scripts="false" hostArchitectures="arm64,x86_64"/>
     <domains enable_localSystem="true"/>
-    <allowed-os-versions><os-version min="11.0"/></allowed-os-versions>
+    <allowed-os-versions><os-version min="10.15"/></allowed-os-versions>
     <choices-outline>
         <line choice="app"/>
         <line choice="vst3"/>

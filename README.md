@@ -18,7 +18,7 @@ editing. Play.
 `AMPSURD-Setup-<version>.exe` (VST3 plugin + standalone app). [Code signing policy](docs/CODE_SIGNING.md) ·
 [Privacy](PRIVACY.md)
 
-**macOS 11 or newer (Apple Silicon and Intel):** from the next beta on, `AMPSURD-<version>-macOS.pkg`
+**macOS 10.15 Catalina or newer (Apple Silicon and Intel):** from the next beta on, `AMPSURD-<version>-macOS.pkg`
 installs the standalone app, the VST3 plugin and the Audio Unit (Logic Pro, GarageBand, MainStage). It is
 not signed or notarized by Apple: macOS first refuses to open it, then System Settings → Privacy &
 Security → "Open Anyway" (on macOS 14 and older: right-click the .pkg → Open).

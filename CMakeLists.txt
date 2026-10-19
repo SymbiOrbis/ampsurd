@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.25)
 
-# macOS: macOS 11 Big Sur or newer (the first version on Apple Silicon; std::atomic::wait needs it).
+# macOS: 10.15 Catalina or newer (std::filesystem needs 10.15; Apple Silicon code always needs 11).
 # Universal app (Apple Silicon + Intel): -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" (the CI does this).
-set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
+set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum macOS version")
 
 project(AMPSURD VERSION 0.9.1 LANGUAGES C CXX) # the version of releases (tag v0.9.1 = this number)
 
