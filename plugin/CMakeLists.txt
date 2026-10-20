@@ -35,6 +35,7 @@ target_sources(Ampsurd PRIVATE
   PluginEditor.cpp
   ui/Theme.cpp
   ui/Components.cpp
+  ui/RootPanel.cpp
   standalone/StandaloneApp.cpp
   player/PlayerRecorder.cpp)
 
@@ -54,6 +55,11 @@ target_compile_definitions(Ampsurd PUBLIC
   JUCE_DISPLAY_SPLASH_SCREEN=0
   JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1
   JUCE_USE_MP3AUDIOFORMAT=1)
+if(AMPSURD_ROOT_MODULE)
+  target_compile_definitions(Ampsurd PUBLIC AMPSURD_ROOT=1)
+else()
+  target_compile_definitions(Ampsurd PUBLIC AMPSURD_ROOT=0)
+endif()
 if(WIN32)
   # ASIO drivers in the standalone app (lowest latency). JUCE bundles the Steinberg ASIO SDK headers,
   # which are dual-licensed (Steinberg ASIO License or GPLv3); AMPSURD uses them under GPLv3,

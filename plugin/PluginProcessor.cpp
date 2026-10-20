@@ -335,6 +335,36 @@ juce::AudioProcessorValueTreeState::ParameterLayout AmpsurdProcessor::createLayo
                                                               NormalisableRange<float>(-50.0f, 50.0f, 1.0f), 0.0f, unitAttr("cents", 0)));
         layout.add(std::move(group));
     }
+   #if AMPSURD_ROOT
+    // ROOT (experimental): low layer that makes the lowest note of a power chord deeper (docs/ROOT_MODULE.md)
+    {
+        auto group = std::make_unique<AudioProcessorParameterGroup>("root", "Root", " | ");
+        auto pct = [](float v, int) { return juce::String(juce::roundToInt(v)) + " %"; };
+        auto pctAttr = AudioParameterFloatAttributes().withLabel("%").withStringFromValueFunction(pct);
+        group->addChild(std::make_unique<AudioParameterBool>(ParameterID { "rootOn", 1 }, "Root On", false));
+        group->addChild(std::make_unique<AudioParameterChoice>(ParameterID { "rootMode", 1 }, "Root Mode",
+                                                               StringArray { "Parallel", "Post", "Sub" }, 0));
+        group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { "rootLevel", 1 }, "Root Level",
+                                                              NormalisableRange<float>(-24.0f, 12.0f, 0.1f), 0.0f, unitAttr("dB", 1)));
+        {
+            NormalisableRange<float> fr(60.0f, 250.0f, 1.0f);
+            fr.setSkewForCentre(120.0f);
+            group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { "rootFreq", 1 }, "Root Freq", fr, 120.0f, unitAttr("Hz", 0)));
+        }
+        group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { "rootGrowl", 1 }, "Root Growl",
+                                                              NormalisableRange<float>(0.0f, 100.0f, 0.1f), 40.0f, pctAttr));
+        group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { "rootTight", 1 }, "Root Tight",
+                                                              NormalisableRange<float>(20.0f, 100.0f, 1.0f), 35.0f, unitAttr("Hz", 0)));
+        group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { "rootComp", 1 }, "Root Comp",
+                                                              NormalisableRange<float>(0.0f, 100.0f, 0.1f), 50.0f, pctAttr));
+        for (auto [id, nm] : { std::pair<const char*, const char*> { "rootSub", "Root EQ Sub 50 Hz" }, { "rootLow", "Root EQ Low 100 Hz" },
+                               { "rootLowMid", "Root EQ Low-Mid 250 Hz" } })
+            group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { id, 1 }, nm, NormalisableRange<float>(-12.0f, 12.0f, 0.1f), 0.0f,
+                                                                  unitAttr("dB", 1)));
+        group->addChild(std::make_unique<AudioParameterBool>(ParameterID { "rootInvert", 1 }, "Root Polarity Invert", false));
+        layout.add(std::move(group));
+    }
+   #endif
     return layout;
 }
 
@@ -440,6 +470,19 @@ AmpsurdProcessor::AmpsurdProcessor()
     flDepth = params.getRawParameterValue("fxFlDepth");
     flFeedback = params.getRawParameterValue("fxFlFeedback");
     flMix = params.getRawParameterValue("fxFlMix");
+   #if AMPSURD_ROOT
+    rootParams.on = params.getRawParameterValue("rootOn");
+    rootParams.mode = params.getRawParameterValue("rootMode");
+    rootParams.level = params.getRawParameterValue("rootLevel");
+    rootParams.freq = params.getRawParameterValue("rootFreq");
+    rootParams.growl = params.getRawParameterValue("rootGrowl");
+    rootParams.tight = params.getRawParameterValue("rootTight");
+    rootParams.comp = params.getRawParameterValue("rootComp");
+    rootParams.sub = params.getRawParameterValue("rootSub");
+    rootParams.low = params.getRawParameterValue("rootLow");
+    rootParams.lowMid = params.getRawParameterValue("rootLowMid");
+    rootParams.invert = params.getRawParameterValue("rootInvert");
+   #endif
 
     globalEqParams.eqOn = params.getRawParameterValue(slotParamId(kGlobalEq, "eqOn"));
     for (int t = 0; t < kNumEqTargets; ++t)
@@ -504,6 +547,9 @@ void AmpsurdProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     pitch.prepare(sampleRate);
     tuner.prepare(sampleRate);
     fx.prepare(sampleRate, maxBlock);
+   #if AMPSURD_ROOT
+    root.prepare(sampleRate, maxBlock);
+   #endif
     if (player) player->prepare(sampleRate, maxBlock);
     dryDelay.assign((size_t) (sampleRate * 0.1) + 1, 0.0f); // up to 100 ms of latency
     dryDelayPos = 0;
@@ -614,6 +660,9 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         hostTempo.store(fromHost, std::memory_order_relaxed);
     }
     const auto fxSettings = readFx();
+   #if AMPSURD_ROOT
+    const auto rootSettings = readRoot();
+   #endif
     settings.globalEqEnabled = isGlobalEqOn();
     settings.globalEq = getEqBands(kGlobalEq);
 
@@ -667,6 +716,9 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         double* L = outBuffer.data();
         double* R = outBufferR.data();
         engine.process(inBuffer.data(), L, R, n, settings);
+       #if AMPSURD_ROOT
+        root.process(inBuffer.data(), L, R, n, rootSettings); // ROOT layer: under the amps, silenced by the gate
+       #endif
         gate.process(inBuffer.data(), L, n, R); // NS-2 style: listen to the DI, silence after the amps
         fx.process(L, R, n, fxSettings);           // flanger, delays, reverb: after the gate, so tails ring out
 
@@ -1476,6 +1528,25 @@ ampsurd::FxSettings AmpsurdProcessor::readFx() const noexcept
     f.flanger.mix = flMix->load() / 100.0f;
     return f;
 }
+
+#if AMPSURD_ROOT
+ampsurd::RootSettings AmpsurdProcessor::readRoot() const noexcept
+{
+    ampsurd::RootSettings r;
+    r.on = rootParams.on->load() > 0.5f;
+    r.mode = (ampsurd::RootMode) juce::jlimit(0, 2, (int) rootParams.mode->load());
+    r.levelDb = rootParams.level->load();
+    r.freqHz = rootParams.freq->load();
+    r.growl = rootParams.growl->load() / 100.0;
+    r.tightHz = rootParams.tight->load();
+    r.comp = rootParams.comp->load() / 100.0;
+    r.subDb = rootParams.sub->load();
+    r.lowDb = rootParams.low->load();
+    r.lowMidDb = rootParams.lowMid->load();
+    r.invert = rootParams.invert->load() > 0.5f;
+    return r;
+}
+#endif
 
 bool AmpsurdProcessor::isFxActive(int which) const
 {

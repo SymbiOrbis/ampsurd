@@ -21,6 +21,8 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 option(AMPSURD_BUILD_PLUGIN "Build the JUCE VST3 plugin" ON)
 option(AMPSURD_BUILD_TOOLS  "Build command-line test tools" ON)
+# ROOT (experimental low-end module, docs/ROOT_MODULE.md). OFF builds AMPSURD without it.
+option(AMPSURD_ROOT_MODULE  "Build the experimental ROOT module" ON)
 
 include(cmake/Dependencies.cmake)
 

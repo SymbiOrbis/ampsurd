@@ -113,8 +113,8 @@ REAPER picks up the new version.
     while notes keep their attack and sustain. Drag the white marker on the GUITAR LEVEL meter
     to set the threshold just above the level shown when you are not playing.
 
-12. Create Frankenstein (button in the master row, bottom): load 2–5 different captures, click
-    **CREATE FRANKENSTEIN**. Choose 2–5 sections at the top. Click inside a section to choose
+12. Frankenstein (button in the master row, bottom): load 2–5 different captures, click
+    **FRANKENSTEIN**. Choose 2–5 sections at the top. Click inside a section to choose
     which amp plays there. Drag the vertical dividers left/right while playing (e.g. a tight amp
     for the lows, a fuzzy one for the highs). Turn **WIDTH** from 0 % (abrupt hand-over) to 90 %
     (smooth overlap). MUTE one amp: its section should disappear and the neighbours meet in the
@@ -237,6 +237,12 @@ REAPER picks up the new version.
     there and play: after about a second "GUITAR ON INPUT 2? USE INPUT 2" replaces the INPUT slider - click
     it, the guitar is heard. Settings menu -> Guitar input shows input 2 (kept after restart). Input 1
     still works as before. (Same on the Mac.)
+
+39. ROOT (EXPERIMENTAL, master row next to FRANKENSTEIN; docs/ROOT_MODULE.md): play low power chords /
+    palm mutes, open ROOT, ON. PARALLEL first: turn ROOT up and down, then GROWL (more difference tones),
+    FREQ (deeper vs. punchier), COMP (palm mutes as big as open chords), BASS EQ. If the low end gets
+    thinner, press POLARITY. Try POST and SUB (single low notes). Compare with ROOT off at similar
+    loudness. Note what sounds good and what does not - it may be kept, changed or removed.
 
 Expected latency shown by REAPER: 104 samples at 48 kHz, 123 at 44.1 kHz.
 

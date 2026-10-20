@@ -1,6 +1,6 @@
 # AMPSURD — Project Status
 
-_Last updated: 2026-10-20 (Claude, session 3c)_
+_Last updated: 2026-10-20 (Claude, session 3d)_
 
 **Product name:** AMPSURD (formerly MONSTROSITY / QUINQUEPLEX).
 **What it is:** free, open-source (GNU AGPLv3) guitar plugin: one DI signal → up to five Neural
@@ -96,6 +96,9 @@ core at 64–128 samples; the full plugin with 5 mixed captures ran at 30 % of r
 - Windows code signing (2026-10-19): Certum certificate, signed on the owner's PC with
   installer/sign_release.ps1 (docs/RELEASE_SIGNING.md). v0.9.1 re-signed this way on 2026-10-19
   (first real run, all signature checks passed). SignPath Foundation stays a later option.
+- ROOT (2026-10-20, EXPERIMENTAL, off by default): low-end module next to FRANKENSTEIN
+  (docs/ROOT_MODULE.md). Objective tests pass; **no listening test with real guitars yet**. Removable
+  (CMake option AMPSURD_ROOT_MODULE). Next: Frankenstein review (owner).
 - Later: About/Easter egg.
 
 ## Files changed in session 2

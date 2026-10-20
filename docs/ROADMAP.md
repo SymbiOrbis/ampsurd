@@ -119,6 +119,10 @@ unreachable for the owner on 2026-10-14). Users load their own IRs (ADD IR) as b
    "Load A2 captures as Lite (ECO) - like TONE3000", on by default; presets keep their own ECO state.
    Owner: compare again (same capture, both Lite, gate off, level matched).
 
+## ROOT (experimental low-end module) — IMPLEMENTED 2026-10-20, needs listening tests
+docs/ROOT_MODULE.md: research, design, tests, how to remove it. Next: testers with low-tuned guitars;
+keep / change / remove. Then: review of Frankenstein (owner, 2026-10-20).
+
 ## Later / not planned
 - Frankenstein FOLLOW (whole note routed by detected pitch) - postponed by the owner.
 - Octave / harmony effects (PITCH only re-tunes).

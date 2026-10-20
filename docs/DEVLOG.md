@@ -6,6 +6,29 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-20 — Session 3d: ROOT (experimental low-end module) — Claude (Opus 5.5)
+
+- Tester's brief "Fundamental Extractor / Low-End Root Enhancer"; owner: build it in the app as a
+  separate, removable module next to Frankenstein, research the current state first.
+- Research (docs/ROOT_MODULE.md, sources there): distorted root + fifth makes a 0.5 f difference tone
+  (mostly even-order); virtual-bass research: time-domain NLD for transients, PV smears attacks /
+  latency, hybrids not real-time, smooth asymmetric curve, crossover 100-250 Hz; metal practice: fast
+  compression of the band below 150-200 Hz, clean low layer + distorted top; dividers only reliable on
+  single notes.
+- core RootEnhancer: LR4 low band at FREQ, asymmetric curve (x/(1+x) | tanh(2.25x)/2.25) + LP 2.5 x FREQ +
+  DC block + RMS loudness match (GROWL), SUB divider (flip-flop on zero crossings, LP, envelope),
+  TIGHT HP, BASS EQ (50 shelf / 100 / 250), COMP (thr -12..-30 dBFS, ratio 1..8, auto make-up), level,
+  polarity; 20 ms fades; off = bit-identical, idle. No latency, no oversampling needed.
+- Processor: root* parameters (off by default), after the engine, before the gate. CMake option
+  AMPSURD_ROOT_MODULE (default ON) -> AMPSURD_ROOT; the build without it compiles (checked).
+- UI: RootPanel (own files): ON, PARALLEL / POST / SUB, POLARITY, ROOT / FREQ / GROWL / TIGHT / COMP,
+  layer curve + meter + COMP reduction, BASS EQ. Master row: FRANKENSTEIN (no "CREATE") + ROOT;
+  input / output blocks 26 px narrower each to make room.
+- Tests: tools/root_test (11 checks, CI on Windows + macOS), recorder_test ROOT (CI), ui_snapshot ROOT
+  (17_root.png). Finding: a distorted major third also yields a (weaker) octave-below tone plus a tone two
+  octaves down - the physics claim "only fifths" holds for 2nd order only.
+- Not done: listening tests with real guitars. Next (owner): Frankenstein review.
+
 ## 2026-10-20 — Session 3c: guitar input 1 / 2 — Claude (Opus 5.5)
 
 - First Mac tester (Scarlett Solo): the guitar was only heard through a DI box into the XLR input, because

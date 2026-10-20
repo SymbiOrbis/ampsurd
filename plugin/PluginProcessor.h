@@ -14,6 +14,9 @@
 #include "ampsurd/CaptureAnalyzer.h"
 #include "ampsurd/CaptureModel.h"
 #include "ampsurd/Effects.h"
+#if AMPSURD_ROOT
+  #include "ampsurd/RootEnhancer.h"
+#endif
 #include "ampsurd/Engine.h"
 #include "ampsurd/NoiseGate.h"
 #include "ampsurd/PitchDetector.h"
@@ -97,6 +100,16 @@ public:
     static double delayNoteBeats(int index);            // length of a note value in quarter notes
     double getTempoBpm() const { return tempoBpm.load(); }   // host tempo, or the TEMPO parameter
     bool hostProvidesTempo() const { return hostTempo.load(); }
+    // --- ROOT (experimental low-end module; compiled only with AMPSURD_ROOT_MODULE) ---
+    static constexpr bool hasRootModule() { return AMPSURD_ROOT != 0; }
+   #if AMPSURD_ROOT
+    ampsurd::RootSettings readRoot() const noexcept;
+    bool isRootOn() const { return rootParams.on->load() > 0.5f; }
+    float getAndResetRootLayerPeak() { return root.getAndResetLayerPeak(); }
+    float getAndResetRootGainReductionDb() { return root.getAndResetGainReductionDb(); }
+   #else
+    bool isRootOn() const { return false; }
+   #endif
     bool isFxActive(int which) const;                   // 0 delay 1, 1 delay 2, 2 reverb, 3 flanger, 4 pitch (ON switch)
 
     // --- Global EQ ---
@@ -366,6 +379,12 @@ private:
     ampsurd::FrankensteinSettings readFrankenstein() const noexcept;
     ampsurd::FxSettings readFx() const noexcept;
     ampsurd::FxChain fx;
+   #if AMPSURD_ROOT
+    // ROOT (experimental, docs/ROOT_MODULE.md): low layer under the amps, before the gate
+    ampsurd::RootEnhancer root;
+    struct RootParams { std::atomic<float>* on = nullptr, *mode = nullptr, *level = nullptr, *freq = nullptr, *growl = nullptr,
+                        *tight = nullptr, *comp = nullptr, *sub = nullptr, *low = nullptr, *lowMid = nullptr, *invert = nullptr; } rootParams;
+   #endif
     std::unique_ptr<PlayerRecorder> player;
     struct DelayParams { std::atomic<float>* on, *time, *sync, *note, *feedback, *level, *tone, *pingPong; };
     std::array<DelayParams, 2> delayParams {};

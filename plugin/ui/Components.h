@@ -479,7 +479,13 @@ public:
 private:
     AmpsurdProcessor& proc;
     juce::Slider inputSlider, outputSlider;
-    juce::TextButton bypassButton { "BYPASS" }, gateButton { "GATE" }, frankButton { "CREATE FRANKENSTEIN" };
+    juce::TextButton bypassButton { "BYPASS" }, gateButton { "GATE" }, frankButton { "FRANKENSTEIN" };
+    juce::TextButton rootButton { "ROOT" }; // experimental module (only with AMPSURD_ROOT)
+
+public:
+    std::function<void()> onRootClick; // the editor opens / closes the ROOT panel
+
+private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> gateAtt;
     LevelMeter inMeter, outMeterL, outMeterR; // output: left and right channel
     // shown when only the OTHER interface input has a signal (guitar plugged into input 2, e.g.

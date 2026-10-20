@@ -277,6 +277,46 @@ int main(int argc, char** argv)
         proc->setGuitarInput(saved);
     }
 
+   #if AMPSURD_ROOT
+    // ROOT panel (experimental): open from the master row, ON, a power chord, the layer's curve and meter
+    {
+        std::unique_ptr<juce::AudioProcessorEditor> ed(proc->createEditor());
+        auto* e = dynamic_cast<AmpsurdEditor*>(ed.get());
+        setP(*proc, "rootOn", 1.0f);
+        setP(*proc, "rootLow", 4.0f);
+        juce::AudioBuffer<float> b3(2, 256);
+        e->showRoot(true);
+        for (int k = 0; k < 40; ++k)
+        {
+            b3.clear();
+            for (int i = 0; i < 256; ++i)
+            {
+                const double t = (k * 256 + i) / 48000.0;
+                b3.setSample(0, i, (float) (0.15 * (std::sin(2 * 3.14159265 * 61.735 * t) + std::sin(2 * 3.14159265 * 92.499 * t))));
+            }
+            proc->processBlock(b3, midi);
+            e->refreshAll();
+        }
+        save(*ed, out.getChildFile("17_root.png"));
+        std::function<juce::Component*(juce::Component&, const juce::String&)> findText = [&](juce::Component& c, const juce::String& t) -> juce::Component* {
+            if (auto* tb = dynamic_cast<juce::TextButton*>(&c))
+                if (tb->getButtonText() == t && tb->isVisible()) return tb;
+            for (auto* ch : c.getChildren())
+                if (ch->isVisible())
+                    if (auto* r = findText(*ch, t)) return r;
+            return nullptr;
+        };
+        const bool panel = findText(*ed, "PARALLEL") != nullptr && findText(*ed, "FRANKENSTEIN") != nullptr;
+        e->showRoot(false);
+        e->refreshAll();
+        const bool closed = findText(*ed, "PARALLEL") == nullptr;
+        std::cout << (panel && closed && proc->isRootOn() ? "[PASS]" : "[FAIL]")
+                  << " ROOT: panel opens from the master row (FRANKENSTEIN next to it), closes; ROOT stays on\n";
+        setP(*proc, "rootOn", 0.0f);
+        setP(*proc, "rootLow", 0.0f);
+    }
+   #endif
+
     // Global EQ
     {
         proc->setFrankenstein(false);

@@ -3240,6 +3240,12 @@ MasterPanel::MasterPanel(AmpsurdProcessor& p) : proc(p)
     addAndMakeVisible(frankButton);
     frankButton.onClick = [this] { proc.setFrankenstein(!proc.isFrankensteinOn()); };
     frankButton.setTooltip("Split the spectrum between the amps: e.g. lows from one amp, mids from another, highs from a third");
+    if (AmpsurdProcessor::hasRootModule())
+    {
+        addAndMakeVisible(rootButton);
+        rootButton.onClick = [this] { if (onRootClick) onRootClick(); };
+        rootButton.setTooltip("ROOT (experimental): makes the lowest note of a power chord deeper. Lit = on");
+    }
     inputSlider.setTooltip("Input level into all five amps (how hard they are driven)");
     addChildComponent(inputHint);
     inputHint.setColour(juce::TextButton::textColourOffId, colours::accent);
@@ -3257,9 +3263,9 @@ void MasterPanel::resized()
 {
     auto r = getLocalBounds().reduced(16, 0);
     auto block = [&](juce::Slider& s, LevelMeter& m) {
-        auto b = r.removeFromLeft(320);
+        auto b = r.removeFromLeft(294);
         b.removeFromLeft(64);
-        auto sl = b.removeFromLeft(156);
+        auto sl = b.removeFromLeft(136);
         s.setBounds(sl.withSizeKeepingCentre(sl.getWidth(), 24));
         b.removeFromLeft(14);
         m.setBounds(b.withSizeKeepingCentre(b.getWidth(), 6));
@@ -3273,8 +3279,13 @@ void MasterPanel::resized()
     outMeterL.setBounds(ob.getX() + 12, getHeight() / 2 - 6, ob.getWidth() - 12, 5);
     outMeterR.setBounds(ob.getX() + 12, getHeight() / 2 + 1, ob.getWidth() - 12, 5);
     r.removeFromLeft(78); // room for the LIMIT indicator next to the output meter
-    frankButton.setBounds(r.removeFromLeft(164).withSizeKeepingCentre(164, 28));
+    frankButton.setBounds(r.removeFromLeft(140).withSizeKeepingCentre(140, 28));
     r.removeFromLeft(8);
+    if (AmpsurdProcessor::hasRootModule())
+    {
+        rootButton.setBounds(r.removeFromLeft(64).withSizeKeepingCentre(64, 28));
+        r.removeFromLeft(8);
+    }
     gateButton.setBounds(r.removeFromLeft(72).withSizeKeepingCentre(72, 28));
     r.removeFromLeft(8);
     bypassButton.setBounds(r.removeFromLeft(86).withSizeKeepingCentre(86, 28));
@@ -3285,7 +3296,7 @@ void MasterPanel::paint(juce::Graphics& g)
     g.setColour(line);
     g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(sectionBorder * 0.5f), 3.0f, sectionBorder);
     drawLabel(g, "INPUT", { 16, 0, 60, getHeight() }, textDim);
-    drawLabel(g, "OUTPUT", { 16 + 344, 0, 60, getHeight() }, textDim);
+    drawLabel(g, "OUTPUT", { outputSlider.getX() - 64, 0, 60, getHeight() }, textDim);
 
     // safety limiter: shown as text, never only by colour
     drawLabel(g, "L", { outMeterL.getX() - 11, outMeterL.getY() - 3, 9, 11 }, textDim, juce::Justification::centredLeft, 8.5f);
@@ -3340,6 +3351,7 @@ void MasterPanel::refresh()
     if (gr > 0.05f) { limitDb = juce::jmax(gr, limitHold > 0 ? limitDb : 0.0f); limitHold = 30; }
     else if (limitHold > 0) --limitHold;
     frankButton.setToggleState(proc.isFrankensteinOn(), juce::dontSendNotification);
+    rootButton.setToggleState(proc.isRootOn(), juce::dontSendNotification);
     if (limitHold != oldHold || limitHold > 0) repaint();
 }
 

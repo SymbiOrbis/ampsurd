@@ -111,6 +111,40 @@ int main()
         proc->setGuitarInput(saved);
         for (int k = 0; k < 20; ++k) { juce::AudioBuffer<float> b(2, block); b.clear(); proc->processBlock(b, midi); }
     }
+
+   #if AMPSURD_ROOT
+    // ROOT (experimental): off by default; on, it adds the low layer from the DI (no amp loaded here:
+    // the amps are silent, so the output is the layer alone); off again: silent again
+    {
+        setP(*proc, "bypass", 0.0f);
+        auto runChord = [&](int blocks) {
+            float peak = 0.0f;
+            juce::AudioBuffer<float> b(2, block);
+            for (int k = 0; k < blocks; ++k)
+            {
+                b.clear();
+                for (int i = 0; i < block; ++i)
+                {
+                    const double t = (double) (k * block + i) / sr;
+                    b.setSample(0, i, (float) (0.15 * (std::sin(2.0 * 3.14159265358979 * 61.735 * t) + std::sin(2.0 * 3.14159265358979 * 92.499 * t))));
+                }
+                proc->processBlock(b, midi);
+                if (k >= blocks / 2) peak = juce::jmax(peak, b.getMagnitude(0, 0, block), b.getMagnitude(1, 0, block));
+            }
+            return peak;
+        };
+        const bool offByDefault = !proc->isRootOn();
+        const float off = runChord(40);
+        setP(*proc, "rootOn", 1.0f);
+        const float on = runChord(80);
+        setP(*proc, "rootOn", 0.0f);
+        const float offAgain = runChord(40);
+        check(offByDefault && off < 1e-3f && on > 0.05f && offAgain < 1e-6f,
+              "ROOT: off by default, power chord -> low layer " + juce::String(on, 3) + " when on, silent when off again (off " + juce::String(off, 7) + ", again " + juce::String(offAgain, 7) + ", default off " + juce::String((int) offByDefault) + ")");
+        setP(*proc, "bypass", 1.0f);
+        for (int k = 0; k < 20; ++k) { juce::AudioBuffer<float> b(2, block); b.clear(); proc->processBlock(b, midi); }
+    }
+   #endif
     // runs the processor for `seconds`; input(t) = guitar DI at processing sample t; returns the output
     auto run = [&](double seconds, const std::function<float(juce::int64)>& input) {
         const int total = (int) (seconds * sr);
