@@ -123,6 +123,8 @@ unreachable for the owner on 2026-10-14). Users load their own IRs (ADD IR) as b
 - Frankenstein FOLLOW (whole note routed by detected pitch) - postponed by the owner.
 - Octave / harmony effects (PITCH only re-tunes).
 - Stereo input processing (not planned: guitar DI is mono, doubles CPU).
+- Two interface inputs at once (two guitars, or guitar + mic): asked 2026-10-20, owner: one input for now
+  (input 1 or 2 is selectable since 2026-10-20).
 - macOS signing / notarisation: needs an Apple Developer account (99 USD / year). The macOS build itself
   (VST3 + AU + standalone, universal, .pkg) exists since 2026-10-19 (docs/BUILD_MACOS.md); it still needs
   a person with a Mac to test it with an interface and in Logic / GarageBand.
