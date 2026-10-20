@@ -173,6 +173,17 @@ public:
     bool isEcoByDefault() const { return ecoByDefault.load(); }
     void setEcoByDefault(bool on);
 
+    // --- which interface input the guitar is on (a setting of this computer): 0 = input 1, 1 = input 2.
+    //     E.g. Focusrite Scarlett Solo: input 1 = XLR (mic), input 2 = instrument jack. Falls back to
+    //     input 1 when the host / device gives only one input channel. ---
+    int getGuitarInput() const { return guitarInput.load(); }
+    void setGuitarInput(int index); // message thread
+    bool hasSecondInput() const { return getTotalNumInputChannels() > 1; }
+    // raw (before INPUT gain) peaks of the selected input and of the other one, since the last call:
+    // the editor offers "Guitar on input 2?" when only the other input has a signal
+    float getAndResetSelectedInputRawPeak() { return selectedInputRawPeak.exchange(0.0f); }
+    float getAndResetOtherInputRawPeak() { return otherInputRawPeak.exchange(0.0f); }
+
     // --- the dragon in the background (a setting of this computer) ---
     bool isDragonShown() const { return showDragon.load(); }
     void setDragonShown(bool on);
@@ -414,6 +425,8 @@ private:
     std::atomic<bool> multiCore { true };
     std::atomic<bool> showDragon { true };
     std::atomic<bool> ecoByDefault { true };
+    std::atomic<int> guitarInput { 0 };
+    std::atomic<float> selectedInputRawPeak { 0.0f }, otherInputRawPeak { 0.0f };
     std::atomic<double> interfaceDbu { 12.0 };
     std::array<std::atomic<double>, kNumSlots> captureDbu {};
     std::atomic<int> calibrationVersion { 0 }, measuredCalibrationVersion { 0 };

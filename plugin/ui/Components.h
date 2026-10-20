@@ -482,6 +482,11 @@ private:
     juce::TextButton bypassButton { "BYPASS" }, gateButton { "GATE" }, frankButton { "CREATE FRANKENSTEIN" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> gateAtt;
     LevelMeter inMeter, outMeterL, outMeterR; // output: left and right channel
+    // shown when only the OTHER interface input has a signal (guitar plugged into input 2, e.g.
+    // the instrument jack of a Scarlett Solo): one click switches the guitar input
+    juce::TextButton inputHint;
+    int otherInputOnly = 0; // refresh ticks (30 Hz) with signal only on the other input
+    int shownGuitarInput = -1;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> inAtt, outAtt;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAtt;
     float limitDb = 0.0f;

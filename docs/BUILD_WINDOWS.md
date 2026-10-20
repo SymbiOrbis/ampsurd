@@ -233,6 +233,11 @@ REAPER picks up the new version.
     shows PASTE; PASTE -> SURE? -> click again within 3 s. The EQ glides to the copied curve; Ctrl+Z
     undoes it. Clicking COPIED again (or waiting / clicking elsewhere on SURE?) cancels.
 
+38. Guitar input: with an interface whose guitar jack is input 2 (e.g. Scarlett Solo INST), plug the guitar
+    there and play: after about a second "GUITAR ON INPUT 2? USE INPUT 2" replaces the INPUT slider - click
+    it, the guitar is heard. Settings menu -> Guitar input shows input 2 (kept after restart). Input 1
+    still works as before. (Same on the Mac.)
+
 Expected latency shown by REAPER: 104 samples at 48 kHz, 123 at 44.1 kHz.
 
 Optional measurements (in Developer PowerShell):

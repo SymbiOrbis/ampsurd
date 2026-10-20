@@ -3241,6 +3241,15 @@ MasterPanel::MasterPanel(AmpsurdProcessor& p) : proc(p)
     frankButton.onClick = [this] { proc.setFrankenstein(!proc.isFrankensteinOn()); };
     frankButton.setTooltip("Split the spectrum between the amps: e.g. lows from one amp, mids from another, highs from a third");
     inputSlider.setTooltip("Input level into all five amps (how hard they are driven)");
+    addChildComponent(inputHint);
+    inputHint.setColour(juce::TextButton::textColourOffId, colours::accent);
+    inputHint.onClick = [this] {
+        proc.setGuitarInput(1 - proc.getGuitarInput());
+        otherInputOnly = 0;
+        inputHint.setVisible(false);
+        inputSlider.setVisible(true);
+        inMeter.setVisible(true);
+    };
     outputSlider.setTooltip("Output level. AMPSURD never outputs above -1 dBFS");
 }
 
@@ -3257,6 +3266,7 @@ void MasterPanel::resized()
         r.removeFromLeft(24);
     };
     block(inputSlider, inMeter);
+    inputHint.setBounds(inputSlider.getX(), getHeight() / 2 - 14, inMeter.getRight() - inputSlider.getX(), 28);
     block(outputSlider, outMeterL);
     // output: left above right (two thin bars), so a louder side is visible at a glance
     const auto ob = outMeterL.getBounds();
@@ -3295,6 +3305,33 @@ void MasterPanel::paint(juce::Graphics& g)
 void MasterPanel::refresh()
 {
     inMeter.setPeak(proc.getAndResetInputPeak());
+    {
+        // "Guitar on input 2?": the other input has a signal (above -40 dBFS) while the guitar input is
+        // silent (below -60 dBFS) for 1 s; stays 5 s after the signal stops, gone once the guitar input
+        // has a signal or after a click
+        const float sel = proc.getAndResetSelectedInputRawPeak(), other = proc.getAndResetOtherInputRawPeak();
+        const int gi = proc.getGuitarInput();
+        if (sel > 0.003f) otherInputOnly = 0;
+        else if (other > 0.01f && sel < 0.001f) otherInputOnly = juce::jmin(otherInputOnly + 1, 30 + 150);
+        else if (otherInputOnly > 0) --otherInputOnly;
+        if (gi != shownGuitarInput)
+        {
+            shownGuitarInput = gi;
+            const juce::String n(2 - gi); // the other input's number
+            inputHint.setButtonText("GUITAR ON INPUT " + n + "?  USE INPUT " + n);
+            inputHint.setTooltip("Only interface input " + n + " has a signal. Click to take the guitar from input " + n
+                                 + " (settings menu: Guitar input).");
+            inMeter.setTooltip("Guitar input level (interface input " + juce::String(gi + 1) + ")");
+        }
+        const bool showHint = otherInputOnly > 30 && proc.hasSecondInput();
+        if (showHint != inputHint.isVisible())
+        {
+            // the hint takes the place of the INPUT slider and meter while it is shown
+            inputHint.setVisible(showHint);
+            inputSlider.setVisible(!showHint);
+            inMeter.setVisible(!showHint);
+        }
+    }
     proc.getAndResetOutputPeak();
     outMeterL.setPeak(proc.getAndResetOutputPeakL());
     outMeterR.setPeak(proc.getAndResetOutputPeakR());
@@ -3540,6 +3577,15 @@ void HeaderBar::showSettings()
     }
     m.addSubMenu("My interface's input level: " + juce::String(dbu, 1) + " dBu", levels, true);
     m.addItem(50, "Load A2 captures as Lite (ECO) - like TONE3000", true, proc.isEcoByDefault());
+    {
+        // which interface input the guitar is plugged into
+        juce::PopupMenu gin;
+        const int gi = proc.getGuitarInput();
+        gin.addItem(70, "Input 1", true, gi == 0);
+        gin.addItem(71, "Input 2 (e.g. the guitar / INST jack of a Scarlett Solo)" + juce::String(proc.hasSecondInput() ? "" : " - not available here"),
+                    proc.hasSecondInput(), gi == 1);
+        m.addSubMenu("Guitar input: input " + juce::String(gi + 1), gin);
+    }
     m.addSeparator();
     const bool mc = proc.isMultiCoreOn();
     {
@@ -3574,6 +3620,7 @@ void HeaderBar::showSettings()
         if (r == 20) proc.setMultiCore(!proc.isMultiCoreOn());
         if (r == 30) proc.setDragonShown(!proc.isDragonShown());
         if (r == 50) proc.setEcoByDefault(!proc.isEcoByDefault());
+        if (r == 70 || r == 71) proc.setGuitarInput(r - 70);
         if (r == 60) proc.setProgramChangeOn(!proc.isProgramChangeOn());
         if (r == 61) proc.setFootswitchLatching(!proc.isFootswitchLatching());
         if (r == 62) proc.cancelMidiLearn();

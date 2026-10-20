@@ -78,6 +78,39 @@ int main()
     const int limLat = pl->getLimiterLatency();
 
     juce::MidiBuffer midi;
+
+    // GUITAR INPUT: the guitar plugged into interface input 2 (e.g. Scarlett Solo instrument jack).
+    // Bypassed, so the output is the selected input itself.
+    {
+        const int saved = proc->getGuitarInput();
+        auto runInput2Only = [&](int selected, float& selPeak, float& otherPeak) {
+            proc->setGuitarInput(selected);
+            proc->getAndResetSelectedInputRawPeak();
+            proc->getAndResetOtherInputRawPeak();
+            float outMax = 0.0f;
+            juce::AudioBuffer<float> b(2, block);
+            for (int k = 0; k < 40; ++k)
+            {
+                b.clear();
+                for (int i = 0; i < block; ++i)
+                    b.setSample(1, i, 0.25f * (float) std::sin(2.0 * 3.14159265358979 * 110.0 * (k * block + i) / sr));
+                proc->processBlock(b, midi);
+                if (k >= 20) outMax = juce::jmax(outMax, b.getMagnitude(0, 0, block));
+            }
+            selPeak = proc->getAndResetSelectedInputRawPeak();
+            otherPeak = proc->getAndResetOtherInputRawPeak();
+            return outMax;
+        };
+        float s1 = 0, o1 = 0, s2 = 0, o2 = 0;
+        const float out1 = runInput2Only(0, s1, o1);
+        const float out2 = runInput2Only(1, s2, o2);
+        check(proc->hasSecondInput() && out1 < 1e-4f && s1 < 1e-6f && std::abs(o1 - 0.25f) < 0.01f
+                  && std::abs(out2 - 0.25f) < 0.01f && std::abs(s2 - 0.25f) < 0.01f && o2 < 1e-6f,
+              "GUITAR INPUT: guitar on input 2 - silent with input 1 selected (the hint sees input 2: "
+                  + juce::String(o1, 3) + "), heard with input 2 (" + juce::String(out2, 3) + ")");
+        proc->setGuitarInput(saved);
+        for (int k = 0; k < 20; ++k) { juce::AudioBuffer<float> b(2, block); b.clear(); proc->processBlock(b, midi); }
+    }
     // runs the processor for `seconds`; input(t) = guitar DI at processing sample t; returns the output
     auto run = [&](double seconds, const std::function<float(juce::int64)>& input) {
         const int total = (int) (seconds * sr);

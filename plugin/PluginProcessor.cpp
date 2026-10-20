@@ -365,6 +365,7 @@ AmpsurdProcessor::AmpsurdProcessor()
        #endif
         showDragon.store(pf.getBoolValue("showDragon", true));
         ecoByDefault.store(pf.getBoolValue("ecoByDefault", true));
+        guitarInput.store(juce::jlimit(0, 1, pf.getIntValue("guitarInput", 0)));
     }
     engine.setMultiCore(multiCore.load() ? -1 : 0);
     loadMidiSettings();
@@ -616,7 +617,16 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
     settings.globalEqEnabled = isGlobalEqOn();
     settings.globalEq = getEqBands(kGlobalEq);
 
-    const float* in = numIn > 0 ? buffer.getReadPointer(0) : nullptr;
+    // the guitar's input channel (setting); the other input is only measured, for the editor's hint
+    const int inCh = (guitarInput.load(std::memory_order_relaxed) == 1 && numIn > 1) ? 1 : 0;
+    const float* in = numIn > 0 ? buffer.getReadPointer(inCh) : nullptr;
+    if (numIn > 0)
+    {
+        const float sel = buffer.getMagnitude(inCh, 0, numSamples);
+        const float other = numIn > 1 ? buffer.getMagnitude(1 - inCh, 0, numSamples) : 0.0f;
+        if (sel > selectedInputRawPeak.load(std::memory_order_relaxed)) selectedInputRawPeak.store(sel, std::memory_order_relaxed);
+        if (other > otherInputRawPeak.load(std::memory_order_relaxed)) otherInputRawPeak.store(other, std::memory_order_relaxed);
+    }
     float* out = buffer.getWritePointer(0);
     float* outR = numOut > 1 ? buffer.getWritePointer(1) : nullptr; // stereo: per-amp PAN
     const int maxBlock = (int) inBuffer.size();
@@ -1009,6 +1019,17 @@ void AmpsurdProcessor::setEcoByDefault(bool on)
     o.applicationName = "AMPSURD"; o.filenameSuffix = ".settings"; o.osxLibrarySubFolder = "Application Support";
     juce::PropertiesFile pf(o);
     pf.setValue("ecoByDefault", on);
+    pf.saveIfNeeded();
+}
+
+void AmpsurdProcessor::setGuitarInput(int index)
+{
+    index = juce::jlimit(0, 1, index);
+    guitarInput.store(index);
+    juce::PropertiesFile::Options o;
+    o.applicationName = "AMPSURD"; o.filenameSuffix = ".settings"; o.osxLibrarySubFolder = "Application Support";
+    juce::PropertiesFile pf(o);
+    pf.setValue("guitarInput", index);
     pf.saveIfNeeded();
 }
 

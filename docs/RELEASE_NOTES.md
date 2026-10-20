@@ -35,6 +35,9 @@ New in 0.9.1:
 - UNDO / REDO as arrow buttons (no longer overlapping PLAYER / REC); Ctrl+Z / Ctrl+Y.
 - Author shown in About.
 - EQ COPY / PASTE between any EQs (amp, IR, Global).
+- Guitar input 1 or 2 (settings menu): e.g. the guitar jack of a Focusrite Scarlett Solo is input 2.
+  If only the other input has a signal, AMPSURD offers "GUITAR ON INPUT 2? USE INPUT 2" (one click).
+- macOS: app, VST3 and Audio Unit (macOS 10.15 Catalina or newer, Apple Silicon and Intel).
 
 Highlights: up to five NAM captures blended (any NAM architecture), Create Frankenstein (TONE / NOTES),
 per-amp EQ / PAN / cabinet IR with IR EQ, per-amp INPUT (loudness kept automatically) and OUTPUT,

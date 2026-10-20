@@ -6,6 +6,20 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-20 — Session 3c: guitar input 1 / 2 — Claude (Opus 5.5)
+
+- First Mac tester (Scarlett Solo): the guitar was only heard through a DI box into the XLR input, because
+  AMPSURD read interface input 1 only and the standalone audio settings show inputs 1+2 as one pair.
+- Setting "Guitar input: input 1 / input 2" (settings menu; a setting of this computer, saved in
+  AMPSURD.settings; falls back to input 1 when the host / device gives one input channel). processBlock
+  reads the chosen channel; raw peaks of the chosen and the other input are kept for the editor.
+- Hint: when only the other input has a signal (> -40 dBFS while the chosen one stays < -60 dBFS for 1 s),
+  "GUITAR ON INPUT 2?  USE INPUT 2" replaces the INPUT slider and meter (5 s hold); one click switches.
+- Tests: recorder_test (runs in CI on Windows and macOS) GUITAR INPUT: guitar on input 2 silent with
+  input 1, heard with input 2, other-input peak seen; ui_snapshot: hint shown, click selects input 2
+  (16_guitar_input_hint.png). Docs: BUILD_WINDOWS 38, BUILD_MACOS 8, RELEASE_NOTES.
+- Owner rule from now on: every feature / look change is implemented for both Windows and macOS.
+
 ## 2026-10-19 — Session 3b: macOS 10.15 Catalina — Claude (Opus 5.5)
 
 - Owner asked whether AMPSURD runs on Catalina. Deployment target 11.0 -> 10.15 (JUCE supports 10.11+,

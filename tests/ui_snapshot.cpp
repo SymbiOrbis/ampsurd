@@ -246,6 +246,37 @@ int main(int argc, char** argv)
         std::cout << "IR: " << proc->getIrStatus(1).info << "\n";
     }
 
+    // GUITAR INPUT hint: guitar only on interface input 2 while input 1 is selected
+    {
+        const int saved = proc->getGuitarInput();
+        proc->setGuitarInput(0);
+        std::unique_ptr<juce::AudioProcessorEditor> ed(proc->createEditor());
+        auto* e = dynamic_cast<AmpsurdEditor*>(ed.get());
+        juce::AudioBuffer<float> b2(2, 256);
+        for (int k = 0; k < 40; ++k)
+        {
+            b2.clear();
+            for (int i = 0; i < 256; ++i) b2.setSample(1, i, 0.2f * (float) std::sin(0.0144 * (k * 256 + i)));
+            proc->processBlock(b2, midi);
+            e->refreshAll();
+        }
+        std::function<juce::TextButton*(juce::Component&)> findHint = [&](juce::Component& c) -> juce::TextButton* {
+            if (auto* tb = dynamic_cast<juce::TextButton*>(&c))
+                if (tb->getButtonText().startsWith("GUITAR ON INPUT")) return tb;
+            for (auto* ch : c.getChildren())
+                if (auto* r = findHint(*ch)) return r;
+            return nullptr;
+        };
+        auto* hint = findHint(*ed);
+        const bool shown = hint != nullptr && hint->isVisible() && hint->getButtonText().contains("INPUT 2");
+        save(*ed, out.getChildFile("16_guitar_input_hint.png"));
+        if (hint != nullptr && hint->onClick) hint->onClick(); // what a mouse click runs
+        const bool switched = hint != nullptr && proc->getGuitarInput() == 1 && !hint->isVisible();
+        std::cout << (shown && switched ? "[PASS]" : "[FAIL]")
+                  << " GUITAR INPUT: signal only on input 2 -> \"GUITAR ON INPUT 2?\" shown, one click selects input 2\n";
+        proc->setGuitarInput(saved);
+    }
+
     // Global EQ
     {
         proc->setFrankenstein(false);
