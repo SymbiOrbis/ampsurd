@@ -3593,10 +3593,24 @@ void HeaderBar::showSettings()
         // which interface input the guitar is plugged into
         juce::PopupMenu gin;
         const int gi = proc.getGuitarInput();
-        gin.addItem(70, "Input 1", true, gi == 0);
-        gin.addItem(71, "Input 2 (e.g. the guitar / INST jack of a Scarlett Solo)" + juce::String(proc.hasSecondInput() ? "" : " - not available here"),
-                    proc.hasSecondInput(), gi == 1);
-        m.addSubMenu("Guitar input: input " + juce::String(gi + 1), gin);
+        if (auto* sa = proc.getStandaloneAudio(); sa != nullptr && !sa->inputNames().isEmpty())
+        {
+            // standalone: any input of the audio interface, by its name
+            const auto names = sa->inputNames();
+            const int cur = sa->guitarDeviceInput();
+            for (int i = 0; i < names.size() && i < 64; ++i)
+                gin.addItem(200 + i, names[i], true, i == cur);
+            gin.addSeparator();
+            gin.addItem(72, "Audio / MIDI settings...");
+            m.addSubMenu("Guitar input: " + (cur >= 0 && cur < names.size() ? names[cur] : juce::String("?")), gin);
+        }
+        else
+        {
+            gin.addItem(70, "Input 1", true, gi == 0);
+            gin.addItem(71, "Input 2 (e.g. the guitar / INST jack of a Scarlett Solo)" + juce::String(proc.hasSecondInput() ? "" : " - not available here"),
+                        proc.hasSecondInput(), gi == 1);
+            m.addSubMenu("Guitar input: input " + juce::String(gi + 1), gin);
+        }
     }
     m.addSeparator();
     const bool mc = proc.isMultiCoreOn();
@@ -3633,6 +3647,11 @@ void HeaderBar::showSettings()
         if (r == 30) proc.setDragonShown(!proc.isDragonShown());
         if (r == 50) proc.setEcoByDefault(!proc.isEcoByDefault());
         if (r == 70 || r == 71) proc.setGuitarInput(r - 70);
+        if (auto* sa = proc.getStandaloneAudio())
+        {
+            if (r >= 200 && r < 264) sa->setGuitarDeviceInput(r - 200);
+            if (r == 72) sa->showAudioSettings();
+        }
         if (r == 60) proc.setProgramChangeOn(!proc.isProgramChangeOn());
         if (r == 61) proc.setFootswitchLatching(!proc.isFootswitchLatching());
         if (r == 62) proc.cancelMidiLearn();

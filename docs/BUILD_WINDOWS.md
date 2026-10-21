@@ -237,6 +237,10 @@ REAPER picks up the new version.
     there and play: after about a second "GUITAR ON INPUT 2? USE INPUT 2" replaces the INPUT slider - click
     it, the guitar is heard. Settings menu -> Guitar input shows input 2 (kept after restart). Input 1
     still works as before. (Same on the Mac.)
+    Standalone: Options (top left) -> Audio / MIDI Settings... is AMPSURD's own window now: "Guitar input"
+    on top lists the interface's inputs by name (any of them, also on 8-channel interfaces); the input
+    channels below are listed one by one (JUCE showed "Input 1 + 2" only). The settings menu -> Guitar
+    input lists the same names. The choice is kept after a restart.
 
 39. ROOT (EXPERIMENTAL, master row next to FRANKENSTEIN; docs/ROOT_MODULE.md): play low power chords /
     palm mutes, open ROOT, ON. PARALLEL first: turn ROOT up and down, then GROWL (more difference tones),

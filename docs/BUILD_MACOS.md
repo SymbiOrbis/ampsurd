@@ -58,7 +58,8 @@ checklist below.
 6. REAPER / Ableton Live (VST3 or AU): the same.
 7. Cmd+Z / Cmd+Y, drag an amp to another slot, EQ COPY / PASTE, preset packs export / import.
 8. Guitar in the interface's input 2 (e.g. Scarlett Solo INST jack): "GUITAR ON INPUT 2?" appears, one
-   click and the guitar is heard (or settings menu -> Guitar input -> Input 2).
+   click and the guitar is heard (or settings menu -> Guitar input -> the input's name, or Options ->
+   Audio / MIDI Settings... -> Guitar input).
 9. ROOT (experimental) as in docs/BUILD_WINDOWS.md item 39.
 
 ## Building on a Mac yourself

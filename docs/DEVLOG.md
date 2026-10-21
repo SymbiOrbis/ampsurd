@@ -6,6 +6,19 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-21 — Session 3e: Audio / MIDI settings with single inputs — Claude (Opus 5.5)
+
+- Mac tester: JUCE's Audio/MIDI Settings window only offers "Input 1 + 2" (stereo pairs), so a single
+  input cannot be chosen there (the AMPSURD settings menu choice was not found).
+- Standalone: AMPSURD's own Audio / MIDI Settings window (Options menu; JUCE's Options button gets a
+  transparent click catcher because its listener is private): "Guitar input" combo with the device's
+  input names on top, the mute (feedback) switch, and JUCE's device selector with inputs one by one.
+  Choosing device input n makes it the only active input (-> processor channel 1, guitar input 1), saved
+  with the device state. The settings menu's Guitar input lists the same device inputs (standalone) or
+  input 1 / 2 (plugin). "Reset to default state" reconnects the new processor (latency, x-runs, inputs).
+- Builds; not testable here (no audio device / display on the Linux build machine) - CI builds both OSes,
+  a person has to try it.
+
 ## 2026-10-20 — Session 3d: ROOT (experimental low-end module) — Claude (Opus 5.5)
 
 - Tester's brief "Fundamental Extractor / Low-End Root Enhancer"; owner: build it in the app as a

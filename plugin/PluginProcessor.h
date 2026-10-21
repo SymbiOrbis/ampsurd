@@ -192,6 +192,18 @@ public:
     int getGuitarInput() const { return guitarInput.load(); }
     void setGuitarInput(int index); // message thread
     bool hasSecondInput() const { return getTotalNumInputChannels() > 1; }
+    // Standalone app only: the guitar input as an input of the audio device (any of its inputs, e.g.
+    // input 5 of an 8-channel interface) and the app's own Audio / MIDI settings window. Set by the
+    // standalone app; empty in a DAW (there the track's routing decides, plus input 1 / 2 above).
+    struct StandaloneAudio
+    {
+        std::function<juce::StringArray()> inputNames;   // the device's input channel names
+        std::function<int()> guitarDeviceInput;          // index into inputNames, -1 = unknown
+        std::function<void(int)> setGuitarDeviceInput;   // makes that device input the guitar input
+        std::function<void()> showAudioSettings;
+    };
+    void setStandaloneAudio(StandaloneAudio a) { standaloneAudio = std::move(a); }
+    const StandaloneAudio* getStandaloneAudio() const { return standaloneAudio.inputNames ? &standaloneAudio : nullptr; }
     // raw (before INPUT gain) peaks of the selected input and of the other one, since the last call:
     // the editor offers "Guitar on input 2?" when only the other input has a signal
     float getAndResetSelectedInputRawPeak() { return selectedInputRawPeak.exchange(0.0f); }
@@ -445,6 +457,7 @@ private:
     std::atomic<bool> showDragon { true };
     std::atomic<bool> ecoByDefault { true };
     std::atomic<int> guitarInput { 0 };
+    StandaloneAudio standaloneAudio;
     std::atomic<float> selectedInputRawPeak { 0.0f }, otherInputRawPeak { 0.0f };
     std::atomic<double> interfaceDbu { 12.0 };
     std::array<std::atomic<double>, kNumSlots> captureDbu {};

@@ -35,8 +35,10 @@ New in 0.9.1:
 - UNDO / REDO as arrow buttons (no longer overlapping PLAYER / REC); Ctrl+Z / Ctrl+Y.
 - Author shown in About.
 - EQ COPY / PASTE between any EQs (amp, IR, Global).
-- Guitar input 1 or 2 (settings menu): e.g. the guitar jack of a Focusrite Scarlett Solo is input 2.
-  If only the other input has a signal, AMPSURD offers "GUITAR ON INPUT 2? USE INPUT 2" (one click).
+- Guitar input: choose the input of your interface the guitar is plugged into (e.g. the guitar jack of a
+  Focusrite Scarlett Solo is input 2) - in the settings menu, or in the app's new Audio / MIDI Settings
+  window (Options), which lists the inputs one by one. If only the other input has a signal, AMPSURD
+  offers "GUITAR ON INPUT 2? USE INPUT 2" (one click). In a DAW: input 1 or 2 of the track.
 - ROOT (EXPERIMENTAL): makes the lowest note of a power chord deeper - a clean, compressed low layer
   under the amps (PARALLEL / POST / SUB, GROWL, BASS EQ). Off by default. Feedback welcome.
 - "CREATE FRANKENSTEIN" is now just "FRANKENSTEIN".
