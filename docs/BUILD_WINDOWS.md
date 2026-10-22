@@ -243,16 +243,16 @@ REAPER picks up the new version.
     channels below are listed one by one (JUCE showed "Input 1 + 2" only). The settings menu -> Guitar
     input lists the same names. The choice is kept after a restart.
 
-40. GLOBAL is the default: close EDIT / IR / PLAYER / ROOT -> GLOBAL (tuner, EQ, effects) comes back.
-    Frankenstein on -> its map; the vertical GLOBAL button opens GLOBAL, its CLOSE returns.
-41. Player: PAN under GUITAR (left of the guitar track) and GUITAR VOL change the take AND your guitar
-    on the monitors while recording; the recorded file is unchanged (play it back with VOL 0 dB / C).
-
 39. ROOT (EXPERIMENTAL, master row next to FRANKENSTEIN; docs/ROOT_MODULE.md): play low power chords /
     palm mutes, open ROOT, ON. PARALLEL first: turn ROOT up and down, then GROWL (more difference tones),
     FREQ (deeper vs. punchier), COMP (palm mutes as big as open chords), BASS EQ. If the low end gets
     thinner, press POLARITY. Try POST and SUB (single low notes). Compare with ROOT off at similar
     loudness. Note what sounds good and what does not - it may be kept, changed or removed.
+
+40. GLOBAL is the default: close EDIT / IR / PLAYER / ROOT -> GLOBAL (tuner, EQ, effects) comes back.
+    Frankenstein on -> its map; the vertical GLOBAL button opens GLOBAL, its CLOSE returns.
+41. Player: PAN under GUITAR (left of the guitar track) and GUITAR VOL change the take AND your guitar
+    on the monitors while recording; the recorded file is unchanged (play it back with VOL 0 dB / C).
 
 Expected latency shown by REAPER: 104 samples at 48 kHz, 123 at 44.1 kHz.
 
