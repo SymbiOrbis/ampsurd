@@ -160,7 +160,8 @@ bool AmpsurdEditor::keyPressed(const juce::KeyPress& key)
     const auto c = juce::CharacterFunctions::toLowerCase(key.getTextCharacter());
     if (c == 'r' && !key.getModifiers().isAnyModifierKeyDown())
     {
-        pl->record(); // record the take / punch in / punch out
+        if (content.playerPanel) content.playerPanel->recordPressed(); // take / punch in / out, or a VIDEO take
+        else pl->record();
         return true;
     }
     if ((c == 'w' && !key.getModifiers().isAnyModifierKeyDown()) || key == juce::KeyPress::homeKey)

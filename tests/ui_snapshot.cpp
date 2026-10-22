@@ -11,6 +11,7 @@
 #include <iostream>
 
 #include "../plugin/PluginEditor.h"
+#include "../plugin/ui/CameraWindow.h"
 #include "../plugin/UpdateCheck.h"
 #include "../plugin/PluginProcessor.h"
 
@@ -411,6 +412,21 @@ int main(int argc, char** argv)
         pl->stop();
         proc->setNonRealtime(false);
         wavFile.deleteFile();
+    }
+
+    // camera window (VIDEO takes): here without a camera it explains itself; the player has the VIDEO button
+    {
+        PlayerRecorder dummy;
+        dummy.prepare(48000.0, 256);
+        VideoCapture cam;
+        ampsurd::ui::CameraView view(cam, dummy);
+        ampsurd::ui::LookAndFeel lf;
+        view.setLookAndFeel(&lf);
+        view.setSize(560, 470);
+        save(view, out.getChildFile("20_camera_window.png"));
+        view.setLookAndFeel(nullptr);
+        std::cout << "[INFO] camera supported here: " << (VideoCapture::isSupported() ? "yes" : "no") << ", cameras: "
+                  << VideoCapture::cameras().size() << "\n";
     }
 
     // ROBUST: a block of garbage (NaN, inf, 1e30) from a misbehaving driver must not silence AMPSURD

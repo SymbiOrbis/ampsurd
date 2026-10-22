@@ -7,6 +7,8 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "../PluginProcessor.h"
+#include "../player/VideoCapture.h"
+#include "CameraWindow.h"
 #include "Theme.h"
 
 namespace ampsurd::ui
@@ -584,14 +586,19 @@ class PlayerPanel final : public juce::Component
 {
 public:
     PlayerPanel(AmpsurdProcessor&, PlayerRecorder&);
+    ~PlayerPanel() override;
     void paint(juce::Graphics&) override;
     void resized() override;
     void refresh();
+    void recordPressed(); // REC button and the R key: audio take / punch, or a VIDEO take (VIDEO on)
     std::function<void()> onClose;
 
 private:
     void loadBacking();
     void saveAs();
+    void saveVideo();
+    void setVideo(bool on);   // VIDEO on: camera window + camera; off: both closed
+    void finishVideoTake();   // after a video take stopped: the camera file joins the take
     void setStatus(const juce::String& s) { status = s; repaint(); }
 
     AmpsurdProcessor& proc;
@@ -616,6 +623,12 @@ private:
     double clearArmedAt = -1.0;
     float backLevel = 0.0f, takeLevel = 0.0f;
     juce::Rectangle<int> backMeter, takeMeter, statusArea, infoArea;
+    // VIDEO takes (camera in its own window)
+    juce::TextButton videoButton { "VIDEO" };
+    VideoCapture camera;
+    std::unique_ptr<CameraWindow> cameraWindow;
+    bool videoRecording = false;
+    double replaceArmedAt = -1.0;
 };
 
 // ---------------------------------------------------------------------------------------------

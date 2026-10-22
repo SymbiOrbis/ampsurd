@@ -100,6 +100,27 @@ public:
     bool canUndo() const { return !undoStack.empty(); }
     void undo();
     void clearTake();                  // remove the whole guitar track (files stay in Recordings/Takes)
+
+    // --- VIDEO takes (standalone; camera: VideoCapture). A video take is one continuous recording from
+    //     STOP; its camera file is kept with the take. Sync: the audio thread notes the wall clock when the
+    //     pass starts; with the camera's first-frame time this gives the timeline position of video frame 0.
+    //     VIDEO OFFSET (ms, + = the sound later) fine-tunes it by hand. ---
+    void attachVideo(const juce::File& videoFile, juce::int64 firstFrameEpochMs); // message thread, after stop
+    void dropVideo() { takeVideo = juce::File(); }
+    bool takeHasVideo() const { return takeVideo.existsAsFile() && takeReady.load(); }
+    juce::File getTakeVideo() const { return takeVideo; }
+    void setVideoOffsetMs(float ms) { videoOffsetMs.store(ms); }
+    float getVideoOffsetMs() const { return videoOffsetMs.load(); }
+    // seconds from video frame 0 to the first sample of audio that starts at timeline position `audioStart`
+    double videoAudioLeadSeconds(juce::int64 audioStart) const
+    {
+        return videoLeadSeconds(videoFrame0Timeline, audioStart, sampleRate, videoOffsetMs.load());
+    }
+    // pure function (tests): + = the audio starts after video frame 0
+    static double videoLeadSeconds(double frame0TimelineSamples, juce::int64 audioStart, double sr, double offsetMs)
+    {
+        return ((double) audioStart - frame0TimelineSamples) / sr + offsetMs / 1000.0;
+    }
     bool isRendering() const { return adoptedGeneration.load() != renderGeneration.load(); }
     juce::String getRenderError() const { return renderError; }
     juce::String renderNow();          // blocking (tests): waits for the composite
@@ -202,6 +223,10 @@ private:
 
     // the pass being recorded
     std::atomic<bool> passActive { false }, passStartPending { false };
+    std::atomic<juce::int64> passWallMs { 0 }, passWallPos { 0 }; // wall clock (epoch ms) and song position when the pass started
+    juce::File takeVideo;
+    double videoFrame0Timeline = 0.0;
+    std::atomic<float> videoOffsetMs { 0.0f };
     std::atomic<juce::int64> passStart { 0 };       // timeline position of the pass file's first sample
     std::atomic<int> pendingCompensation { 0 };
     juce::int64 recSkip = 0;

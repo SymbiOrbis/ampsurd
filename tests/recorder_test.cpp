@@ -560,6 +560,34 @@ int main()
         pl->clearTake();
     }
 
+    // VIDEO takes: sync arithmetic and when a take keeps its video
+    {
+        // frame 0 at timeline 48000 (1 s): audio starting at 0 begins 1 s before frame 0; at 72000 0.5 s after;
+        // SOUND OFFSET +100 ms moves the sound 0.1 s later
+        const double a = PlayerRecorder::videoLeadSeconds(48000.0, 0, 48000.0, 0.0);
+        const double b = PlayerRecorder::videoLeadSeconds(48000.0, 72000, 48000.0, 0.0);
+        const double c = PlayerRecorder::videoLeadSeconds(48000.0, 72000, 48000.0, 100.0);
+        pl->stop();
+        pl->clearTake();
+        pl->toStart();
+        pl->record();
+        run(1.0, [&](juce::int64 t) { return 0.2f * (float) std::sin(t * 0.03); });
+        pl->stop();
+        pl->renderNow();
+        waitIdle();
+        const auto fakeVideo = tmp.getChildFile("camera.mov");
+        fakeVideo.replaceWithText("not really a video");
+        pl->attachVideo(fakeVideo, juce::Time::currentTimeMillis());
+        const bool attached = pl->takeHasVideo() && pl->getTakeVideo() == fakeVideo;
+        const double lead = pl->videoAudioLeadSeconds(0); // a camera whose first frame is "now", after the take began
+        pl->clearTake();
+        const bool cleared = !pl->takeHasVideo();
+        check(std::abs(a + 1.0) < 1e-9 && std::abs(b - 0.5) < 1e-9 && std::abs(c - 0.6) < 1e-9 && attached && cleared
+                  && lead < 0.0 && lead > -3.0, // the take began before the (later) camera frame; tests run faster than real time
+              "VIDEO: sync arithmetic (-1.0 / +0.5 / +0.6 s), a recorded take keeps its camera file (lead " + juce::String(lead, 2)
+                  + " s), CLEAR TAKE drops it");
+    }
+
     proc.reset();
     tmp.deleteRecursively();
     std::cout << (failures == 0 ? "\nALL PASS\n" : "\n" + juce::String(failures) + " FAILURE(S)\n");

@@ -2,6 +2,7 @@
 
 #include "BinaryData.h"
 #include "../UpdateCheck.h"
+#include "../player/VideoMux.h"
 
 #include <cstring>
 #include <limits>
@@ -2005,7 +2006,16 @@ PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), pla
     playButton.onClick = [this] { player.play(); };
     pauseButton.onClick = [this] { player.pause(); };
     stopButton.onClick = [this] { player.stop(); };
-    recButton.onClick = [this] { player.record(); };
+    recButton.onClick = [this] { recordPressed(); };
+    addAndMakeVisible(videoButton);
+    videoButton.setClickingTogglesState(true);
+    videoButton.setWantsKeyboardFocus(false);
+    videoButton.onClick = [this] { setVideo(videoButton.getToggleState()); };
+    videoButton.setEnabled(VideoCapture::isSupported());
+    videoButton.setTooltip(VideoCapture::isSupported()
+                               ? juce::String("VIDEO on: REC also films you with the computer's camera (its own window). A video take is one "
+                                              "continuous take from STOP; SAVE AS... -> MP4 VIDEO saves it with AMPSURD's sound")
+                               : juce::String("Video recording is not available on this system"));
     undoButton.onClick = [this] { player.undo(); };
     clearButton.onClick = [this] {
         // removes the whole guitar track (UNDO brings it back) - click twice
@@ -2062,7 +2072,10 @@ PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), pla
     offset.setTooltip("Fine-tune where recordings land, if your audio driver reports its latency slightly wrong");
 
     formatBox.addItemList(PlayerRecorder::formatNames(), 1);
+    formatBox.addItem("MP4 VIDEO", PlayerRecorder::formatNames().size() + 1); // the video take with AMPSURD's sound
+    formatBox.setItemEnabled(PlayerRecorder::formatNames().size() + 1, isVideoExportSupported());
     formatBox.setSelectedItemIndex(0, juce::dontSendNotification); // CD quality
+    formatBox.onChange = [this] { rateBox.setEnabled(formatBox.getSelectedItemIndex() < PlayerRecorder::formatNames().size()); };
     for (auto r : PlayerRecorder::exportRates()) rateBox.addItem(juce::String(r / 1000.0, 1) + " kHz", (int) r);
     rateBox.setSelectedItemIndex(0, juce::dontSendNotification);   // 44.1 kHz
     contentBox.addItem("GUITAR + BACKING", 1);
@@ -2162,6 +2175,8 @@ void PlayerPanel::resized()
         b->setBounds(transport.removeFromLeft(b == &startButton ? 44 : 84));
         transport.removeFromLeft(6);
     }
+    videoButton.setBounds(transport.removeFromLeft(64));
+    transport.removeFromLeft(6);
     transport.removeFromLeft(14);
     undoButton.setBounds(transport.removeFromLeft(70));
     transport.removeFromLeft(6);
@@ -2252,7 +2267,8 @@ void PlayerPanel::paint(juce::Graphics& g)
               header.removeFromLeft(170), st == S::recording ? text : textDim, juce::Justification::centredLeft);
     g.setColour(textFaint);
     g.setFont(Fonts::get().regular(11.5f));
-    g.drawFittedText((player.hasBacking() ? "Backing: " + player.getBackingName() + "   " : juce::String())
+    g.drawFittedText((player.takeHasVideo() ? juce::String("VIDEO TAKE   ") : juce::String())
+                         + (player.hasBacking() ? "Backing: " + player.getBackingName() + "   " : juce::String())
                          + "Recordings are lined up automatically (" + juce::String(player.getCompensationMs(), 1) + " ms)",
                      header.withTrimmedRight(88), juce::Justification::centredRight, 1, 0.8f);
 
@@ -2317,6 +2333,12 @@ void PlayerPanel::refresh()
     recButton.setButtonText(st == S::recording && (player.hasTake() || !player.getClips().empty()) ? "PUNCH OUT" : "REC");
     pauseButton.setToggleState(st == S::pausedPlay || st == S::pausedRec, juce::dontSendNotification);
     pauseButton.setButtonText(st == S::pausedPlay || st == S::pausedRec ? "CONTINUE" : "PAUSE");
+    if (videoRecording && st != S::recording && st != S::pausedRec) finishVideoTake(); // STOP ended the video take
+    if (cameraWindow != nullptr) cameraWindow->view().refresh();
+    if (replaceArmedAt > 0.0 && juce::Time::getMillisecondCounterHiRes() - replaceArmedAt > 3000.0) replaceArmedAt = -1.0;
+    if (videoButton.getToggleState())
+        recButton.setButtonText(st == S::recording || st == S::pausedRec ? "STOP REC" : replaceArmedAt > 0.0 ? "REPLACE?" : "REC");
+    videoButton.setEnabled(VideoCapture::isSupported() && !videoRecording);
     const bool busy = player.isBusy();
     for (auto* b : { &saveButton, &bounceButton })
         b->setEnabled(!busy && !rec && player.hasTake() && !player.isRendering());
@@ -2348,8 +2370,122 @@ void PlayerPanel::loadBacking()
     });
 }
 
+PlayerPanel::~PlayerPanel()
+{
+    if (videoRecording) finishVideoTake();
+    cameraWindow.reset();
+    camera.close();
+}
+
+void PlayerPanel::setVideo(bool on)
+{
+    videoButton.setToggleState(on, juce::dontSendNotification);
+    replaceArmedAt = -1.0;
+    if (on)
+    {
+        if (cameraWindow == nullptr)
+            cameraWindow = std::make_unique<CameraWindow>(camera, player, [this] {
+                juce::MessageManager::callAsync([sp = juce::Component::SafePointer<PlayerPanel>(this)] {
+                    if (sp != nullptr && !sp->videoRecording) sp->setVideo(false);
+                });
+            });
+        cameraWindow->toFront(true);
+        setStatus("VIDEO on: REC from STOP records a video take (picture from the camera, sound from AMPSURD).");
+    }
+    else
+    {
+        if (videoRecording) { player.stop(); finishVideoTake(); }
+        cameraWindow.reset();
+        camera.close();
+        setStatus("VIDEO off.");
+    }
+}
+
+void PlayerPanel::recordPressed()
+{
+    using S = PlayerRecorder::State;
+    const auto st = player.getState();
+    if (videoButton.getToggleState())
+    {
+        if (st == S::recording || st == S::pausedRec) { player.stop(); return; } // a video take ends with REC or STOP
+        if (st != S::stopped) { setStatus("VIDEO: a video take starts from STOP (one continuous take)."); return; }
+        if (!camera.isOpen()) { setStatus("VIDEO: no camera is open - see the camera window."); return; }
+        if (player.hasTake() || !player.getClips().empty())
+        {
+            const double now = juce::Time::getMillisecondCounterHiRes();
+            if (!(replaceArmedAt > 0.0 && now - replaceArmedAt < 3000.0))
+            {
+                replaceArmedAt = now;
+                setStatus("REC again within 3 s: the take is replaced by a new video take (UNDO brings the old one back).");
+                return;
+            }
+            replaceArmedAt = -1.0;
+            player.clearTake();
+        }
+        const auto err = camera.startRecording(player.getRecordingsFolder().getChildFile("Takes"));
+        if (err.isNotEmpty()) { setStatus(err); return; }
+        videoRecording = true;
+        player.record();
+        if (player.getState() != S::recording) { finishVideoTake(); setStatus("The recording could not start."); }
+        return;
+    }
+    if (player.takeHasVideo() && st != S::stopped && st != S::recording && st != S::pausedRec)
+    {
+        setStatus("This is a video take: a correction would not match the picture. Switch VIDEO on and record a new take.");
+        return;
+    }
+    player.record();
+}
+
+void PlayerPanel::finishVideoTake()
+{
+    videoRecording = false;
+    juce::File f;
+    const auto firstFrame = camera.stopRecording(f);
+    if (f != juce::File())
+    {
+        player.attachVideo(f, firstFrame);
+        setStatus("Video take recorded. SAVE AS... -> MP4 VIDEO saves it with AMPSURD's sound.");
+    }
+}
+
+void PlayerPanel::saveVideo()
+{
+    if (!player.takeHasVideo())
+    {
+        setStatus("No video take yet: switch VIDEO on and record one (or wait a moment until the camera file is written).");
+        return;
+    }
+    const bool withBacking = contentBox.getSelectedId() == 1;
+    auto folder = player.getRecordingsFolder();
+    folder.createDirectory();
+    const auto suggested = folder.getNonexistentChildFile(withBacking ? "AMPSURD video" : "AMPSURD video guitar", ".mp4");
+    chooser = std::make_unique<juce::FileChooser>("Save the video", suggested, "*.mp4");
+    chooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
+                         [this, withBacking](const juce::FileChooser& fc) {
+                             auto f = fc.getResult();
+                             if (f == juce::File()) return;
+                             f = f.withFileExtension(".mp4");
+                             juce::AudioBuffer<float> mix;
+                             int start = 0;
+                             const auto err = player.renderMix(withBacking, mix, start);
+                             if (err.isNotEmpty()) { setStatus(err); return; }
+                             const double lead = player.videoAudioLeadSeconds(start);
+                             const double sr = player.getSampleRate();
+                             const auto video = player.getTakeVideo();
+                             setStatus("Saving the video... (about as long as the video itself)");
+                             juce::Thread::launch([sp = juce::Component::SafePointer<PlayerPanel>(this), video, mix = std::move(mix), sr, lead, f] {
+                                 const auto e = muxVideoToMp4(video, mix, sr, lead, f, {});
+                                 juce::MessageManager::callAsync([sp, e, f] {
+                                     if (sp != nullptr) sp->setStatus(e.isEmpty() ? "Saved: " + f.getFileName() : e);
+                                 });
+                             });
+                         });
+}
+
 void PlayerPanel::saveAs()
 {
+    if (formatBox.getSelectedItemIndex() >= PlayerRecorder::formatNames().size()) { saveVideo(); return; }
     PlayerRecorder::ExportOptions o;
     o.format = formatBox.getSelectedItemIndex();
     o.rate = (double) rateBox.getSelectedId();

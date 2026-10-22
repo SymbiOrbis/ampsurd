@@ -257,6 +257,8 @@ void PlayerRecorder::process(double* L, double* R, int n, int ampsurdLatency, bo
         {
             if (passStartPending.exchange(false))
             {
+                passWallMs.store(juce::Time::currentTimeMillis(), std::memory_order_relaxed); // video sync
+                passWallPos.store(pos, std::memory_order_relaxed);
                 const juce::int64 start = pos - pendingCompensation.load();
                 recSkip = start < 0 ? -start : 0;
                 passStart.store(std::max<juce::int64>(0, start));
@@ -679,10 +681,21 @@ void PlayerRecorder::undo()
     scheduleRender();
 }
 
+void PlayerRecorder::attachVideo(const juce::File& videoFile, juce::int64 firstFrameEpochMs)
+{
+    // the sound the performer played to at wall time W is heard (and lined up) at timeline position
+    // passWallPos + (W - passWallMs - output latency) * sr; output latency ~ half the device latency + limiter
+    const int dev = deviceLatency ? deviceLatency() : 0;
+    const double outMs = (0.5 * dev + limiter.getLatencySamples()) * 1000.0 / sampleRate;
+    videoFrame0Timeline = (double) passWallPos.load() + ((double) (firstFrameEpochMs - passWallMs.load()) - outMs) * sampleRate / 1000.0;
+    takeVideo = videoFile;
+}
+
 void PlayerRecorder::clearTake()
 {
     const auto st = getState();
     if (st == State::recording || st == State::pausedRec) return;
+    takeVideo = juce::File();
     if (!clips.empty()) commitClips({});
     else scheduleRender();
 }
