@@ -6,6 +6,24 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-22 — Session 3l: blend tone learned while playing — Claude (Opus 5.5)
+
+- Owner (newest build): the 50:50 blend still loses highs. Checked the whole plugin path (ui_snapshot, new
+  check BLEND TONE in the plugin): with the test captures the 50:50 blend is within 0.6 dB of its amps in
+  every octave - the correction works as designed. What it cannot know: the amps' own EQs, the IR EQs and
+  how the guitar is really played (it is computed from the test signal).
+- New BlendToneTracker (core/BlendToneEq): while playing, every audible path (as it is mixed: after IR,
+  EQ, alignment, level match) is split into the 10 bands (band-pass filters) and the per-band covariance of
+  the paths is averaged (plain average for the first seconds, then ~6 s moving average; blocks below
+  -60 dBFS ignored). The Engine computes the blend EQ from it like from the measured covariance; the
+  learned share fades in over the first 4 s of playing. Relative to its own broadband G, so the loudness law
+  is unchanged. A new capture or another alignment resets that slot (CaptureSlot swap counter), sleeping /
+  waking amps keep what was learned. Only with band data (the plugin always passes it).
+- EQ fitting: designs once per iteration; refit only when a band moves by > 0.1 dB.
+- engine_test: amp B with its own EQ (-6 dB at 5 kHz, unknown to the measurement), 50:50 after ~12 s of
+  playing: within 0.92 dB in every octave, 100 % learned. Older tests unchanged (PAN hard L/R bit-exact,
+  SLEEP, MIX loudness 0.07 dB).
+
 ## 2026-10-22 — Session 3k: owner's notes on the last build — Claude (Opus 5.5)
 
 - GUITAR PAN is now RECORDED (owner: stereo layering - click centre, take left, BOUNCE, take right). The pan

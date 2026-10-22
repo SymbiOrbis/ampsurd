@@ -139,6 +139,8 @@ automatically when INPUT changes (debounced) or the sample rate changes.
 the lows / mids and much less in the highs, so a 50:50 blend came out 2-4 dB darker in the highs than its
 amps. The same law is now also applied per frequency band (10 bands) and the blend gets a static EQ of
 G_b / G (`core/BlendToneEq.h`, measured with `tools/blend_spectrum`; worst band error 2.5 -> 0.6 dB).
+Since it is computed from the test signal it does not know the amps' EQs or the real playing, so the same
+covariance is also learned while playing (BlendToneTracker, ~6 s average) and takes over after ~4 s.
 
 Limitation: the experiment used NeuralAmpModelerCore's example/test models, not a real amp
 library. Run `ampsurd_mix_experiment` / `mix_experiment` on your own captures to confirm.

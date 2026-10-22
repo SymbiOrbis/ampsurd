@@ -28,6 +28,7 @@ void CaptureSlot::prepare(double sampleRate, int maxBlockSize)
     {
         delete active;
         active = p;
+        ++swaps;
     }
 
     if (active != nullptr)
@@ -79,6 +80,7 @@ void CaptureSlot::process(const Sample* in, Sample* out, int n, bool normalise) 
             {
                 fadingOut = active; // may be nullptr: then we fade in from silence
                 active = next;
+                ++swaps;
                 fadePos = 0;
                 latency.store(active->getLatencySamples(), std::memory_order_relaxed);
             }

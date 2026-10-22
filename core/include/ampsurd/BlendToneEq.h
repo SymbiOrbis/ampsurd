@@ -20,6 +20,7 @@
 // prepare(): non-RT. setTargets()/process(): audio thread, no allocation.
 
 #include <array>
+#include <cstddef>
 
 namespace ampsurd
 {
@@ -61,6 +62,40 @@ private:
     std::array<Coefs, kBands> coefs {};
     std::array<State, kBands> stL {}, stR {};
     bool active = false;
+};
+
+// BlendToneTracker: learns, WHILE YOU PLAY, how the amps really add up in the BlendToneEq bands (2026-10-22,
+// owner: "the 50:50 blend still has fewer highs"). The test-signal measurement does not know the amps' EQs,
+// the IR EQs or the way you actually play; this does: each audible path (as it is mixed: after IR, EQ,
+// alignment, level match) is split into the same bands and the per-band covariance of the paths is averaged
+// over ~6 s of playing (silence and quiet noise are ignored). The Engine computes the blend EQ from it exactly
+// like from the measured covariance; confidence() (0 -> 1 over the first ~4 s of playing) cross-fades from
+// the measured correction to the learned one. It only changes as fast as the averaging - never with a note.
+// Audio thread only (no allocation).
+class BlendToneTracker
+{
+public:
+    static constexpr int kSlots = 5;
+    using Matrix = std::array<std::array<double, kSlots>, kSlots>;
+
+    void prepare(double sampleRate) noexcept;
+    void reset() noexcept;
+    void resetSlot(int slot) noexcept; // its capture or alignment changed: what was learned is no longer true
+    // paths[i] = the slot's signal as it is mixed (nullptr = not audible), scale[i] = its level-match gain
+    void analyse(const std::array<const double*, kSlots>& paths, const std::array<double, kSlots>& scale, int n) noexcept;
+    double confidence() const noexcept { return conf; }
+    const std::array<Matrix, BlendToneEq::kBands>& bands() const noexcept { return cov; }
+    bool tracked(int slot) const noexcept { return tracks[(std::size_t) slot] > 0.0; }
+
+private:
+    struct Biquad { double b0 = 0, b1 = 0, b2 = 0, a1 = 0, a2 = 0; };
+    struct State { double z1 = 0, z2 = 0; };
+    double sr = 48000.0, forget = 0.0, conf = 0.0, activeSeconds = 0.0;
+    std::array<Biquad, BlendToneEq::kBands> filt {};
+    std::array<std::array<State, BlendToneEq::kBands>, kSlots> st {};
+    std::array<Matrix, BlendToneEq::kBands> cov {}, acc {};
+    std::array<double, kSlots> tracks {};
+    std::array<double, BlendToneEq::kBands> y {};
 };
 
 } // namespace ampsurd

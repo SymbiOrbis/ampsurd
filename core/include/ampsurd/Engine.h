@@ -20,9 +20,11 @@
 //      dynamics are untouched. Limited to [-6, +7] dB; until a capture has been measured it
 //      is treated as fully coherent (G = 1, i.e. never louder than expected).
 //   3. Path gain = p_i * G * levelGain_i, smoothed (no zipper noise, no clicks on mute/solo).
-//   4. TONE of the blend (BlendToneEq.h): the same law per frequency band, G_b; the blend gets a static,
-//      smoothed EQ of G_b / G so every band has the weighted average power of its amps (without it a
-//      50:50 blend of two different amps was 2-4 dB darker in the highs). One amp alone: no EQ at all.
+//   4. TONE of the blend (BlendToneEq.h): the same law per frequency band, G_b; the blend gets a smoothed
+//      EQ of G_b / G so every band has the weighted average power of its amps (without it a 50:50 blend of
+//      two different amps was 2-4 dB darker in the highs). First from the test-signal covariance, then from
+//      the covariance learned while playing (BlendToneTracker: includes the amps' EQs and your playing;
+//      averaged over ~6 s, so it never follows single notes). One amp alone: no EQ at all.
 //
 // Threading: prepare() non-RT with audio stopped; setCovariance() from any thread;
 // process() on the audio thread only (lock-free, allocation-free).
@@ -43,6 +45,7 @@ namespace ampsurd
 {
 
 constexpr int kNumSlots = 5;
+static_assert(BlendToneTracker::kSlots == kNumSlots, "tracker size");
 
 struct SlotSettings
 {
@@ -102,6 +105,8 @@ public:
                                                     const std::array<std::array<double, 2>, kNumSlots>& pan, double G) noexcept;
     // Any thread (diagnostics / tests): the blend EQ currently wanted for band b (dB).
     float getToneCorrectionDb(int b) const noexcept { return toneDb[(size_t) b].load(std::memory_order_relaxed); }
+    // Any thread: 0 = the blend EQ comes from the test-signal measurement, 1 = from what was learned while playing.
+    float getToneLearned() const noexcept { return toneConfidence.load(std::memory_order_relaxed); }
 
     // Audio thread. Outputs must not alias the input; n <= maxBlockSize.
     void process(const double* in, double* outL, double* outR, int n, const EngineSettings& settings) noexcept;
@@ -158,7 +163,10 @@ private:
     std::array<std::array<std::array<std::atomic<double>, kNumSlots>, kNumSlots>, BlendToneEq::kBands> bandCov;
     std::atomic<bool> bandCovValid { false };
     BlendToneEq blendTone;
+    BlendToneTracker toneTracker;                       // learns the blend's tone while you play
+    std::array<std::array<double, 4>, kNumSlots> trackSig {}; // loaded / delay / polarity / phase seen by the tracker
     std::array<std::atomic<float>, BlendToneEq::kBands> toneDb {};
+    std::atomic<float> toneConfidence { 0.0f };
 
     std::array<std::atomic<float>, kNumSlots> effectivePercent;
     std::array<std::atomic<bool>, kNumSlots> loaded;

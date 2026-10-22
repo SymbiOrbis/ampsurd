@@ -267,7 +267,8 @@ REAPER picks up the new version.
     move SOUND OFFSET and save again; note the value. Close the camera window = VIDEO off.
 
 43. Blend tone: load two different amps, 100:0 vs. 50:50 vs. 0:100 at matched loudness: the 50:50 blend
-    should sound like "half of each", not darker than both. (The automatic EQ is fixed while you play.)
+    should sound like "half of each", not darker than both. The automatic EQ learns while you play: give
+    it ~5-10 s of playing after changing amps or alignment (it changes slowly, never with single notes).
 
 44. DOUBLER (EXPERIMENTAL, master row; docs/DOUBLER.md): play a riff, open DOUBLER, ON. DOUBLES 1 / 2 / 3,
     TIGHT (tight vs. loose player), LEVEL, WIDTH, LOW MONO, CHARACTER. Listen on headphones and on speakers,

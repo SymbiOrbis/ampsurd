@@ -42,6 +42,8 @@ void Engine::prepare(double sr, int maxBlockSize, double maxDelayMs)
     globalEq.prepare(sr);
     globalEqR.prepare(sr);
     blendTone.prepare(sr);
+    toneTracker.prepare(sr);
+    for (auto& sig : trackSig) sig = { -1.0, 0.0, 0.0, 0.0 };
     frankenstein.prepare(sr, maxBlock);
     frankMix = 0.0;
     splitter.prepare(sr, maxBlock);
@@ -418,12 +420,51 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
         BlendToneEq::Gains t {};
         if (!notesRouting && bandCovValid.load(std::memory_order_acquire))
         {
-            std::array<Matrix, BlendToneEq::kBands> B {};
-            for (int b = 0; b < BlendToneEq::kBands; ++b)
-                for (int i = 0; i < kNumSlots; ++i)
-                    for (int j = 0; j < kNumSlots; ++j)
-                        B[(size_t) b][(size_t) i][(size_t) j] = bandCov[(size_t) b][(size_t) i][(size_t) j].load(std::memory_order_relaxed);
-            t = computeToneCorrection(p, B, valid, pan, G);
+            {
+                std::array<Matrix, BlendToneEq::kBands> B {};
+                for (int b = 0; b < BlendToneEq::kBands; ++b)
+                    for (int i = 0; i < kNumSlots; ++i)
+                        for (int j = 0; j < kNumSlots; ++j)
+                            B[(size_t) b][(size_t) i][(size_t) j] = bandCov[(size_t) b][(size_t) i][(size_t) j].load(std::memory_order_relaxed);
+                t = computeToneCorrection(p, B, valid, pan, G);
+            }
+            // learned while playing: the paths as they are mixed (after IR, EQ, alignment), level-matched
+            std::array<const double*, kNumSlots> paths {};
+            std::array<double, kNumSlots> scale {};
+            std::array<bool, kNumSlots> learned {};
+            for (int i = 0; i < kNumSlots; ++i)
+            {
+                const auto& ss = s.slots[(size_t) i];
+                const std::array<double, 4> sig { (double) slots[(size_t) i].getSwapCount(), ss.delaySamples, ss.polarity, ss.phaseRadians }; // not asleep / awake: that keeps what was learned
+                if (sig != trackSig[(size_t) i]) // another capture / alignment: what was learned is no longer true
+                {
+                    if (trackSig[(size_t) i][0] >= 0.0) toneTracker.resetSlot(i);
+                    trackSig[(size_t) i] = sig;
+                }
+                if (isLoaded[(size_t) i] && p[(size_t) i] > 0.0)
+                {
+                    paths[(size_t) i] = scratch.data() + (size_t) i * (size_t) stride;
+                    scale[(size_t) i] = ss.levelGain;
+                }
+                learned[(size_t) i] = toneTracker.tracked(i);
+            }
+            toneTracker.analyse(paths, scale, n);
+            const double w = toneTracker.confidence();
+            if (w > 0.0)
+            {
+                const auto& LB = toneTracker.bands();
+                Matrix sum {};
+                for (const auto& m : LB)
+                    for (int i = 0; i < kNumSlots; ++i)
+                        for (int j = 0; j < kNumSlots; ++j) sum[(size_t) i][(size_t) j] += m[(size_t) i][(size_t) j];
+                const double Gl = computeCompensation(p, sum, learned, pan);
+                const auto tl = computeToneCorrection(p, LB, learned, pan, Gl);
+                bool usable = true; // every audible amp must have been learned
+                for (int i = 0; i < kNumSlots; ++i) usable = usable && (p[(size_t) i] <= 0.0 || learned[(size_t) i]);
+                if (usable)
+                    for (int b = 0; b < BlendToneEq::kBands; ++b) t[(size_t) b] = (1.0 - w) * t[(size_t) b] + w * tl[(size_t) b];
+            }
+            toneConfidence.store((float) w, std::memory_order_relaxed);
         }
         blendTone.setTargets(t);
         for (int b = 0; b < BlendToneEq::kBands; ++b)

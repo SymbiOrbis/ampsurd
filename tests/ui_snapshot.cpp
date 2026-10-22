@@ -14,6 +14,7 @@
 #include "../plugin/ui/CameraWindow.h"
 #include "../plugin/UpdateCheck.h"
 #include "../plugin/PluginProcessor.h"
+#include "ampsurd/CaptureAnalyzer.h"
 
 static void pump(int ms)
 {
@@ -75,6 +76,69 @@ int main(int argc, char** argv)
     juce::AudioBuffer<float> buf(2, 256);
     juce::MidiBuffer midi;
     for (int b = 0; b < 40; ++b) { buf.clear(); proc->processBlock(buf, midi); }
+
+    // BLEND TONE through the whole plugin: a 50:50 blend of the first two amps vs. each amp alone, octave bands
+    if (n >= 2)
+    {
+        for (int t = 0; t < 600 && !(proc->getAlignInfo(0).measured && proc->getAlignInfo(1).measured); ++t)
+        {
+            buf.clear();
+            proc->processBlock(buf, midi);
+            pump(20);
+        }
+        for (int t = 0; t < 50; ++t) { buf.clear(); proc->processBlock(buf, midi); pump(10); } // covariance -> engine
+        const auto test = ampsurd::CaptureAnalyzer::makeTestSignal(48000.0);
+        auto render = [&](bool muteA, bool muteB) {
+            setP(*proc, AmpsurdProcessor::slotParamId(0, "mute"), muteA ? 1.0f : 0.0f);
+            setP(*proc, AmpsurdProcessor::slotParamId(1, "mute"), muteB ? 1.0f : 0.0f);
+            if (!muteA && !muteB)
+            {
+                proc->beginMixGesture(0);
+                proc->setMixLinked(0, 50.0f);
+                proc->endMixGesture(0);
+            }
+            juce::AudioBuffer<float> b(2, 256);
+            for (int k = 0; k < 60; ++k) { b.clear(); proc->processBlock(b, midi); } // settle (fades, tone EQ)
+            std::vector<double> y;
+            for (size_t p = 0; p < test.size(); p += 256)
+            {
+                b.clear();
+                const int m = (int) std::min<size_t>(256, test.size() - p);
+                for (int i = 0; i < m; ++i) b.setSample(0, i, (float) test[p + (size_t) i]);
+                proc->processBlock(b, midi);
+                for (int i = 0; i < m; ++i) y.push_back(0.5 * (b.getSample(0, i) + b.getSample(1, i)));
+            }
+            return y;
+        };
+        auto band = [](const std::vector<double>& y, double fc) {
+            const double w = 2 * 3.14159265358979 * fc / 48000.0, q = 1.414, al = std::sin(w) / (2 * q), a0 = 1 + al;
+            const double b0 = al / a0, b2 = -al / a0, a1 = -2 * std::cos(w) / a0, a2 = (1 - al) / a0;
+            double x1 = 0, x2 = 0, y1 = 0, y2 = 0, u1 = 0, u2 = 0, v1 = 0, v2 = 0, pw = 0;
+            for (size_t i = 0; i < y.size(); ++i)
+            {
+                const double o = b0 * y[i] + b2 * x2 - a1 * y1 - a2 * y2;
+                x2 = x1; x1 = y[i]; y2 = y1; y1 = o;
+                const double o2 = b0 * o + b2 * u2 - a1 * v1 - a2 * v2;
+                u2 = u1; u1 = o; v2 = v1; v1 = o2;
+                if (i > 4800) pw += o2 * o2;
+            }
+            return pw;
+        };
+        const auto a = render(false, true), b = render(true, false), mix = render(false, false);
+        double worst = 0;
+        std::cout << "[INFO] plugin 50:50 blend vs. the average of its amps (dB):";
+        for (double fc : { 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0 })
+        {
+            const double d = 10 * std::log10(band(mix, fc) / (0.5 * (band(a, fc) + band(b, fc))));
+            worst = std::max(worst, std::abs(d));
+            std::cout << " " << (int) fc << " Hz " << juce::String(d, 2);
+        }
+        std::cout << "\n" << (worst < 1.5 ? "[PASS]" : "[FAIL]") << " BLEND TONE in the plugin: 50:50 within " << worst
+                  << " dB of its amps in every octave 250 Hz - 8 kHz\n";
+        setP(*proc, AmpsurdProcessor::slotParamId(0, "mute"), 0.0f);
+        setP(*proc, AmpsurdProcessor::slotParamId(1, "mute"), 0.0f);
+        for (int k = 0; k < 20; ++k) { buf.clear(); proc->processBlock(buf, midi); }
+    }
 
     float total = 0;
     for (int i = 0; i < 5; ++i) total += proc->params.getRawParameterValue(AmpsurdProcessor::slotParamId(i, "mix"))->load();

@@ -337,6 +337,48 @@ int main(int argc, char** argv)
         std::printf("\n");
         check(worstNew < 1.2 && worstNew < worstOld, "BLEND TONE: 50:50 within %.2f dB of its amps' average in every band, 250 Hz-8 kHz (%.2f dB without)",
               worstNew, worstOld);
+
+        // learned while playing: amp B has its own EQ (-6 dB bell at 5 kHz) that the test-signal measurement
+        // does not know. Play the test signal 4 times (~12 s); measure the last pass.
+        {
+            const int reps = 4;
+            std::vector<double> longIn;
+            for (int r = 0; r < reps; ++r) longIn.insert(longIn.end(), test.begin(), test.end());
+            auto runLong = [&](double wA, Engine& eng) {
+                eng.getSlot(0).submit(loadAt(argv[1]));
+                eng.getSlot(1).submit(loadAt(argv[2]));
+                eng.prepare(sr, 256, 10.0);
+                eng.setCovariance(cov.C, cov.valid, cov.band);
+                EngineSettings st;
+                st.slots[0].mix = (float) wA; st.slots[1].mix = (float) (100.0 - wA);
+                for (int i = 0; i < 2; ++i)
+                {
+                    st.slots[(size_t) i].delaySamples = delays[(size_t) i];
+                    st.slots[(size_t) i].polarity = pol[(size_t) i];
+                    st.slots[(size_t) i].levelGain = lg[(size_t) i];
+                }
+                st.slots[1].eq[4] = EqBand { 5000.0f, -6.0f, 0.7f };
+                if (wA >= 100.0) st.slots[1].mute = true;
+                if (wA <= 0.0) st.slots[0].mute = true;
+                std::vector<double> o(longIn.size());
+                for (size_t pos = 0; pos < longIn.size(); pos += 256)
+                    eng.process(longIn.data() + pos, o.data() + pos, (int) std::min<size_t>(256, longIn.size() - pos), st);
+                return std::vector<double>(o.end() - (long) test.size(), o.end()); // the last pass
+            };
+            Engine eA, eB, eM;
+            const auto la = runLong(100, eA), lb = runLong(0, eB), lm = runLong(50, eM);
+            double worstLearned = 0;
+            std::printf("[INFO] amp B with its own EQ, 50:50 after ~12 s of playing:");
+            for (double fc : { 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0 })
+            {
+                const double d = 10 * std::log10(bandPower(lm, fc) / (0.5 * (bandPower(la, fc) + bandPower(lb, fc))));
+                worstLearned = std::max(worstLearned, std::abs(d));
+                std::printf(" %.0f Hz %+.2f", fc, d);
+            }
+            std::printf(" dB (learned %.0f %%)\n", 100.0 * eM.getToneLearned());
+            check(worstLearned < 1.0 && eM.getToneLearned() > 0.99,
+                  "BLEND TONE learned while playing (amp EQ the measurement does not know): within %.2f dB in every band", worstLearned);
+        }
     }
 
     // ---------------- 6b. Frankenstein in the real engine ----------------

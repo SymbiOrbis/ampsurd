@@ -50,8 +50,9 @@ New in 0.9.1:
   with AMPSURD's sound (GUITAR + BACKING or GUITAR ONLY) - REC / STOP and SAVE MP4 right in the camera
   window. Please report whether picture and sound are together (SOUND OFFSET fixes it).
 - Blending amps keeps their tone: a 50:50 blend used to sound slightly darker than either amp alone (the
-  highs of different amps partly cancel). AMPSURD now measures this per frequency band and corrects it with a
-  fixed, automatic EQ on the blend (one amp alone: no change).
+  highs of different amps partly cancel). AMPSURD now measures this per frequency band - also while you play,
+  including your amp EQs - and corrects it with a slowly adapting, automatic EQ on the blend (one amp alone:
+  no change).
 - DOUBLER (EXPERIMENTAL): double tracking from one guitar - 1 to 3 "second takes" left and right, each with
   its own timing, pitch and tone (TIGHT, LEVEL, WIDTH, LOW MONO, CHARACTER). No extra latency. Off by
   default. Feedback welcome.
