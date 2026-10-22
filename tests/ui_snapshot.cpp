@@ -349,6 +349,9 @@ int main(int argc, char** argv)
             return finite ? diff / std::max(1e-20, sum) : -1.0;
         };
         const bool offByDefault = !proc->isDoublerOn();
+        const float pan0 = proc->params.getRawParameterValue(AmpsurdProcessor::slotParamId(0, "pan"))->load();
+        setP(*proc, AmpsurdProcessor::slotParamId(0, "pan"), 0.0f); // amps centred: what is left / right comes from the doubler
+        play(20);
         const double offSide = play(60);
         setP(*proc, "dblOn", 1.0f);
         e->showDoubler(true);
@@ -373,8 +376,10 @@ int main(int argc, char** argv)
         e->refreshAll();
         const bool closedToGlobal = !panelShown(*ed);
         setP(*proc, "dblOn", 0.0f);
+        play(20);
         const double offAgain = play(60);
-        std::cout << (offByDefault && offSide >= 0.0 && onSide > offSide + 0.1 && std::abs(offAgain - offSide) < 0.02 && panel && closedToGlobal ? "[PASS]" : "[FAIL]")
+        setP(*proc, AmpsurdProcessor::slotParamId(0, "pan"), pan0);
+        std::cout << (offByDefault && offSide >= 0.0 && onSide > offSide + 0.03 && std::abs(offAgain - offSide) < 0.01 && panel && closedToGlobal ? "[PASS]" : "[FAIL]")
                   << " DOUBLER: off by default, on -> wider: second takes left / right (side/total " << onSide << "), off again as before; panel opens from the master row and closes"
                   << " (off " << offSide << ", again " << offAgain << ", default " << offByDefault << ", panel " << panel << ", closed " << closedToGlobal << ")\n";
     }

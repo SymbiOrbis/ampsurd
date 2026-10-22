@@ -112,7 +112,8 @@ void CameraView::resized()
     controls.removeFromLeft(10);
     saveButton.setBounds(controls.removeFromLeft(120).withSizeKeepingCentre(120, 30));
     controls.removeFromLeft(10);
-    soundBox.setBounds(controls.removeFromLeft(juce::jmin(180, controls.getWidth())).withSizeKeepingCentre(juce::jmin(180, controls.getWidth()), 26));
+    const int sw = juce::jmin(210, controls.getWidth());
+    soundBox.setBounds(controls.removeFromLeft(sw).withSizeKeepingCentre(sw, 26));
     r.reduce(0, 8);
     if (preview != nullptr) preview->setBounds(r);
 }
