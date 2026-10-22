@@ -62,6 +62,7 @@ checklist below.
    Audio / MIDI Settings... -> Guitar input).
 9. ROOT (experimental) as in docs/BUILD_WINDOWS.md item 39.
 10. GLOBAL default view, gate strip at the bottom, GUITAR PAN / VOL in the player: items 11, 40, 41 there.
+11. VIDEO takes as in item 42 there (macOS asks for the camera the first time: allow it).
 
 ## Building on a Mac yourself
 

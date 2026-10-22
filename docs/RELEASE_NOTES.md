@@ -46,6 +46,9 @@ New in 0.9.1:
   you edit amps and mix. The centre area shows GLOBAL by default: TUNER, Global EQ and the effects.
 - Player: PAN for the GUITAR track; GUITAR VOL and PAN also set your guitar on the monitors while
   recording (the recording itself is not changed).
+- VIDEO takes (standalone app): film yourself with the computer's camera while you record (own camera
+  window, one continuous take from STOP) and save an MP4 with AMPSURD's sound (GUITAR + BACKING or
+  GUITAR ONLY). New: please report whether picture and sound are together (SOUND OFFSET fixes it).
 - Fix: a burst of invalid audio from a driver could silence AMPSURD until it was restarted.
 - macOS: app, VST3 and Audio Unit (macOS 10.15 Catalina or newer, Apple Silicon and Intel).
 

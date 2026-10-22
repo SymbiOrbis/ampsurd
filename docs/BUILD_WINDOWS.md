@@ -254,6 +254,14 @@ REAPER picks up the new version.
 41. Player: PAN under GUITAR (left of the guitar track) and GUITAR VOL change the take AND your guitar
     on the monitors while recording; the recorded file is unchanged (play it back with VOL 0 dB / C).
 
+42. VIDEO takes (standalone, needs a camera): PLAYER / REC -> VIDEO: the camera window opens (choose the
+    camera, you see yourself). From STOP press REC: the count-in / recording starts and the window shows
+    REC VIDEO; play, then STOP (or REC). SAVE AS... with MP4 VIDEO -> choose GUITAR + BACKING or GUITAR ONLY
+    first -> an .mp4 that plays in a normal video player (picture from the camera, sound from AMPSURD).
+    Check: are picture and sound together (clap or a hard pick stroke)? If not, move SOUND OFFSET in the
+    camera window and save again; note the value. A second REC asks REPLACE? (REC again within 3 s).
+    With a video take, REC during playback (punch-in) is refused. Close the camera window = VIDEO off.
+
 Expected latency shown by REAPER: 104 samples at 48 kHz, 123 at 44.1 kHz.
 
 Optional measurements (in Developer PowerShell):

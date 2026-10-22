@@ -10,6 +10,10 @@ no telemetry, analytics, accounts or advertising.
 - **Your files:** captures (.nam), IRs, presets and recordings stay on your computer. Presets and
   recordings are saved in Documents\AMPSURD; settings (e.g. input calibration, "Show dragon") in
   your user's application data folder.
+- **Camera (standalone app, VIDEO takes):** the camera is opened only while VIDEO is switched on in the
+  player (its window shows the picture). It films only while you record a VIDEO take. The camera files and
+  the videos you save stay on your computer (Documents/AMPSURD/Recordings); nothing is uploaded. macOS asks
+  for permission the first time.
 - **Installer / uninstaller:** installs the VST3 plugin and the app, and removes them again. Your
   presets and recordings are never deleted.
 

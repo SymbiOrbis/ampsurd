@@ -6,6 +6,26 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-22 — Session 3g: VIDEO takes — Claude (Opus 5.5)
+
+- Owner: record the PC's camera too (with / without video), two saving options; one continuous take is
+  fine; sound of the video = the same GUITAR + BACKING / GUITAR ONLY choice; camera in its own window.
+- VideoCapture over juce::CameraDevice (JUCE_USE_CAMERA on Windows / macOS; Windows: DirectShow WMV at
+  JUCE's fixed ~0.9 Mbit/s, up to 1280 x 720; macOS: AVFoundation .mov). CameraWindow (own LookAndFeel):
+  camera list (last one remembered), preview, REC VIDEO tag, SOUND OFFSET +-500 ms (saved).
+- Player: VIDEO button; with VIDEO on REC from STOP = a video take (a second REC within 3 s replaces an
+  existing take - UNDO restores it), REC / STOP ends it; punch-in on a video take is refused; CLEAR TAKE
+  drops the video. R key goes through the same logic. Header shows VIDEO TAKE.
+- Sync: the audio thread stores the wall clock (epoch ms) and song position when the pass starts; with
+  the camera's first-frame time (JUCE) and half the device latency + limiter as output latency this gives
+  the timeline position of video frame 0; SOUND OFFSET adds to it.
+- Save: format MP4 VIDEO -> renderMix (same as audio export) -> muxVideoToMp4: Windows Media Foundation
+  (SourceReader NV12 -> SinkWriter H.264 ~6 bit/pixel/s + AAC 192k, 48 kHz via Lagrange resampling,
+  interleaved), macOS AVMutableComposition + AVAssetExportSession (HighestQuality, MPEG-4).
+- Camera permission text (Info.plist), PRIVACY.md. Tests here: sync arithmetic and take rules
+  (recorder_test, CI on both OSes), camera window render. Not tested with a real camera (none here):
+  the owner tests on Windows, a Mac tester on macOS.
+
 ## 2026-10-22 — Session 3f: GUITAR track PAN / monitor volume; NaN robustness — Claude (Opus 5.5)
 
 - Player: PAN of the GUITAR track (slider under the track name, timeline label column 80 px; same law as
