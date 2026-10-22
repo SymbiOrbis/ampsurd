@@ -108,10 +108,11 @@ REAPER picks up the new version.
    everything back? Save the REAPER project, close and reopen: is everything back?
 10. Rename one capture file and reopen the project: that slot should say FILE MISSING, no crash.
 
-11. Gate + tuner (centre area when no amp is in EDIT): play an open string — the tuner shows
-    note and cents. Stop playing on a high-gain rig — the hiss between notes should disappear,
-    while notes keep their attack and sustain. Drag the white marker on the GUITAR LEVEL meter
-    to set the threshold just above the level shown when you are not playing.
+11. Tuner + gate: the tuner is the left column of GLOBAL (the default view of the centre area): play
+    an open string — note and cents. The NOISE GATE is always visible at the bottom (above INPUT, GATE
+    button switches it): stop playing on a high-gain rig — the hiss between notes should disappear,
+    while notes keep their attack and sustain. Drag the white marker on the gate meter (or THRESHOLD)
+    to just above the level shown when you are not playing - also while editing an amp or mixing.
 
 12. Frankenstein (button in the master row, bottom): load 2–5 different captures, click
     **FRANKENSTEIN**. Choose 2–5 sections at the top. Click inside a section to choose
@@ -137,7 +138,7 @@ REAPER picks up the new version.
     and on, REPLACE the IR and REMOVE it while playing: any click? Shape it with the IR EQ on the
     right. Save a preset, reload it: IR and IR EQ back? REMOVE in a slot needs two clicks.
 
-16. Effects: open **EQ / FX** (vertical button). Choose DELAY 1, switch ON, click the TIME value and
+16. Effects: in **GLOBAL** (the default centre view; from Frankenstein the vertical GLOBAL button). Choose DELAY 1, switch ON, click the TIME value and
     type 500; DELAY 2: ON, type 756. Try PING-PONG and SYNC (follows REAPER's tempo). REVERB: try the
     five types (CATHEDRAL!), DECAY, PRE-DELAY. FLANGER. Change values while playing: any click?
     Switch a delay or the reverb OFF while it rings: the tail should fade out naturally.
@@ -176,7 +177,7 @@ REAPER picks up the new version.
     taking over. **TONE** = the previous mode (every note, split by its frequency content). The thin
     band under the graph shows where the note you play sits.
 
-21. PITCH (GLOBAL EQ / FX -> PITCH): press D -2 and play: does it feel like a guitar tuned to D standard?
+21. PITCH (GLOBAL -> PITCH): press D -2 and play: does it feel like a guitar tuned to D standard?
     Low power chords and single notes - any warble, and is the extra delay noticeable? Switch ON / OFF
     while playing: no click?
 
@@ -241,6 +242,11 @@ REAPER picks up the new version.
     on top lists the interface's inputs by name (any of them, also on 8-channel interfaces); the input
     channels below are listed one by one (JUCE showed "Input 1 + 2" only). The settings menu -> Guitar
     input lists the same names. The choice is kept after a restart.
+
+40. GLOBAL is the default: close EDIT / IR / PLAYER / ROOT -> GLOBAL (tuner, EQ, effects) comes back.
+    Frankenstein on -> its map; the vertical GLOBAL button opens GLOBAL, its CLOSE returns.
+41. Player: PAN under GUITAR (left of the guitar track) and GUITAR VOL change the take AND your guitar
+    on the monitors while recording; the recorded file is unchanged (play it back with VOL 0 dB / C).
 
 39. ROOT (EXPERIMENTAL, master row next to FRANKENSTEIN; docs/ROOT_MODULE.md): play low power chords /
     palm mutes, open ROOT, ON. PARALLEL first: turn ROOT up and down, then GROWL (more difference tones),

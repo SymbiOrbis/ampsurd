@@ -294,6 +294,25 @@ private:
     juce::String syncInfo;
 };
 
+// Chromatic tuner on the clean DI - the left column of the GLOBAL section.
+class TunerPanel final : public juce::Component
+{
+public:
+    explicit TunerPanel(AmpsurdProcessor&);
+    void paint(juce::Graphics&) override;
+    void resized() override;
+    void refresh();
+
+private:
+    AmpsurdProcessor& proc;
+    juce::TextButton muteButton { "MUTE OUTPUT" };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> muteAtt;
+    ampsurd::PitchDetector::Result shown;
+    std::array<double, 5> recentCents {};
+    int recentCount = 0, lastNote = -1;
+    double lastValidMs = 0.0;
+};
+
 class GlobalEqPanel final : public juce::Component
 {
 public:
@@ -306,11 +325,16 @@ public:
 
 private:
     AmpsurdProcessor& proc;
+    TunerPanel tuner;
     EqGraph graph;
     FxSection fx;
     juce::TextButton eqOnButton { "EQ ON" }, flatButton { "FLAT" }, closeButton { "CLOSE" };
     EqCopyButton copyButton;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> eqOnAtt;
+
+public:
+    // CLOSE only when there is something to return to (Frankenstein)
+    void setCloseVisible(bool v) { closeButton.setVisible(v); }
 };
 
 // IR editor for one slot: left = the cabinet IR (load / replace, IR ON, remove, file info),
@@ -380,32 +404,11 @@ private:
     float dbForX(float x) const;
 
     AmpsurdProcessor& proc;
-    juce::TextButton onButton { "ON" };
     juce::Slider thresholdSlider, decaySlider;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> onAtt;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> thrAtt, decAtt;
     float level = 0.0f;
     float gain = 1.0f;
     bool draggingThreshold = false;
-};
-
-// Chromatic tuner on the clean DI - shown in the centre area while no amp is being edited.
-class TunerPanel final : public juce::Component
-{
-public:
-    explicit TunerPanel(AmpsurdProcessor&);
-    void paint(juce::Graphics&) override;
-    void resized() override;
-    void refresh();
-
-private:
-    AmpsurdProcessor& proc;
-    juce::TextButton muteButton { "MUTE OUTPUT" };
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> muteAtt;
-    ampsurd::PitchDetector::Result shown;
-    std::array<double, 5> recentCents {};
-    int recentCount = 0, lastNote = -1;
-    double lastValidMs = 0.0;
 };
 
 // "Create Frankenstein": the spectrum as a map of sections, each played by one amp.
@@ -443,18 +446,7 @@ private:
     int dragDivider = -1, dragParam = -1, hoverDivider = -1;
 };
 
-class CentrePanel final : public juce::Component
-{
-public:
-    explicit CentrePanel(AmpsurdProcessor&);
-    void paint(juce::Graphics&) override;
-    void resized() override;
-    void refresh();
 
-private:
-    GatePanel gatePanel;
-    TunerPanel tunerPanel;
-};
 
 // ---------------------------------------------------------------------------------------------
 class LevelMeter final : public juce::Component, public juce::SettableTooltipClient
@@ -468,9 +460,12 @@ private:
     int holdCount = 0;
 };
 
+// Master section (bottom): NOISE GATE strip on top (always visible), then INPUT / OUTPUT / LIMIT and the
+// FRANKENSTEIN / ROOT / GATE / BYPASS buttons.
 class MasterPanel final : public juce::Component
 {
 public:
+    static constexpr int kGateRowH = 40;
     explicit MasterPanel(AmpsurdProcessor&);
     void paint(juce::Graphics&) override;
     void resized() override;
@@ -488,6 +483,8 @@ public:
 private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> gateAtt;
     LevelMeter inMeter, outMeterL, outMeterR; // output: left and right channel
+    GatePanel gate;
+    juce::Rectangle<int> controlsRow() const { return getLocalBounds().withTrimmedTop(kGateRowH); }
     // shown when only the OTHER interface input has a signal (guitar plugged into input 2, e.g.
     // the instrument jack of a Scarlett Solo): one click switches the guitar input
     juce::TextButton inputHint;

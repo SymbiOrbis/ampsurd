@@ -61,6 +61,7 @@ checklist below.
    click and the guitar is heard (or settings menu -> Guitar input -> the input's name, or Options ->
    Audio / MIDI Settings... -> Guitar input).
 9. ROOT (experimental) as in docs/BUILD_WINDOWS.md item 39.
+10. GLOBAL default view, gate strip at the bottom, GUITAR PAN / VOL in the player: items 11, 40, 41 there.
 
 ## Building on a Mac yourself
 

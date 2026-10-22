@@ -18,6 +18,12 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
   input sanitized (non-finite -> 0, clipped to +-64), and a NaN / inf found before the limiter makes
   the message thread prepare the chain again (suspendProcessing + prepareToPlay). ui_snapshot ROBUST and
   RECOVERY tests.
+- Layout (owner): NOISE GATE as a strip in the master section, above INPUT (meter with draggable
+  threshold, OPEN / CLOSED, THRESHOLD and DECAY on the right; GATE button below switches it), always
+  visible. TUNER moved to the left column of GLOBAL (renamed from GLOBAL EQ / FX; title in the EQ row,
+  effects got the room). GLOBAL is the default centre view; the gate + tuner view (CentrePanel) is
+  gone. Frankenstein on -> its map with the vertical GLOBAL button; GLOBAL then has CLOSE back to it.
+  The tuner runs while GLOBAL is visible. Master section 52 -> 92 px; EQ hint text adapts to width.
 
 ## 2026-10-21 — Session 3e: Audio / MIDI settings with single inputs — Claude (Opus 5.5)
 

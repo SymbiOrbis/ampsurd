@@ -703,7 +703,7 @@ void EqGraph::paint(juce::Graphics& g)
             g.setColour(textFaint.withAlpha(0.75f));
             g.strokePath(bg, juce::PathStrokeType(1.0f));
             g.setFont(Fonts::get().regular(11.5f));
-            g.drawText("grey line = GLOBAL EQ (applied after the blend, edit it with the GLOBAL EQ button)",
+            g.drawText("grey line = GLOBAL EQ (applied after the blend, edit it in GLOBAL)",
                        r.reduced(10.0f, 6.0f).removeFromBottom(14.0f).withTrimmedLeft(30.0f), juce::Justification::centredRight, false);
         }
     }
@@ -780,13 +780,14 @@ void EqGraph::paint(juce::Graphics& g)
         g.setFont(Fonts::get().medium(12.0f));
         g.drawText(t, r.reduced(10.0f, 6.0f).removeFromTop(16.0f).withTrimmedLeft(30.0f).withTrimmedRight(150.0f), juce::Justification::centredLeft, false);
     }
-    else
+    else if (eqOn || r.getWidth() > 700) // narrow and off: only "EQ OFF" (no overlap)
     {
         g.setColour(textDim);
         g.setFont(Fonts::get().regular(12.0f));
         g.drawText(r.getWidth() > 900 ? "Drag a point: left/right = frequency, up/down = gain.  Wheel = width (Q) of the nearest point.  Double-click = reset."
-                                      : "Drag: frequency / gain.  Wheel: Q.  Double-click: reset.",
-                   r.reduced(10.0f, 6.0f).removeFromTop(16.0f).withTrimmedLeft(30.0f).withTrimmedRight(150.0f), juce::Justification::centredLeft, false);
+                   : r.getWidth() > 560 ? "Drag: frequency / gain.  Wheel: Q.  Double-click: reset."
+                                        : "Drag a point.  Wheel: Q.",
+                   r.reduced(10.0f, 6.0f).removeFromTop(16.0f).withTrimmedLeft(30.0f).withTrimmedRight(150.0f), juce::Justification::centredLeft, true);
     }
     if (!eqOn)
         drawLabel(g, "EQ OFF", r.reduced(10.0f, 6.0f).removeFromTop(16.0f).withTrimmedRight(146.0f).toNearestInt(), textDim, juce::Justification::centredRight);
@@ -1556,8 +1557,9 @@ void FxSection::refresh()
 // =============================================================================================
 // GlobalEqPanel: the same EQ as the amps, on the complete blend; no alignment.
 // =============================================================================================
-GlobalEqPanel::GlobalEqPanel(AmpsurdProcessor& p) : proc(p), graph(p), fx(p), copyButton(p)
+GlobalEqPanel::GlobalEqPanel(AmpsurdProcessor& p) : proc(p), tuner(p), graph(p), fx(p), copyButton(p)
 {
+    addAndMakeVisible(tuner);
     addAndMakeVisible(copyButton);
     copyButton.setTarget(AmpsurdProcessor::kGlobalEq);
     addAndMakeVisible(graph);
@@ -1570,7 +1572,7 @@ GlobalEqPanel::GlobalEqPanel(AmpsurdProcessor& p) : proc(p), graph(p), fx(p), co
         proc.params, AmpsurdProcessor::slotParamId(AmpsurdProcessor::kGlobalEq, "eqOn"), eqOnButton);
     eqOnButton.setTooltip("Switch the Global EQ on or off (it shapes the complete sound, after the blend)");
     flatButton.setTooltip("Reset all ten bands of the Global EQ");
-    closeButton.setTooltip("Close the Global EQ and return to the gate and tuner");
+    closeButton.setTooltip("Back to Frankenstein");
     closeButton.onClick = [this] { if (onClose) onClose(); };
     flatButton.onClick = [this] {
         const auto d = ampsurd::ParametricEq::defaultBands();
@@ -1583,13 +1585,14 @@ GlobalEqPanel::GlobalEqPanel(AmpsurdProcessor& p) : proc(p), graph(p), fx(p), co
     };
 }
 
+namespace { constexpr int kTunerColumnW = 236; }
+
 void GlobalEqPanel::resized()
 {
-    auto r = getLocalBounds().reduced(16, 12);
-    auto header = r.removeFromTop(26);
-    closeButton.setBounds(header.removeFromRight(72));
-    r.removeFromTop(10);
-    auto left = r.removeFromLeft((int) (r.getWidth() * 0.54f));
+    auto all = getLocalBounds();
+    tuner.setBounds(all.removeFromLeft(kTunerColumnW));
+    auto r = all.reduced(16, 12);
+    auto left = r.removeFromLeft((int) (r.getWidth() * 0.5f));
     r.removeFromLeft(24);
     fx.setBounds(r);
     auto eqHeader = left.removeFromTop(26);
@@ -1598,6 +1601,8 @@ void GlobalEqPanel::resized()
     copyButton.setBounds(eqHeader.removeFromRight(72));
     eqHeader.removeFromRight(8);
     eqOnButton.setBounds(eqHeader.removeFromRight(64));
+    eqHeader.removeFromRight(8);
+    closeButton.setBounds(eqHeader.removeFromRight(64));
     left.removeFromTop(8);
     graph.setBounds(left);
 }
@@ -1606,19 +1611,16 @@ void GlobalEqPanel::paint(juce::Graphics& g)
 {
     g.setColour(line);
     g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(sectionBorder * 0.5f), 3.0f, sectionBorder);
-    auto r = getLocalBounds().reduced(16, 12);
+    g.fillRect((float) kTunerColumnW, 12.0f, 1.0f, (float) getHeight() - 24.0f); // tuner | EQ and effects
+    auto r = getLocalBounds().withTrimmedLeft(kTunerColumnW).reduced(16, 12);
     auto header = r.removeFromTop(26);
-    drawLabel(g, "GLOBAL EQ / FX", header.removeFromLeft(140), accent, juce::Justification::centredLeft, 11.0f);
-    g.setColour(textDim);
-    g.setFont(Fonts::get().regular(12.5f));
-    g.drawText("For the complete sound:  blend  >  EQ  >  gate  >  flanger  >  delays  >  reverb  >  OUTPUT",
-               header.withTrimmedRight(90), juce::Justification::centredLeft, true);
-    r.removeFromTop(10);
-    drawLabel(g, "EQ", r.removeFromTop(26).removeFromLeft(60), proc.isGlobalEqOn() ? text : textFaint);
+    drawLabel(g, "GLOBAL", header.removeFromLeft(62), accent, juce::Justification::centredLeft, 11.0f);
+    drawLabel(g, "EQ", header.removeFromLeft(40), proc.isGlobalEqOn() ? text : textFaint);
 }
 
 void GlobalEqPanel::refresh()
 {
+    tuner.refresh();
     graph.refreshIfChanged();
     fx.refresh();
 }
@@ -2544,7 +2546,7 @@ void IrPanel::filesDropped(const juce::StringArray& files, int, int)
 GlobalEqButton::GlobalEqButton(AmpsurdProcessor& p) : proc(p)
 {
     setMouseCursor(juce::MouseCursor::PointingHandCursor);
-    setTooltip("Open the Global EQ and the effects (delays, reverb, flanger) for the complete sound");
+    setTooltip("Open GLOBAL: tuner, Global EQ and the effects (delays, reverb, flanger, pitch) for the complete sound");
 }
 
 void GlobalEqButton::refresh()
@@ -2589,7 +2591,7 @@ void GlobalEqButton::paint(juce::Graphics& g)
     else g.drawEllipse(cx - 4.0f, r.getY() + 12.0f, 8.0f, 8.0f, 1.2f);
 
     // vertical text, reading bottom to top
-    const juce::String label = juce::String("EQ / FX   ") + (shownOn ? shownFx : juce::String("OFF"));
+    const juce::String label = juce::String("GLOBAL   ") + (shownOn ? shownFx : juce::String("OFF"));
     const auto area = r.withTrimmedTop(28.0f).reduced(0.0f, 8.0f);
     juce::Graphics::ScopedSaveState ss(g);
     g.addTransform(juce::AffineTransform::rotation(-juce::MathConstants<float>::halfPi, area.getCentreX(), area.getCentreY()));
@@ -2614,13 +2616,12 @@ constexpr float kGateMinDb = -96.0f, kGateMaxDb = 0.0f;
 
 GatePanel::GatePanel(AmpsurdProcessor& p) : proc(p)
 {
-    onButton.setClickingTogglesState(true);
-    addAndMakeVisible(onButton);
-    onAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.params, "gateOn", onButton);
+    // a strip in the master section, always visible: meter + threshold marker (drag it), state,
+    // THRESHOLD and DECAY on the right. The GATE button of the master row switches it on / off.
     for (auto* s : { &thresholdSlider, &decaySlider })
     {
         s->setSliderStyle(juce::Slider::LinearHorizontal);
-        s->setTextBoxStyle(juce::Slider::TextBoxRight, false, 74, 20);
+        s->setTextBoxStyle(juce::Slider::TextBoxRight, false, 64, 20);
         addAndMakeVisible(*s);
     }
     thrAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.params, "gateThreshold", thresholdSlider);
@@ -2632,12 +2633,20 @@ GatePanel::GatePanel(AmpsurdProcessor& p) : proc(p)
     thresholdSlider.updateText();
     decaySlider.updateText();
     thresholdSlider.setTooltip("The gate opens above this guitar level and closes gently when the guitar has faded about 8 dB "
-                               "below it. Set it just above the noise you hear between notes");
+                               "below it. Set it just above the noise you hear between notes (or drag the marker on the meter)");
     decaySlider.setTooltip("How quickly the sound fades out when the gate closes");
-    onButton.setTooltip("Gate on/off");
 }
 
-juce::Rectangle<float> GatePanel::meterArea() const { return { 16.0f, 64.0f, (float) getWidth() - 32.0f, 22.0f }; }
+namespace
+{
+constexpr int kGateLabelW = 92, kGateStateW = 64, kGateThrLabelW = 78, kGateThrW = 196, kGateDecLabelW = 50, kGateDecW = 160;
+}
+
+juce::Rectangle<float> GatePanel::meterArea() const
+{
+    const float right = (float) (getWidth() - 16 - kGateDecW - kGateDecLabelW - 14 - kGateThrW - kGateThrLabelW - 14 - kGateStateW - 10);
+    return { 16.0f + (float) kGateLabelW, 11.0f, right - 16.0f - (float) kGateLabelW, 8.0f };
+}
 
 float GatePanel::xForDb(float db) const
 {
@@ -2653,24 +2662,18 @@ float GatePanel::dbForX(float x) const
 
 void GatePanel::resized()
 {
-    onButton.setBounds(getWidth() - 16 - 56, 12, 56, 24);
     auto r = getLocalBounds().reduced(16, 0);
-    r.removeFromTop(116);
-    auto t = r.removeFromTop(26);
-    t.removeFromLeft(86);
-    thresholdSlider.setBounds(t);
-    r.removeFromTop(10);
-    auto d = r.removeFromTop(26);
-    d.removeFromLeft(86);
-    decaySlider.setBounds(d);
+    decaySlider.setBounds(r.removeFromRight(kGateDecW).withSizeKeepingCentre(kGateDecW, 24));
+    r.removeFromRight(kGateDecLabelW + 14);
+    thresholdSlider.setBounds(r.removeFromRight(kGateThrW).withSizeKeepingCentre(kGateThrW, 24));
 }
 
 void GatePanel::paint(juce::Graphics& g)
 {
-    drawLabel(g, "NOISE GATE", { 16, 12, 200, 24 }, accent, juce::Justification::centredLeft, 11.5f);
     const bool on = paramValue(proc, "gateOn") > 0.5f;
+    drawLabel(g, "NOISE GATE", { 16, 0, kGateLabelW, getHeight() }, on ? accent : textFaint, juce::Justification::centredLeft, 11.0f);
 
-    // input level vs threshold (drag the marker to set the threshold)
+    // guitar level vs threshold (drag the marker to set the threshold)
     const auto m = meterArea();
     g.setColour(line);
     g.drawRect(m, 1.0f);
@@ -2680,33 +2683,26 @@ void GatePanel::paint(juce::Graphics& g)
     const float thr = paramValue(proc, "gateThreshold");
     const float tx = xForDb(thr);
     g.setColour(on ? text : textFaint);
-    g.fillRect(tx - 1.0f, m.getY() - 6.0f, 2.0f, m.getHeight() + 12.0f);
+    g.fillRect(tx - 1.0f, m.getY() - 4.0f, 2.0f, m.getHeight() + 8.0f);
     juce::Path tri;
-    tri.addTriangle(tx - 5.0f, m.getY() - 10.0f, tx + 5.0f, m.getY() - 10.0f, tx, m.getY() - 4.0f);
+    tri.addTriangle(tx - 4.0f, m.getY() - 8.0f, tx + 4.0f, m.getY() - 8.0f, tx, m.getY() - 3.0f);
     g.fillPath(tri);
-    g.setFont(Fonts::get().regular(11.0f));
-    g.setColour(textDim);
+    g.setFont(Fonts::get().regular(9.5f));
+    g.setColour(textFaint);
     for (float db : { -96.0f, -72.0f, -48.0f, -24.0f, 0.0f })
-        g.drawText(juce::String((int) db), juce::Rectangle<float>(xForDb(db) - 20.0f, m.getBottom() + 3.0f, 40.0f, 14.0f),
+        g.drawText(juce::String((int) db), juce::Rectangle<float>(xForDb(db) - 18.0f, m.getBottom() + 3.0f, 36.0f, 12.0f),
                    juce::Justification::centred, false);
-    drawLabel(g, "GUITAR LEVEL", { 16, 40, 200, 16 }, textDim, juce::Justification::centredLeft, 10.0f);
 
     // state: shown as text, never only by colour
     const juce::String state = !on ? "OFF" : gain > 0.98f ? "OPEN" : gain < 0.02f ? "CLOSED" : "CLOSING";
-    const auto st = juce::Rectangle<int>(getWidth() - 16 - 90, 40, 90, 16);
-    drawLabel(g, state, st, on ? text : textFaint, juce::Justification::centredRight, 10.5f);
-
-    drawLabel(g, "THRESHOLD", { 16, thresholdSlider.getY(), 84, thresholdSlider.getHeight() }, on ? text : textFaint);
-    drawLabel(g, "DECAY", { 16, decaySlider.getY(), 84, decaySlider.getHeight() }, on ? text : textFaint);
-    g.setColour(textDim);
-    g.setFont(Fonts::get().regular(12.0f));
-    g.drawText("Listens to your clean guitar, silences the noise after the amps.",
-               juce::Rectangle<int>(16, decaySlider.getBottom() + 16, getWidth() - 32, 18), juce::Justification::centredLeft, true);
+    drawLabel(g, state, { (int) m.getRight() + 10, 0, kGateStateW, getHeight() }, on ? text : textFaint, juce::Justification::centredLeft, 10.5f);
+    drawLabel(g, "THRESHOLD", { thresholdSlider.getX() - kGateThrLabelW, 0, kGateThrLabelW, getHeight() }, on ? text : textFaint);
+    drawLabel(g, "DECAY", { decaySlider.getX() - kGateDecLabelW - 6, 0, kGateDecLabelW, getHeight() }, on ? text : textFaint);
 }
 
 void GatePanel::mouseDown(const juce::MouseEvent& e)
 {
-    const auto m = meterArea().expanded(0.0f, 12.0f);
+    const auto m = meterArea().expanded(4.0f, 10.0f);
     if (!m.contains(e.position)) return;
     draggingThreshold = true;
     if (auto* p = proc.params.getParameter("gateThreshold"))
@@ -3184,32 +3180,6 @@ void FrankensteinPanel::chooseAmpForSection(int visibleIndex)
 }
 
 // =============================================================================================
-CentrePanel::CentrePanel(AmpsurdProcessor& p) : gatePanel(p), tunerPanel(p)
-{
-    addAndMakeVisible(gatePanel);
-    addAndMakeVisible(tunerPanel);
-}
-
-void CentrePanel::resized()
-{
-    auto r = getLocalBounds().reduced(1);
-    gatePanel.setBounds(r.removeFromLeft(r.getWidth() / 2));
-    tunerPanel.setBounds(r);
-}
-
-void CentrePanel::paint(juce::Graphics& g)
-{
-    g.setColour(line);
-    g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(sectionBorder * 0.5f), 3.0f, sectionBorder);
-    g.fillRect((float) getWidth() / 2.0f, 12.0f, 1.0f, (float) getHeight() - 24.0f);
-}
-
-void CentrePanel::refresh()
-{
-    gatePanel.refresh();
-    tunerPanel.refresh();
-}
-
 // =============================================================================================
 // Meters, master
 // =============================================================================================
@@ -3237,8 +3207,9 @@ void LevelMeter::paint(juce::Graphics& g)
     g.fillRect(toX(hold) - 1.0f, r.getY(), 2.0f, r.getHeight());
 }
 
-MasterPanel::MasterPanel(AmpsurdProcessor& p) : proc(p)
+MasterPanel::MasterPanel(AmpsurdProcessor& p) : proc(p), gate(p)
 {
+    addAndMakeVisible(gate);
     for (auto* s : { &inputSlider, &outputSlider })
     {
         s->setSliderStyle(juce::Slider::LinearHorizontal);
@@ -3264,7 +3235,7 @@ MasterPanel::MasterPanel(AmpsurdProcessor& p) : proc(p)
     gateButton.setClickingTogglesState(true);
     addAndMakeVisible(gateButton);
     gateAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.params, "gateOn", gateButton);
-    gateButton.setTooltip("Noise gate on/off (settings in the centre area when no amp is in EDIT)");
+    gateButton.setTooltip("Noise gate on/off (its meter, THRESHOLD and DECAY are right above)");
     addAndMakeVisible(frankButton);
     frankButton.onClick = [this] { proc.setFrankenstein(!proc.isFrankensteinOn()); };
     frankButton.setTooltip("Split the spectrum between the amps: e.g. lows from one amp, mids from another, highs from a third");
@@ -3289,7 +3260,10 @@ MasterPanel::MasterPanel(AmpsurdProcessor& p) : proc(p)
 
 void MasterPanel::resized()
 {
-    auto r = getLocalBounds().reduced(16, 0);
+    gate.setBounds(getLocalBounds().removeFromTop(kGateRowH));
+    const auto row = controlsRow();
+    const int mid = row.getCentreY();
+    auto r = row.reduced(16, 0);
     auto block = [&](juce::Slider& s, LevelMeter& m) {
         auto b = r.removeFromLeft(294);
         b.removeFromLeft(64);
@@ -3300,12 +3274,12 @@ void MasterPanel::resized()
         r.removeFromLeft(24);
     };
     block(inputSlider, inMeter);
-    inputHint.setBounds(inputSlider.getX(), getHeight() / 2 - 14, inMeter.getRight() - inputSlider.getX(), 28);
+    inputHint.setBounds(inputSlider.getX(), mid - 14, inMeter.getRight() - inputSlider.getX(), 28);
     block(outputSlider, outMeterL);
     // output: left above right (two thin bars), so a louder side is visible at a glance
     const auto ob = outMeterL.getBounds();
-    outMeterL.setBounds(ob.getX() + 12, getHeight() / 2 - 6, ob.getWidth() - 12, 5);
-    outMeterR.setBounds(ob.getX() + 12, getHeight() / 2 + 1, ob.getWidth() - 12, 5);
+    outMeterL.setBounds(ob.getX() + 12, mid - 6, ob.getWidth() - 12, 5);
+    outMeterR.setBounds(ob.getX() + 12, mid + 1, ob.getWidth() - 12, 5);
     r.removeFromLeft(78); // room for the LIMIT indicator next to the output meter
     frankButton.setBounds(r.removeFromLeft(140).withSizeKeepingCentre(140, 28));
     r.removeFromLeft(8);
@@ -3323,13 +3297,16 @@ void MasterPanel::paint(juce::Graphics& g)
 {
     g.setColour(line);
     g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(sectionBorder * 0.5f), 3.0f, sectionBorder);
-    drawLabel(g, "INPUT", { 16, 0, 60, getHeight() }, textDim);
-    drawLabel(g, "OUTPUT", { outputSlider.getX() - 64, 0, 60, getHeight() }, textDim);
+    g.setColour(grid);
+    g.fillRect(16.0f, (float) kGateRowH, (float) getWidth() - 32.0f, 1.0f); // gate strip | controls
+    const auto row = controlsRow();
+    drawLabel(g, "INPUT", { 16, row.getY(), 60, row.getHeight() }, textDim);
+    drawLabel(g, "OUTPUT", { outputSlider.getX() - 64, row.getY(), 60, row.getHeight() }, textDim);
 
     // safety limiter: shown as text, never only by colour
     drawLabel(g, "L", { outMeterL.getX() - 11, outMeterL.getY() - 3, 9, 11 }, textDim, juce::Justification::centredLeft, 8.5f);
     drawLabel(g, "R", { outMeterR.getX() - 11, outMeterR.getY() - 3, 9, 11 }, textDim, juce::Justification::centredLeft, 8.5f);
-    const auto lim = juce::Rectangle<int>(outMeterL.getRight() + 8, getHeight() / 2 - 8, 66, 16);
+    const auto lim = juce::Rectangle<int>(outMeterL.getRight() + 8, row.getCentreY() - 8, 66, 16);
     if (limitHold > 0)
     {
         g.setColour(onFill);
@@ -3343,6 +3320,7 @@ void MasterPanel::paint(juce::Graphics& g)
 
 void MasterPanel::refresh()
 {
+    gate.refresh();
     inMeter.setPeak(proc.getAndResetInputPeak());
     {
         // "Guitar on input 2?": the other input has a signal (above -40 dBFS) while the guitar input is

@@ -2,7 +2,7 @@
 
 using namespace ampsurd::ui;
 
-AmpsurdEditor::Content::Content(AmpsurdProcessor& p) : header(p), edit(p), ir(p), centre(p), frankenstein(p), globalEq(p), globalEqButton(p),
+AmpsurdEditor::Content::Content(AmpsurdProcessor& p) : header(p), edit(p), ir(p), frankenstein(p), globalEq(p), globalEqButton(p),
 #if AMPSURD_ROOT
       root(p),
 #endif
@@ -14,15 +14,14 @@ AmpsurdEditor::Content::Content(AmpsurdProcessor& p) : header(p), edit(p), ir(p)
         slots[(size_t) s] = std::make_unique<SlotComponent>(p, s);
         addAndMakeVisible(*slots[(size_t) s]);
     }
-    addChildComponent(edit);   // EDIT replaces the gate + tuner in the centre area
+    addChildComponent(edit);   // EDIT replaces GLOBAL (the default view) in the centre area
     addChildComponent(ir);     // so does the IR editor
-    addAndMakeVisible(centre);
-    addChildComponent(frankenstein); // replaces the gate + tuner while Frankenstein is on
+    addChildComponent(frankenstein); // replaces GLOBAL while Frankenstein is on
    #if AMPSURD_ROOT
     addChildComponent(root);         // ROOT panel (experimental), opened from the master row
    #endif
-    addChildComponent(globalEq);     // replaces them while the Global EQ is open
-    addAndMakeVisible(globalEqButton);
+    addAndMakeVisible(globalEq);     // GLOBAL: tuner, Global EQ, effects - the default view
+    addChildComponent(globalEqButton); // in the Frankenstein view: opens GLOBAL
     addAndMakeVisible(master);
     addAndMakeVisible(footer);
     if (auto* pl = p.getPlayer())
@@ -73,7 +72,7 @@ void AmpsurdEditor::Content::resized()
     }
     r.removeFromTop(16);
     r.removeFromBottom(12);
-    master.setBounds(r.removeFromBottom(52));
+    master.setBounds(r.removeFromBottom(52 + MasterPanel::kGateRowH));
     r.removeFromBottom(14);
     edit.setBounds(r);
     ir.setBounds(r);
@@ -85,7 +84,6 @@ void AmpsurdEditor::Content::resized()
     auto withButton = r;
     globalEqButton.setBounds(withButton.removeFromRight(40));
     withButton.removeFromRight(10);
-    centre.setBounds(withButton);
     frankenstein.setBounds(withButton);
 }
 
@@ -193,8 +191,8 @@ void AmpsurdEditor::resized()
     content.setTransform(juce::AffineTransform::scale(scale));
 }
 
-// The lower panel shows one view at a time: amp EDIT, IR editor, Global EQ, or (default) the gate +
-// tuner / Frankenstein. Opening one closes the others.
+// The lower panel shows one view at a time: amp EDIT, IR editor, player, ROOT, Frankenstein (while it
+// is on) or GLOBAL (tuner, Global EQ, effects - the default). Opening one closes the others.
 void AmpsurdEditor::showRoot(bool show)
 {
     rootOpen = show && AmpsurdProcessor::hasRootModule();
@@ -277,15 +275,15 @@ void AmpsurdEditor::timerCallback()
     const bool editing = content.edit.getSlot() >= 0 || irOpen;
     const bool playerView = !editing && playerOpen && content.playerPanel != nullptr;
     {
-        // switching Frankenstein on shows it (closes the ROOT panel)
+        // switching Frankenstein on shows it (closes ROOT and GLOBAL)
         const bool frankNow = proc.isFrankensteinOn();
-        if (frankNow && !lastFrankOn) rootOpen = false;
+        if (frankNow && !lastFrankOn) { rootOpen = false; globalEqOpen = false; }
         lastFrankOn = frankNow;
     }
-    const bool global = !editing && !playerView && globalEqOpen;
-    const bool rootView = !editing && !playerView && !global && rootOpen;
-    const bool frank = !editing && !global && !playerView && !rootView && proc.isFrankensteinOn();
-    const bool centre = !editing && !global && !playerView && !rootView && !frank;
+    const bool frankOn = proc.isFrankensteinOn();
+    const bool rootView = !editing && !playerView && rootOpen;
+    const bool frank = !editing && !playerView && !rootView && frankOn && !globalEqOpen;
+    const bool global = !editing && !playerView && !rootView && !frank; // the default view
     if (content.playerPanel)
     {
         content.playerPanel->setVisible(playerView);
@@ -316,15 +314,13 @@ void AmpsurdEditor::timerCallback()
     juce::ignoreUnused(rootView);
    #endif
     content.frankenstein.setVisible(frank);
-    content.centre.setVisible(centre);
-    content.globalEqButton.setVisible(frank || centre); // with the gate + tuner (and Frankenstein) view
-    proc.setTunerVisible(centre);
+    content.globalEqButton.setVisible(frank); // Frankenstein view: the way to GLOBAL
+    content.globalEq.setCloseVisible(frankOn); // GLOBAL while Frankenstein is on: CLOSE returns to it
+    proc.setTunerVisible(global);
     if (global)
         content.globalEq.refresh();
     else if (frank)
         content.frankenstein.refresh();
-    else if (centre)
-        content.centre.refresh();
     content.globalEqButton.refresh();
     const double cpu = proc.getCpuLoadPercent();
     cpuAverage = cpuAverage < 0.0 ? cpu : cpuAverage + (cpu - cpuAverage) * 0.05; // ~0.7 s average at 30 Hz

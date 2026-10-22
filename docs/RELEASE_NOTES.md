@@ -42,6 +42,11 @@ New in 0.9.1:
 - ROOT (EXPERIMENTAL): makes the lowest note of a power chord deeper - a clean, compressed low layer
   under the amps (PARALLEL / POST / SUB, GROWL, BASS EQ). Off by default. Feedback welcome.
 - "CREATE FRANKENSTEIN" is now just "FRANKENSTEIN".
+- NOISE GATE always at hand: its meter, THRESHOLD and DECAY sit above INPUT at the bottom, visible while
+  you edit amps and mix. The centre area shows GLOBAL by default: TUNER, Global EQ and the effects.
+- Player: PAN for the GUITAR track; GUITAR VOL and PAN also set your guitar on the monitors while
+  recording (the recording itself is not changed).
+- Fix: a burst of invalid audio from a driver could silence AMPSURD until it was restarted.
 - macOS: app, VST3 and Audio Unit (macOS 10.15 Catalina or newer, Apple Silicon and Intel).
 
 Highlights: up to five NAM captures blended (any NAM architecture), Create Frankenstein (TONE / NOTES),
