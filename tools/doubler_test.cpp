@@ -140,10 +140,10 @@ int main()
         sd = std::sqrt(sd / (double) cents.size());
         if (busy)
         {
-            check(mx < 25.0 && sd > 0.5 && sd < 9.0, "PITCH while picking: the double drifts %.2f cents (sd), at most %.1f cents", sd, mx);
+            check(mx < 12.0 && sd > 0.5 && sd < 5.0, "PITCH while picking: the double drifts %.2f cents (sd), at most %.1f cents", sd, mx);
             break;
         }
-        check(mx < 12.0 && sd > 0.2 && sd < 5.0, "PITCH sustained: the double drifts %.2f cents (sd), at most %.1f cents (a second take, no chorus)", sd, mx);
+        check(mx < 4.0 && sd > 0.1 && sd < 1.5, "PITCH sustained: the double drifts %.2f cents (sd), at most %.1f cents (nearly still: a moving comb would sound like a flanger)", sd, mx);
         const double dl = d.getVoiceDelayMs(0);
         check(dl >= 8.0 && dl <= 40.0, "DELAY: the double plays %.1f ms after the guitar (8-40 ms)", dl);
         // dry (left) = the sine, not delayed: pan law +3 dB (hard left), loudness -3 dB (one double at 0 dB)

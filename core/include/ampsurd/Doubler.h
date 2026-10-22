@@ -14,7 +14,7 @@
 //                                └ voice 3 ...                                              │
 //   loudness kept: the highs of dry + doubles are scaled so the whole is as loud as the dry ┘
 //
-// * Each voice reads the delay line 8-35 ms behind (TIGHT sets how far and how much it wanders). Its
+// * Each voice reads the delay line 8-35 ms behind (TIGHT sets how far and how much it wanders, +-0.3..2 ms). Its
 //   delay moves smoothly (a slowly varying speed = a pitch drift of a few cents), never jumps while sound
 //   is read: a new timing and tone for the take is drawn only in a silence longer than the longest delay.
 // * Drift runs at full speed while notes are being played and slows down in sustained notes (where
@@ -22,6 +22,8 @@
 // * At every pick attack (onset detector) each voice gets, when it plays that attack, its own small pitch
 //   offset (relaxes over ~0.3 s) and pick strength (+-dB, CHARACTER).
 // * Tone per take (CHARACTER): high shelf +-dB and a short "pick position" comb, drawn per take.
+// * Decorrelation per take: four all-passes at random frequencies, so a take is not an exact copy and its
+//   moving delay does not sound like a flanger (owner, 2026-10-22).
 // * LOW MONO: below this frequency only the dry signal plays (tight, centred lows); 0 = off.
 // * The dry signal is not delayed: no latency.
 // * Off: faded out in 30 ms, then not processed at all (bit-identical to a build without it).
@@ -77,6 +79,8 @@ private:
         double shelfDb = 0.0, shelfGain = 0.0, combT = 0.0, combG = 0.0, combNorm = 1.0, target = 0.0;
         double hsLp = 0.0;                    // high shelf state
         std::array<Svf, 2> hp {};             // LOW MONO high-pass (LR4)
+        struct AllPass { double a1 = 0, a2 = 0, z1 = 0, z2 = 0; };
+        std::array<AllPass, 4> ap {};         // decorrelation (no flanger sound)
         int pending = -1;                     // samples until this voice plays a detected attack
         double pendCents = 0.0, pendGainDb = 0.0;
         double xfade = 1.0;                   // 1 = reading `centre` only (else crossfading to centreNew)

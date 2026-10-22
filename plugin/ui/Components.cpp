@@ -2524,7 +2524,9 @@ void PlayerPanel::saveVideo()
     auto folder = player.getRecordingsFolder();
     folder.createDirectory();
     const auto suggested = folder.getNonexistentChildFile(withBacking ? "AMPSURD video" : "AMPSURD video guitar", ".mp4");
-    chooser = std::make_unique<juce::FileChooser>("Save the video", suggested, "*.mp4");
+    // in front of the camera window when it is open (it stays on top of AMPSURD)
+    juce::Component* parent = cameraWindow != nullptr ? static_cast<juce::Component*>(cameraWindow.get()) : nullptr;
+    chooser = std::make_unique<juce::FileChooser>("Save the video", suggested, "*.mp4", true, false, parent);
     chooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
                          [this, withBacking](const juce::FileChooser& fc) {
                              auto f = fc.getResult();

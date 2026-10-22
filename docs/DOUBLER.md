@@ -12,7 +12,8 @@ public descriptions of TC Electronic's MIMIQ doubler.
 | A real second take... | DOUBLER |
 |---|---|
 | is a little late or early, and the offset changes from phrase to phrase | each take plays 8-33 ms later (TIGHT); a new offset is drawn in every pause long enough that nothing audible is being read |
-| is never exactly in tune with the first one | the take's delay moves slowly and smoothly: a pitch drift of ~2 cents (sustained notes) to ~4 cents (while picking), at most ~15 cents |
+| is never exactly in tune with the first one | the take's delay moves slowly and smoothly: ~0.5 cents (sustained notes, nearly still) to ~2 cents (while picking), at most ~6 cents |
+| is not an exact copy | four all-passes at random frequencies per take: the same tone, but no regular comb with your guitar (an exact copy with a moving delay = a flanger) |
 | has its own intonation on every note | at every pick attack (onset detector), each take gets its own small pitch offset (relaxes in ~0.3 s), applied when that take plays the attack |
 | is picked harder or softer | per-note level +-1.5 dB (CHARACTER) |
 | sounds slightly different (pick position, tone) | per take: high shelf +-2.5 dB and a short comb (0.5-2 ms) = a different pick position (CHARACTER) |
@@ -20,6 +21,9 @@ public descriptions of TC Electronic's MIMIQ doubler.
 
 Rules taken over as ideas: nothing jumps while sound is read (jumps only in silences, with a 5 ms
 crossfade); drift is slower in sustained notes, where moving combs would sound like phasing.
+
+2026-10-22 owner: "sounds a bit like a flanger" -> wander halved (+-0.3..2 ms), drift 2x slower and nearly
+still in sustained notes (10 %), decorrelation all-passes added.
 
 What it can't do: a copy of one performance is still one performance. It is not as loose as two real
 takes: timing varies per phrase, not per note. Summed to mono it combs a little more than real takes do.
@@ -40,8 +44,8 @@ The truly real double is a second recorded take: possible later in the player / 
 
 ## Controls
 
-ON, DOUBLES (1 / 2 / 3), TIGHT (0-100 %: 100 = 8-13 ms, wander +-0.6 ms, 1 cent per note; 0 = 18-33 ms,
-+-4 ms, 5 cents), LEVEL (each take vs. your guitar, -18..+6 dB, default -2), WIDTH (0-100 %), LOW MONO
+ON, DOUBLES (1 / 2 / 3), TIGHT (0-100 %: 100 = 8-13 ms, wander +-0.3 ms, 1 cent per note; 0 = 18-33 ms,
++-2 ms, 5 cents), LEVEL (each take vs. your guitar, -18..+6 dB, default -2), WIDTH (0-100 %), LOW MONO
 (OFF, 20-300 Hz, default 120), CHARACTER (0-100 %). The panel shows where the guitar and each take sit
 (left / right) and how late each take plays right now.
 

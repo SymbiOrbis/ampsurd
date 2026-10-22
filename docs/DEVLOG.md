@@ -6,6 +6,17 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-22 — Session 3m: DOUBLER less flanger, camera window in front — Claude (Opus 5.5)
+
+- Owner: the DOUBLER sounds a bit like a flanger. Cause: an exact copy with a slowly moving delay summed with
+  the guitar in each speaker = a moving comb = a flanger. Wander halved (+-0.3..2 ms), drift 2x slower
+  (OU 2.5 s) and nearly still in sustained notes (10 % speed), plus four decorrelation all-passes per take
+  (700 Hz - 7 kHz, random, drawn with the take): no regular comb any more. doubler_test: sustained drift
+  0.46 cents sd (was 2.28), while picking 2.10 (was 3.84); limits tightened (sustained max < 4 cents).
+- Owner: when saving the video, the camera window is behind AMPSURD and cannot be brought to the front;
+  saving does not work. Camera window always on top of AMPSURD; the MP4 save dialog is opened with the
+  camera window as its parent (in front of it). Asked the owner for the status text if saving still fails.
+
 ## 2026-10-22 — Session 3l: blend tone learned while playing — Claude (Opus 5.5)
 
 - Owner (newest build): the 50:50 blend still loses highs. Checked the whole plugin path (ui_snapshot, new

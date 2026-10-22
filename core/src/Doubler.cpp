@@ -161,6 +161,16 @@ void Doubler::drawTake(Voice& v, int index, const DoublerSettings& s, bool first
     v.shelfGain = db2a(v.shelfDb) - 1.0;
     v.combT = (0.5 + 1.5 * rnd()) * 0.001 * sr;                     // 0.5 .. 2 ms
     v.combG = (0.04 + 0.16 * rnd()) * ch;
+    // decorrelation: four all-passes at random frequencies (700 Hz - 7 kHz). A take is then no longer an
+    // exact copy of the guitar, so its sum with the guitar has no regular comb (= no flanger sound) while
+    // the delay moves. All-passes keep the tone; drawn per take (only in silences).
+    for (auto& ap : v.ap)
+    {
+        const double fc = 700.0 * std::pow(10.0, rnd()), q = 0.7 + 1.3 * rnd();
+        const double w = 2.0 * kPi * std::min(fc, 0.45 * sr) / sr, al = std::sin(w) / (2.0 * q), a0 = 1.0 + al;
+        ap.a1 = -2.0 * std::cos(w) / a0;
+        ap.a2 = (1.0 - al) / a0;
+    }
     v.combNorm = 1.0 / std::sqrt(1.0 + v.combG * v.combG);
 }
 
@@ -211,7 +221,7 @@ void Doubler::process(double* L, double* R, int n, const DoublerSettings& s) noe
         // drawn in the next silence, never while sound is being read)
         for (int i = 0; i < kMaxVoices; ++i) drawTake(voices[(size_t) i], i, s, true);
     }
-    const double wanderMs = 0.6 + 3.4 * (1.0 - t); // how far a take wanders around its centre
+    const double wanderMs = 0.3 + 1.7 * (1.0 - t); // how far a take wanders around its centre (small: moving combs = flanger)
     const double wander = wanderMs * 0.001 * sr;
     const double noteSd = 1.0 + 4.0 * (1.0 - t);   // per-note intonation (cents, sd)
     const double attackSd = 1.5 * ch;              // per-note pick strength (dB, sd)
@@ -230,8 +240,8 @@ void Doubler::process(double* L, double* R, int n, const DoublerSettings& s) noe
     const double levK = 1.0 - std::exp(-1.0 / (0.005 * sr));
     const double peakDecay = std::exp(-1.0 / (2.0 * sr));
     const double xfStep = 1.0 / (0.005 * sr);
-    const double tauOu = 1.2;
-    const int silenceNeeded = (int) ((33.0 + 3.4 + 2.0 + 15.0) * 0.001 * sr); // longer than any read point
+    const double tauOu = 2.5;
+    const int silenceNeeded = (int) ((33.0 + 2.0 + 2.0 + 15.0) * 0.001 * sr); // longer than any read point
 
     const bool lowMono = s.lowMonoHz >= 20.0;
     const double xTarget = lowMono ? s.lowMonoHz : (xHz > 0 ? xHz : 120.0);
@@ -318,7 +328,7 @@ void Doubler::process(double* L, double* R, int n, const DoublerSettings& s) noe
         // control tick: the slow random wander (faster while notes are being played)
         if ((wpos & (kTick - 1)) == 0)
         {
-            const double speed = 0.25 + 0.75 * activity;
+            const double speed = 0.1 + 0.9 * activity; // nearly still in sustained notes
             const double dt = kTick / sr * speed;
             for (auto& v : voices)
             {
@@ -375,6 +385,13 @@ void Doubler::process(double* L, double* R, int n, const DoublerSettings& s) noe
             {
                 v.hp = {};
                 continue;
+            }
+            for (auto& ap : v.ap) // all-pass: y = a2 x + a1 x1 + x2 - a1 y1 - a2 y2 (transposed DF II)
+            {
+                const double o = ap.a2 * y + ap.z1;
+                ap.z1 = ap.a1 * y - ap.a1 * o + ap.z2;
+                ap.z2 = y - ap.a2 * o;
+                y = o;
             }
             // tone: high shelf (+-dB above ~2.5 kHz)
             v.hsLp += (y - v.hsLp) * kShelf;

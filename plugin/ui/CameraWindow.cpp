@@ -211,6 +211,7 @@ CameraWindow::CameraWindow(VideoCapture& c, PlayerRecorder& p, std::function<voi
     setResizable(true, false);
     setResizeLimits(480, 420, 1920, 1400);
     centreWithSize(getWidth(), getHeight());
+    setAlwaysOnTop(true); // stays in front of AMPSURD's window while you play / save (owner, 2026-10-22)
     setVisible(true);
 }
 CameraWindow::~CameraWindow()
