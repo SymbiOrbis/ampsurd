@@ -52,6 +52,9 @@ New in 0.9.1:
 - Blending amps keeps their tone: a 50:50 blend used to sound slightly darker than either amp alone (the
   highs of different amps partly cancel). AMPSURD now measures this per frequency band and corrects it with a
   fixed, automatic EQ on the blend (one amp alone: no change).
+- DOUBLER (EXPERIMENTAL): double tracking from one guitar - 1 to 3 "second takes" left and right, each with
+  its own timing, pitch and tone (TIGHT, LEVEL, WIDTH, LOW MONO, CHARACTER). No extra latency. Off by
+  default. Feedback welcome.
 - Metronome: sharper HI-HAT click (or BEEP) and VOL up to +12 dB.
 - Fix: a burst of invalid audio from a driver could silence AMPSURD until it was restarted.
 - macOS: app, VST3 and Audio Unit (macOS 10.15 Catalina or newer, Apple Silicon and Intel).

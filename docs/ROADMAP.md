@@ -123,6 +123,11 @@ unreachable for the owner on 2026-10-14). Users load their own IRs (ADD IR) as b
 docs/ROOT_MODULE.md: research, design, tests, how to remove it. Next: testers with low-tuned guitars;
 keep / change / remove. Then: review of Frankenstein (owner, 2026-10-20).
 
+## DOUBLER (experimental double tracking) — IMPLEMENTED 2026-10-22, needs listening tests
+docs/DOUBLER.md: design, tests, how to remove it. Idea from a tester (MIMIQ-style, his REAPER script as
+inspiration; own code). Next: listening tests; maybe later a real second take in the player / recorder
+(the most authentic double).
+
 ## Later / not planned
 - Frankenstein FOLLOW (whole note routed by detected pitch) - postponed by the owner.
 - Octave / harmony effects (PITCH only re-tunes).

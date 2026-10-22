@@ -73,7 +73,7 @@ https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.1
 | Resizable window (scales whole UI, fixed aspect) | done | rendered at 1200x800 and 1800x1200 |
 | Noise gate, NS-2 style (detects on DI, gates after the amps), on by default at -70 dB RMS / 120 ms; GATE button in master row | done, awaiting REAPER test | `gate_tuner_test`: bit-transparent while playing, closed on -80 dB hiss, fully open 0.98 ms after a note starts (before the amp signal, 1.17 ms); off = bit-identical |
 | Chromatic tuner on the clean DI (works when BYPASS is on), MUTE OUTPUT while shown | done, awaiting REAPER test | correct note F#1..E6 (46 Hz-1.3 kHz), worst error 0.14 cents; no false notes on hiss |
-| Centre area: GLOBAL (tuner, Global EQ, effects) by default since 2026-10-22; EDIT / IR / PLAYER / ROOT / Frankenstein replace it; NOISE GATE strip always visible in the master section | done | screenshots |
+| Centre area: GLOBAL (tuner, Global EQ, effects) by default since 2026-10-22; EDIT / IR / PLAYER / ROOT / DOUBLER / Frankenstein replace it; NOISE GATE strip always visible in the master section | done | screenshots |
 | Create Frankenstein: 2–5 frequency sections, amp per section, draggable dividers, WIDTH 0–90 %, muted amp's section closes (neighbours meet in the middle), solo = full spectrum | done, awaiting REAPER test | `frankenstein_test`: same amp in all sections → flat 0.0000 dB; split −6.0/−6.0 dB at the divider, −49 dB out of band; random dragging bounded; real captures on/off clean, loudness −0.08 dB; no added latency |
 | Global EQ on the complete sound (same 10 bands as the amps), GLOBAL EQ button with ON/OFF state, grey Global EQ curve behind an amp's EQ | done, awaiting REAPER test | `engine_test`: OFF bit-identical, ON = verified EQ curve exactly, on/off click-free; presets 236/236; older presets load with it off |
 | Per-amp PAN, stereo output (constant power, centre unchanged), stereo-linked limiter | done, awaiting REAPER test | centred: L = R bit-identical to before; hard left = +3.01 dB left, silence right; loudness on target for any panning (≤ 0.06 dB); 5 panned captures +12 dB → −1.00 dBFS |
@@ -100,6 +100,9 @@ core at 64–128 samples; the full plugin with 5 mixed captures ran at 30 % of r
 - ROOT (2026-10-20, EXPERIMENTAL, off by default): low-end module next to FRANKENSTEIN
   (docs/ROOT_MODULE.md). Objective tests pass; **no listening test with real guitars yet**. Removable
   (CMake option AMPSURD_ROOT_MODULE). Next: Frankenstein review (owner).
+- DOUBLER (2026-10-22, EXPERIMENTAL, off by default): double tracking from one guitar, 1-3 takes
+  (docs/DOUBLER.md). Own code, idea from a tester's script. Objective tests pass (doubler_test, ~1 % CPU);
+  **no listening test yet**. Removable (CMake option AMPSURD_DOUBLER_MODULE).
 - Later: About/Easter egg.
 
 ## Files changed in session 2

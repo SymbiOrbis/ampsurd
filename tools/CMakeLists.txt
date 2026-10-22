@@ -39,3 +39,6 @@ target_link_libraries(root_test PRIVATE ampsurd_core)
 
 add_executable(blend_spectrum blend_spectrum.cpp)
 target_link_libraries(blend_spectrum PRIVATE ampsurd_core)
+
+add_executable(doubler_test doubler_test.cpp)
+target_link_libraries(doubler_test PRIVATE ampsurd_core)

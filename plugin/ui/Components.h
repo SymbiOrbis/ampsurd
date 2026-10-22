@@ -478,9 +478,11 @@ private:
     juce::Slider inputSlider, outputSlider;
     juce::TextButton bypassButton { "BYPASS" }, gateButton { "GATE" }, frankButton { "FRANKENSTEIN" };
     juce::TextButton rootButton { "ROOT" }; // experimental module (only with AMPSURD_ROOT)
+    juce::TextButton doublerButton { "DOUBLER" }; // experimental module (only with AMPSURD_DOUBLER)
 
 public:
     std::function<void()> onRootClick; // the editor opens / closes the ROOT panel
+    std::function<void()> onDoublerClick; // ... the DOUBLER panel
 
 private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> gateAtt;

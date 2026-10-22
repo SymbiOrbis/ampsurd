@@ -3405,6 +3405,12 @@ MasterPanel::MasterPanel(AmpsurdProcessor& p) : proc(p), gate(p)
         rootButton.onClick = [this] { if (onRootClick) onRootClick(); };
         rootButton.setTooltip("ROOT (experimental): makes the lowest note of a power chord deeper. Lit = on");
     }
+    if (AmpsurdProcessor::hasDoublerModule())
+    {
+        addAndMakeVisible(doublerButton);
+        doublerButton.onClick = [this] { if (onDoublerClick) onDoublerClick(); };
+        doublerButton.setTooltip("DOUBLER (experimental): double tracking - second takes of your guitar left and right. Lit = on");
+    }
     inputSlider.setTooltip("Input level into all five amps (how hard they are driven)");
     addChildComponent(inputHint);
     inputHint.setColour(juce::TextButton::textColourOffId, colours::accent);
@@ -3425,13 +3431,13 @@ void MasterPanel::resized()
     const int mid = row.getCentreY();
     auto r = row.reduced(16, 0);
     auto block = [&](juce::Slider& s, LevelMeter& m) {
-        auto b = r.removeFromLeft(294);
+        auto b = r.removeFromLeft(268); // narrower since DOUBLER joined the buttons on the right
         b.removeFromLeft(64);
-        auto sl = b.removeFromLeft(136);
+        auto sl = b.removeFromLeft(118);
         s.setBounds(sl.withSizeKeepingCentre(sl.getWidth(), 24));
         b.removeFromLeft(14);
         m.setBounds(b.withSizeKeepingCentre(b.getWidth(), 6));
-        r.removeFromLeft(24);
+        r.removeFromLeft(20);
     };
     block(inputSlider, inMeter);
     inputHint.setBounds(inputSlider.getX(), mid - 14, inMeter.getRight() - inputSlider.getX(), 28);
@@ -3441,15 +3447,20 @@ void MasterPanel::resized()
     outMeterL.setBounds(ob.getX() + 12, mid - 6, ob.getWidth() - 12, 5);
     outMeterR.setBounds(ob.getX() + 12, mid + 1, ob.getWidth() - 12, 5);
     r.removeFromLeft(78); // room for the LIMIT indicator next to the output meter
-    frankButton.setBounds(r.removeFromLeft(140).withSizeKeepingCentre(140, 28));
-    r.removeFromLeft(8);
+    frankButton.setBounds(r.removeFromLeft(128).withSizeKeepingCentre(128, 28));
+    r.removeFromLeft(6);
     if (AmpsurdProcessor::hasRootModule())
     {
         rootButton.setBounds(r.removeFromLeft(64).withSizeKeepingCentre(64, 28));
-        r.removeFromLeft(8);
+        r.removeFromLeft(6);
+    }
+    if (AmpsurdProcessor::hasDoublerModule())
+    {
+        doublerButton.setBounds(r.removeFromLeft(88).withSizeKeepingCentre(88, 28));
+        r.removeFromLeft(6);
     }
     gateButton.setBounds(r.removeFromLeft(72).withSizeKeepingCentre(72, 28));
-    r.removeFromLeft(8);
+    r.removeFromLeft(6);
     bypassButton.setBounds(r.removeFromLeft(86).withSizeKeepingCentre(86, 28));
 }
 
@@ -3518,6 +3529,7 @@ void MasterPanel::refresh()
     else if (limitHold > 0) --limitHold;
     frankButton.setToggleState(proc.isFrankensteinOn(), juce::dontSendNotification);
     rootButton.setToggleState(proc.isRootOn(), juce::dontSendNotification);
+    doublerButton.setToggleState(proc.isDoublerOn(), juce::dontSendNotification);
     if (limitHold != oldHold || limitHold > 0) repaint();
 }
 

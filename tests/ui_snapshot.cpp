@@ -318,6 +318,67 @@ int main(int argc, char** argv)
         setP(*proc, "rootLow", 0.0f);
     }
    #endif
+   #if AMPSURD_DOUBLER
+    // DOUBLER panel (experimental): open from the master row; with the two amps centred the output is mono
+    // (L == R) when it is off, and stereo (second takes left / right) when it is on
+    {
+        std::unique_ptr<juce::AudioProcessorEditor> ed(proc->createEditor());
+        auto* e = dynamic_cast<AmpsurdEditor*>(ed.get());
+        auto play = [&](int blocks) {
+            double diff = 0.0, sum = 0.0;
+            bool finite = true;
+            juce::AudioBuffer<float> b3(2, 256);
+            for (int k = 0; k < blocks; ++k)
+            {
+                b3.clear();
+                for (int i = 0; i < 256; ++i)
+                {
+                    const double t = (k * 256 + i) / 48000.0, ph = std::fmod(t, 0.4);
+                    const double env = ph < 0.3 ? std::exp(-ph * 6.0) * std::min(1.0, ph / 0.003) : 0.0; // notes with gaps
+                    b3.setSample(0, i, (float) (0.3 * env * std::sin(2 * 3.14159265 * 110.0 * t)));
+                }
+                proc->processBlock(b3, midi);
+                for (int i = 0; i < 256; ++i)
+                {
+                    const float l = b3.getSample(0, i), r = b3.getSample(1, i);
+                    finite = finite && std::isfinite(l) && std::isfinite(r);
+                    if (k >= blocks / 2) { diff += (l - r) * (l - r); sum += l * l + r * r; }
+                }
+                e->refreshAll();
+            }
+            return finite ? diff / std::max(1e-20, sum) : -1.0;
+        };
+        const bool offByDefault = !proc->isDoublerOn();
+        const double offSide = play(60);
+        setP(*proc, "dblOn", 1.0f);
+        e->showDoubler(true);
+        const double onSide = play(160);
+        save(*ed, out.getChildFile("21_doubler.png"));
+        std::function<juce::Component*(juce::Component&, const juce::String&)> findText = [&](juce::Component& c, const juce::String& t) -> juce::Component* {
+            if (auto* tb = dynamic_cast<juce::TextButton*>(&c))
+                if (tb->getButtonText() == t && tb->isVisible()) return tb;
+            for (auto* ch : c.getChildren())
+                if (ch->isVisible())
+                    if (auto* r = findText(*ch, t)) return r;
+            return nullptr;
+        };
+        std::function<bool(juce::Component&)> panelShown = [&](juce::Component& c) -> bool {
+            if (dynamic_cast<ampsurd::ui::DoublerPanel*>(&c) != nullptr) return c.isVisible();
+            for (auto* ch : c.getChildren())
+                if (panelShown(*ch)) return true;
+            return false;
+        };
+        const bool panel = panelShown(*ed) && findText(*ed, "DOUBLER") != nullptr && findText(*ed, "ROOT") != nullptr;
+        e->showDoubler(false);
+        e->refreshAll();
+        const bool closedToGlobal = !panelShown(*ed);
+        setP(*proc, "dblOn", 0.0f);
+        const double offAgain = play(60);
+        std::cout << (offByDefault && offSide >= 0.0 && onSide > offSide + 0.1 && std::abs(offAgain - offSide) < 0.02 && panel && closedToGlobal ? "[PASS]" : "[FAIL]")
+                  << " DOUBLER: off by default, on -> wider: second takes left / right (side/total " << onSide << "), off again as before; panel opens from the master row and closes"
+                  << " (off " << offSide << ", again " << offAgain << ", default " << offByDefault << ", panel " << panel << ", closed " << closedToGlobal << ")\n";
+    }
+   #endif
 
     // Global EQ
     {

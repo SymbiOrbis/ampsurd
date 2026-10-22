@@ -265,6 +265,11 @@ REAPER picks up the new version.
 43. Blend tone: load two different amps, 100:0 vs. 50:50 vs. 0:100 at matched loudness: the 50:50 blend
     should sound like "half of each", not darker than both. (The automatic EQ is fixed while you play.)
 
+44. DOUBLER (EXPERIMENTAL, master row; docs/DOUBLER.md): play a riff, open DOUBLER, ON. DOUBLES 1 / 2 / 3,
+    TIGHT (tight vs. loose player), LEVEL, WIDTH, LOW MONO, CHARACTER. Listen on headphones and on speakers,
+    and once in mono (e.g. a mono button on the interface): does it sound like real second takes, no
+    phasing / chorus, no clicks between phrases, as loud as without it? Note what works and what does not.
+
 Expected latency shown by REAPER: 104 samples at 48 kHz, 123 at 44.1 kHz.
 
 Optional measurements (in Developer PowerShell):

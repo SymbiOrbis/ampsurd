@@ -14,6 +14,9 @@
 #include "ampsurd/CaptureAnalyzer.h"
 #include "ampsurd/CaptureModel.h"
 #include "ampsurd/Effects.h"
+#if AMPSURD_DOUBLER
+  #include "ampsurd/Doubler.h"
+#endif
 #if AMPSURD_ROOT
   #include "ampsurd/RootEnhancer.h"
 #endif
@@ -109,6 +112,15 @@ public:
     float getAndResetRootGainReductionDb() { return root.getAndResetGainReductionDb(); }
    #else
     bool isRootOn() const { return false; }
+   #endif
+    // --- DOUBLER (experimental; compiled only with AMPSURD_DOUBLER_MODULE) ---
+    static constexpr bool hasDoublerModule() { return AMPSURD_DOUBLER != 0; }
+   #if AMPSURD_DOUBLER
+    ampsurd::DoublerSettings readDoubler() const noexcept;
+    bool isDoublerOn() const { return dblParams.on->load() > 0.5f; }
+    float getDoublerDelayMs(int voice) const { return doubler.getVoiceDelayMs(voice); }
+   #else
+    bool isDoublerOn() const { return false; }
    #endif
     bool isFxActive(int which) const;                   // 0 delay 1, 1 delay 2, 2 reverb, 3 flanger, 4 pitch (ON switch)
 
@@ -396,6 +408,12 @@ private:
     ampsurd::RootEnhancer root;
     struct RootParams { std::atomic<float>* on = nullptr, *mode = nullptr, *level = nullptr, *freq = nullptr, *growl = nullptr,
                         *tight = nullptr, *comp = nullptr, *sub = nullptr, *low = nullptr, *lowMid = nullptr, *invert = nullptr; } rootParams;
+   #endif
+   #if AMPSURD_DOUBLER
+    // DOUBLER (experimental, docs/DOUBLER.md): after the gate, before the effects
+    ampsurd::Doubler doubler;
+    struct DblParams { std::atomic<float>* on = nullptr, *voices = nullptr, *tight = nullptr, *level = nullptr, *width = nullptr,
+                       *lowMono = nullptr, *character = nullptr; } dblParams;
    #endif
     std::unique_ptr<PlayerRecorder> player;
     struct DelayParams { std::atomic<float>* on, *time, *sync, *note, *feedback, *level, *tone, *pingPong; };

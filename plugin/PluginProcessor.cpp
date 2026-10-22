@@ -365,6 +365,32 @@ juce::AudioProcessorValueTreeState::ParameterLayout AmpsurdProcessor::createLayo
         layout.add(std::move(group));
     }
    #endif
+   #if AMPSURD_DOUBLER
+    // DOUBLER (experimental): 1-3 "second takes" of the guitar from one input (docs/DOUBLER.md)
+    {
+        auto group = std::make_unique<AudioProcessorParameterGroup>("doubler", "Doubler", " | ");
+        auto pct = [](float v, int) { return juce::String(juce::roundToInt(v)) + " %"; };
+        auto pctAttr = AudioParameterFloatAttributes().withLabel("%").withStringFromValueFunction(pct);
+        group->addChild(std::make_unique<AudioParameterBool>(ParameterID { "dblOn", 1 }, "Doubler On", false));
+        group->addChild(std::make_unique<AudioParameterChoice>(ParameterID { "dblVoices", 1 }, "Doubler Doubles",
+                                                               StringArray { "1", "2", "3" }, 1));
+        group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { "dblTight", 1 }, "Doubler Tight",
+                                                              NormalisableRange<float>(0.0f, 100.0f, 0.1f), 60.0f, pctAttr));
+        group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { "dblLevel", 1 }, "Doubler Level",
+                                                              NormalisableRange<float>(-18.0f, 6.0f, 0.1f), -2.0f, unitAttr("dB", 1)));
+        group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { "dblWidth", 1 }, "Doubler Width",
+                                                              NormalisableRange<float>(0.0f, 100.0f, 0.1f), 100.0f, pctAttr));
+        {
+            NormalisableRange<float> fr(0.0f, 300.0f, 1.0f);
+            auto hz = [](float v, int) { return v < 20.0f ? juce::String("OFF") : juce::String(juce::roundToInt(v)) + " Hz"; };
+            group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { "dblLowMono", 1 }, "Doubler Low Mono", fr, 120.0f,
+                                                                  AudioParameterFloatAttributes().withLabel("Hz").withStringFromValueFunction(hz)));
+        }
+        group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { "dblCharacter", 1 }, "Doubler Character",
+                                                              NormalisableRange<float>(0.0f, 100.0f, 0.1f), 50.0f, pctAttr));
+        layout.add(std::move(group));
+    }
+   #endif
     return layout;
 }
 
@@ -483,6 +509,15 @@ AmpsurdProcessor::AmpsurdProcessor()
     rootParams.lowMid = params.getRawParameterValue("rootLowMid");
     rootParams.invert = params.getRawParameterValue("rootInvert");
    #endif
+   #if AMPSURD_DOUBLER
+    dblParams.on = params.getRawParameterValue("dblOn");
+    dblParams.voices = params.getRawParameterValue("dblVoices");
+    dblParams.tight = params.getRawParameterValue("dblTight");
+    dblParams.level = params.getRawParameterValue("dblLevel");
+    dblParams.width = params.getRawParameterValue("dblWidth");
+    dblParams.lowMono = params.getRawParameterValue("dblLowMono");
+    dblParams.character = params.getRawParameterValue("dblCharacter");
+   #endif
 
     globalEqParams.eqOn = params.getRawParameterValue(slotParamId(kGlobalEq, "eqOn"));
     for (int t = 0; t < kNumEqTargets; ++t)
@@ -549,6 +584,9 @@ void AmpsurdProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     fx.prepare(sampleRate, maxBlock);
    #if AMPSURD_ROOT
     root.prepare(sampleRate, maxBlock);
+   #endif
+   #if AMPSURD_DOUBLER
+    doubler.prepare(sampleRate, maxBlock);
    #endif
     if (player) player->prepare(sampleRate, maxBlock);
     dryDelay.assign((size_t) (sampleRate * 0.1) + 1, 0.0f); // up to 100 ms of latency
@@ -663,6 +701,9 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
    #if AMPSURD_ROOT
     const auto rootSettings = readRoot();
    #endif
+   #if AMPSURD_DOUBLER
+    const auto dblSettings = readDoubler();
+   #endif
     settings.globalEqEnabled = isGlobalEqOn();
     settings.globalEq = getEqBands(kGlobalEq);
 
@@ -723,6 +764,9 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         root.process(inBuffer.data(), L, R, n, rootSettings); // ROOT layer: under the amps, silenced by the gate
        #endif
         gate.process(inBuffer.data(), L, n, R); // NS-2 style: listen to the DI, silence after the amps
+       #if AMPSURD_DOUBLER
+        doubler.process(L, R, n, dblSettings); // DOUBLER: after the gate (clean silences), before delays / reverb
+       #endif
         fx.process(L, R, n, fxSettings);           // flanger, delays, reverb: after the gate, so tails ring out
 
         for (int i = 0; i < n; ++i)
@@ -1555,6 +1599,21 @@ ampsurd::RootSettings AmpsurdProcessor::readRoot() const noexcept
     r.lowMidDb = rootParams.lowMid->load();
     r.invert = rootParams.invert->load() > 0.5f;
     return r;
+}
+#endif
+
+#if AMPSURD_DOUBLER
+ampsurd::DoublerSettings AmpsurdProcessor::readDoubler() const noexcept
+{
+    ampsurd::DoublerSettings d;
+    d.on = dblParams.on->load() > 0.5f;
+    d.voices = 1 + juce::jlimit(0, 2, (int) dblParams.voices->load());
+    d.tight = dblParams.tight->load() / 100.0;
+    d.levelDb = dblParams.level->load();
+    d.width = dblParams.width->load() / 100.0;
+    d.lowMonoHz = dblParams.lowMono->load() < 20.0f ? 0.0 : dblParams.lowMono->load();
+    d.character = dblParams.character->load() / 100.0;
+    return d;
 }
 #endif
 

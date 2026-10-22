@@ -39,6 +39,7 @@ target_sources(Ampsurd PRIVATE
   ui/Theme.cpp
   ui/Components.cpp
   ui/RootPanel.cpp
+  ui/DoublerPanel.cpp
   ui/CameraWindow.cpp
   standalone/StandaloneApp.cpp
   player/PlayerRecorder.cpp
@@ -75,6 +76,11 @@ if(AMPSURD_ROOT_MODULE)
   target_compile_definitions(Ampsurd PUBLIC AMPSURD_ROOT=1)
 else()
   target_compile_definitions(Ampsurd PUBLIC AMPSURD_ROOT=0)
+endif()
+if(AMPSURD_DOUBLER_MODULE)
+  target_compile_definitions(Ampsurd PUBLIC AMPSURD_DOUBLER=1)
+else()
+  target_compile_definitions(Ampsurd PUBLIC AMPSURD_DOUBLER=0)
 endif()
 if(WIN32)
   # ASIO drivers in the standalone app (lowest latency). JUCE bundles the Steinberg ASIO SDK headers,

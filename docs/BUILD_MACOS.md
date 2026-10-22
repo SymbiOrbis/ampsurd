@@ -64,6 +64,7 @@ checklist below.
 10. GLOBAL default view, gate strip at the bottom, GUITAR PAN / VOL in the player: items 11, 40, 41 there.
 11. VIDEO takes as in item 42 there (macOS asks for the camera the first time: allow it).
 12. Blend tone as in item 43 there.
+13. DOUBLER as in item 44 there.
 
 ## Building on a Mac yourself
 

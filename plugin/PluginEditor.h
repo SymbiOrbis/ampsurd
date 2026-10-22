@@ -7,6 +7,7 @@
 
 #include "PluginProcessor.h"
 #include "ui/Components.h"
+#include "ui/DoublerPanel.h"
 #include "ui/RootPanel.h"
 #include "ui/Theme.h"
 
@@ -31,6 +32,7 @@ public:
     void showIr(int slot);   // -1 closes the IR editor
     void showPlayer(bool show);
     void showRoot(bool show); // ROOT panel (experimental module; does nothing without it)
+    void showDoubler(bool show); // DOUBLER panel (experimental module; does nothing without it)
     void showFxPage(int which) { content.globalEq.selectFx(which); } // tests / screenshots
     void refreshAll() { timerCallback(); }
 
@@ -53,6 +55,9 @@ private:
        #if AMPSURD_ROOT
         ampsurd::ui::RootPanel root;
        #endif
+       #if AMPSURD_DOUBLER
+        ampsurd::ui::DoublerPanel doubler;
+       #endif
         std::unique_ptr<ampsurd::ui::PlayerPanel> playerPanel; // standalone app only
         juce::TextButton playerButton { "PLAYER / REC" };
         ampsurd::ui::MasterPanel master;
@@ -66,7 +71,7 @@ private:
     Content content;
     juce::TooltipWindow tooltips { this, 600 };
     int selected = -1;
-    bool globalEqOpen = false, playerOpen = false, rootOpen = false, lastFrankOn = false;
+    bool globalEqOpen = false, playerOpen = false, rootOpen = false, doublerOpen = false, lastFrankOn = false;
     double cpuAverage = -1.0;     // CPU display: averaged, updated once per second (readable)
     juce::uint32 cpuShownAt = 0;
 

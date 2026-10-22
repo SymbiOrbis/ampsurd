@@ -6,6 +6,30 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-22 — Session 3j: DOUBLER (experimental double tracking) — Claude (Opus 5.5)
+
+- Owner: a tester suggested a doubler like MIMIQ and sent his REAPER script ("Performance Doubler 2.2").
+  Answered: one input is enough, ~1 % CPU. Owner: use it as inspiration, write our own code. Done: own
+  implementation, ideas only (no code taken) - docs/DOUBLER.md.
+- core Doubler: mid of the amp mix into a delay line; 1-3 takes, each read 8-33 ms later (TIGHT) with a
+  16-tap Kaiser-windowed-sinc fractional read; the delay wanders smoothly (OU process -> tanh -> two 2 Hz
+  smoothers; faster while picking, a quarter in sustained notes); per-note intonation (cents, relaxes in
+  0.3 s) and pick strength at every detected attack, applied when the take plays it; per-take tone (high
+  shelf +-2.5 dB, pick-position comb 0.5-2 ms); new timing / tone only in silences longer than any read
+  point (5 ms crossfade); LOW MONO (LR4, lows only from the dry guitar); loudness kept (1/sqrt(1 + n g^2) on
+  the highs); dry not delayed (no latency); layout 1 = dry L / take R, 2 = dry C / takes L+R, 3 = 4 takes.
+  Off: 30 ms fade, then untouched.
+- Processor: dbl* parameters (off by default), after the gate, before the effects. CMake option
+  AMPSURD_DOUBLER_MODULE (default ON) -> AMPSURD_DOUBLER.
+- UI: DoublerPanel (ON, DOUBLES 1/2/3, TIGHT, LEVEL, WIDTH, LOW MONO, CHARACTER, stereo picture with each
+  take's current delay). Master row: DOUBLER button; input / output blocks narrower again (26 px each),
+  buttons 6 px apart, FRANKENSTEIN 128 px, so BYPASS still fits.
+- Tests: tools/doubler_test (14 checks, CI Windows + macOS): pitch drift 2.3 cents sd sustained (max 7.5),
+  3.8 sd while picking (max 15.5); 26 / 26 attacks; 25 redraws in 26 pauses; no clicks; loudness within
+  1 dB; mono sum >= -2.9 dB; LOW MONO 50 Hz +-0.1 dB; random settings stable; CPU 3 takes 1.1 % of a core.
+  ui_snapshot DOUBLER (21_doubler.png).
+- Not done: listening tests (owner, tester).
+
 ## 2026-10-22 — Session 3i: blend tone EQ (a blend keeps the tone of its amps) — Claude (Opus 5.5)
 
 - Owner approved the fix for the darker 50:50 blend (Session 3h). New `core/BlendToneEq`: the mix law is

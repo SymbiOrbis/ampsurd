@@ -6,6 +6,9 @@ AmpsurdEditor::Content::Content(AmpsurdProcessor& p) : header(p), edit(p), ir(p)
 #if AMPSURD_ROOT
       root(p),
 #endif
+#if AMPSURD_DOUBLER
+      doubler(p),
+#endif
       master(p)
 {
     addAndMakeVisible(header);
@@ -19,6 +22,9 @@ AmpsurdEditor::Content::Content(AmpsurdProcessor& p) : header(p), edit(p), ir(p)
     addChildComponent(frankenstein); // replaces GLOBAL while Frankenstein is on
    #if AMPSURD_ROOT
     addChildComponent(root);         // ROOT panel (experimental), opened from the master row
+   #endif
+   #if AMPSURD_DOUBLER
+    addChildComponent(doubler);      // DOUBLER panel (experimental), opened from the master row
    #endif
     addAndMakeVisible(globalEq);     // GLOBAL: tuner, Global EQ, effects - the default view
     addChildComponent(globalEqButton); // in the Frankenstein view: opens GLOBAL
@@ -81,6 +87,9 @@ void AmpsurdEditor::Content::resized()
    #if AMPSURD_ROOT
     root.setBounds(r);
    #endif
+   #if AMPSURD_DOUBLER
+    doubler.setBounds(r);
+   #endif
     auto withButton = r;
     globalEqButton.setBounds(withButton.removeFromRight(40));
     withButton.removeFromRight(10);
@@ -111,6 +120,10 @@ AmpsurdEditor::AmpsurdEditor(AmpsurdProcessor& p) : AudioProcessorEditor(&p), pr
    #if AMPSURD_ROOT
     content.root.onClose = [this] { showRoot(false); };
     content.master.onRootClick = [this] { showRoot(!rootOpen); };
+   #endif
+   #if AMPSURD_DOUBLER
+    content.doubler.onClose = [this] { showDoubler(false); };
+    content.master.onDoublerClick = [this] { showDoubler(!doublerOpen); };
    #endif
 
     setResizable(true, true);
@@ -194,11 +207,27 @@ void AmpsurdEditor::resized()
 
 // The lower panel shows one view at a time: amp EDIT, IR editor, player, ROOT, Frankenstein (while it
 // is on) or GLOBAL (tuner, Global EQ, effects - the default). Opening one closes the others.
+void AmpsurdEditor::showDoubler(bool show)
+{
+    doublerOpen = show && AmpsurdProcessor::hasDoublerModule();
+    if (doublerOpen)
+    {
+        rootOpen = false;
+        globalEqOpen = false;
+        playerOpen = false;
+        selected = -1;
+        content.edit.setSlot(-1);
+        content.ir.setSlot(-1);
+    }
+    timerCallback();
+}
+
 void AmpsurdEditor::showRoot(bool show)
 {
     rootOpen = show && AmpsurdProcessor::hasRootModule();
     if (rootOpen)
     {
+        doublerOpen = false;
         globalEqOpen = false;
         playerOpen = false;
         selected = -1;
@@ -214,6 +243,7 @@ void AmpsurdEditor::showGlobalEq(bool show)
     if (show)
     {
         rootOpen = false;
+        doublerOpen = false;
         playerOpen = false;
         selected = -1;
         content.edit.setSlot(-1);
@@ -229,6 +259,7 @@ void AmpsurdEditor::selectSlot(int slot)
     {
         globalEqOpen = false;
         rootOpen = false;
+        doublerOpen = false;
         playerOpen = false;
         content.ir.setSlot(-1);
     }
@@ -245,6 +276,7 @@ void AmpsurdEditor::showPlayer(bool show)
         selected = -1;
         globalEqOpen = false;
         rootOpen = false;
+        doublerOpen = false;
         content.edit.setSlot(-1);
         content.ir.setSlot(-1);
     }
@@ -278,13 +310,14 @@ void AmpsurdEditor::timerCallback()
     {
         // switching Frankenstein on shows it (closes ROOT and GLOBAL)
         const bool frankNow = proc.isFrankensteinOn();
-        if (frankNow && !lastFrankOn) { rootOpen = false; globalEqOpen = false; }
+        if (frankNow && !lastFrankOn) { rootOpen = false; doublerOpen = false; globalEqOpen = false; }
         lastFrankOn = frankNow;
     }
     const bool frankOn = proc.isFrankensteinOn();
     const bool rootView = !editing && !playerView && rootOpen;
-    const bool frank = !editing && !playerView && !rootView && frankOn && !globalEqOpen;
-    const bool global = !editing && !playerView && !rootView && !frank; // the default view
+    const bool doublerView = !editing && !playerView && !rootView && doublerOpen;
+    const bool frank = !editing && !playerView && !rootView && !doublerView && frankOn && !globalEqOpen;
+    const bool global = !editing && !playerView && !rootView && !doublerView && !frank; // the default view
     if (content.playerPanel)
     {
         content.playerPanel->setVisible(playerView);
@@ -313,6 +346,12 @@ void AmpsurdEditor::timerCallback()
     if (rootView) content.root.refresh();
    #else
     juce::ignoreUnused(rootView);
+   #endif
+   #if AMPSURD_DOUBLER
+    content.doubler.setVisible(doublerView);
+    if (doublerView) content.doubler.refresh();
+   #else
+    juce::ignoreUnused(doublerView);
    #endif
     content.frankenstein.setVisible(frank);
     content.globalEqButton.setVisible(frank); // Frankenstein view: the way to GLOBAL
