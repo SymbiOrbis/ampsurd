@@ -457,6 +457,14 @@ private:
     std::atomic<bool> showDragon { true };
     std::atomic<bool> ecoByDefault { true };
     std::atomic<int> guitarInput { 0 };
+    std::atomic<bool> needsRecovery { false };
+    std::atomic<int> recoveries { 0 };
+
+public:
+    int getRecoveryCount() const { return recoveries.load(); } // tests / diagnostics
+    void requestRecoveryForTest() { needsRecovery.store(true); } // tests: as if NaN appeared inside
+
+private:
     StandaloneAudio standaloneAudio;
     std::atomic<float> selectedInputRawPeak { 0.0f }, otherInputRawPeak { 0.0f };
     std::atomic<double> interfaceDbu { 12.0 };

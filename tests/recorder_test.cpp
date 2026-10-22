@@ -515,6 +515,51 @@ int main()
         pl->setMetronome(false, 120.0, 4, false, -6.0f, 0);
     }
 
+    // GUITAR VOL and PAN: while recording they set what the monitors get of the live guitar; the
+    // recording itself stays exactly as AMPSURD outputs the guitar; playback uses them for the take
+    {
+        pl->stop();
+        pl->clearTake();
+        pl->removeBacking();
+        pl->setTakeGainDb(-6.0f);
+        pl->setTakePan(-1.0f); // hard left
+        pl->toStart();
+        run(0.1, nullptr);
+        auto tone = [&](juce::int64 t) { return 0.2f * (float) std::sin(2 * juce::MathConstants<double>::pi * 220 * (double) t / sr); };
+        pl->record();
+        const auto mon = run(1.5, tone);
+        pl->stop();
+        pl->renderNow();
+        waitIdle();
+        const int from = (int) (0.8 * sr), len = (int) (0.5 * sr);
+        const float monL = mon.getMagnitude(0, from, len), monR = mon.getMagnitude(1, from, len);
+        const float expectL = 0.2f * 0.5012f * 1.41421f;
+        // the file: render without VOL / PAN
+        pl->setTakeGainDb(0.0f);
+        pl->setTakePan(0.0f);
+        juce::AudioBuffer<float> take;
+        int off = 0;
+        pl->renderMix(false, take, off);
+        const float fileL = take.getNumSamples() > from + len ? take.getMagnitude(0, from, len) : 0.0f;
+        const float fileR = take.getNumSamples() > from + len ? take.getMagnitude(1, from, len) : 0.0f;
+        // playback with VOL / PAN again
+        pl->setTakeGainDb(-6.0f);
+        pl->setTakePan(-1.0f);
+        pl->toStart();
+        pl->play();
+        const auto play = run(1.5, nullptr);
+        pl->stop();
+        const float playL = play.getMagnitude(0, from, len), playR = play.getMagnitude(1, from, len);
+        check(std::abs(monL - expectL) < 0.01f && monR < 1e-3f && std::abs(fileL - 0.2f) < 0.01f && std::abs(fileR - 0.2f) < 0.01f
+                  && std::abs(playL - expectL) < 0.01f && playR < 1e-3f,
+              "GUITAR VOL -6 dB + PAN hard L: monitors while recording L " + juce::String(monL, 3) + " R " + juce::String(monR, 4)
+                  + " (expected " + juce::String(expectL, 3) + " / 0); recorded file unchanged " + juce::String(fileL, 3) + " / "
+                  + juce::String(fileR, 3) + "; playback L " + juce::String(playL, 3) + " R " + juce::String(playR, 4));
+        pl->setTakeGainDb(0.0f);
+        pl->setTakePan(0.0f);
+        pl->clearTake();
+    }
+
     proc.reset();
     tmp.deleteRecursively();
     std::cout << (failures == 0 ? "\nALL PASS\n" : "\n" + juce::String(failures) + " FAILURE(S)\n");

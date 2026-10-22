@@ -564,7 +564,8 @@ private:
     double xToTime(float x) const { return viewStart + (double) (x - (float) laneArea().getX()) * secondsPerPixel; }
     float timeToX(double t) const { return (float) laneArea().getX() + (float) ((t - viewStart) / secondsPerPixel); }
     double centreSeconds() const { return viewStart + 0.5 * secondsPerPixel * laneArea().getWidth(); }
-    juce::Rectangle<int> laneArea() const { return getLocalBounds().withTrimmedLeft(64).withTrimmedBottom(kScrollH + 4); }
+    static constexpr int kLabelW = 80; // left column: track names, the GUITAR track's PAN
+    juce::Rectangle<int> laneArea() const { return getLocalBounds().withTrimmedLeft(kLabelW).withTrimmedBottom(kScrollH + 4); }
     static constexpr int kScrollH = 16;
     void scrollBarMoved(juce::ScrollBar*, double newRangeStart) override;
     void updateScrollBar();
@@ -575,6 +576,7 @@ private:
 
     PlayerRecorder& player;
     juce::ScrollBar scroll { false }; // wide horizontal bar under the guitar track: drag to move along the song
+    juce::Slider guitarPan;           // PAN of the GUITAR track (under its name)
     double viewStart = 0.0, secondsPerPixel = 0.02;
     bool fitted = false;
     EdgeHit hover, drag;

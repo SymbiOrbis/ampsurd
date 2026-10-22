@@ -33,6 +33,7 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 
+#include "ampsurd/Engine.h"
 #include "ampsurd/SafetyLimiter.h"
 
 class PlayerRecorder
@@ -115,6 +116,11 @@ public:
 
     void setBackingGainDb(float db) { backingGainDb.store(db); }
     void setTakeGainDb(float db) { takeGainDb.store(db); }
+    // GUITAR track pan (-1 = left .. +1 = right; same law as the amps' PAN). GUITAR VOL and PAN apply to
+    // the take when it plays AND to the live guitar while recording (what goes to the monitors) - never
+    // to the recorded file, which stays exactly as AMPSURD outputs the guitar.
+    void setTakePan(float p) { takePan.store(juce::jlimit(-1.0f, 1.0f, p)); }
+    float getTakePan() const { return takePan.load(); }
     float getBackingGainDb() const { return backingGainDb.load(); }
     float getTakeGainDb() const { return takeGainDb.load(); }
     float getAndResetBackingPeak() { return backingPeak.exchange(0.0f); }
@@ -218,6 +224,9 @@ private:
     std::atomic<float> offsetMs { 0.0f }, backingGainDb { 0.0f }, takeGainDb { 0.0f };
     std::atomic<float> backingPeak { 0.0f }, takePeak { 0.0f };
     double gB = 1.0, gT = 1.0;
+    std::atomic<float> takePan { 0.0f };
+    double panTL = 1.0, panTR = 1.0;      // smoothed pan gains of the take
+    double liveL = 1.0, liveR = 1.0;      // smoothed monitor gains of the live guitar (recording only)
     // metronome
     std::atomic<bool> clickOn { false }, clickCompound { false };
     std::atomic<double> clickBpm { 120.0 };

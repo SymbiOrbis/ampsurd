@@ -6,6 +6,19 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-22 — Session 3f: GUITAR track PAN / monitor volume; NaN robustness — Claude (Opus 5.5)
+
+- Player: PAN of the GUITAR track (slider under the track name, timeline label column 80 px; same law as
+  the amps' PAN). GUITAR VOL and PAN apply to the take on playback, bounce and export, and to the live
+  guitar on the monitors while recording (incl. count-in and REC pause) - after the guitar was recorded,
+  so the file is unchanged; smoothed, bit-transparent otherwise. recorder_test: -6 dB + hard left ->
+  monitors L 0.142 / R 0, file 0.200 / 0.200, playback L 0.142 / R 0.
+- Bug found through a "LIMIT -65.1" in a screenshot: one block of NaN / inf input (the test passed an
+  uncleared buffer) poisoned all filter / amp states - AMPSURD stayed silent until restarted. Fixed:
+  input sanitized (non-finite -> 0, clipped to +-64), and a NaN / inf found before the limiter makes
+  the message thread prepare the chain again (suspendProcessing + prepareToPlay). ui_snapshot ROBUST and
+  RECOVERY tests.
+
 ## 2026-10-21 — Session 3e: Audio / MIDI settings with single inputs — Claude (Opus 5.5)
 
 - Mac tester: JUCE's Audio/MIDI Settings window only offers "Input 1 + 2" (stereo pairs), so a single

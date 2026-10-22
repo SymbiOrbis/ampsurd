@@ -687,7 +687,10 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         const int n = juce::jmin(maxBlock, numSamples - start);
         for (int i = 0; i < n; ++i)
         {
-            const float raw = in != nullptr ? in[start + i] : 0.0f;
+            // invalid input (NaN / inf from a misbehaving driver or host) would poison every filter and
+            // amp state for good: silence it; absurd levels are clipped to +36 dBFS
+            float raw = in != nullptr ? in[start + i] : 0.0f;
+            raw = std::isfinite(raw) ? juce::jlimit(-64.0f, 64.0f, raw) : 0.0f;
             rawBuffer[(size_t) i] = raw;
             // dry signal delayed by the plugin latency, for click-free, time-aligned bypass
             dryDelay[(size_t) dryDelayPos] = raw;
@@ -727,6 +730,13 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
             const double og = outputGain.getNextValue();
             L[i] *= og;
             R[i] *= og;
+        }
+        {
+            // last line of defence: if anything inside produced NaN / inf, the state is reset from the
+            // message thread (timerCallback) - the sound comes back instead of staying silent
+            bool finite = true;
+            for (int i = 0; i < n && finite; ++i) finite = std::isfinite(L[i]) && std::isfinite(R[i]);
+            if (!finite) needsRecovery.store(true, std::memory_order_relaxed);
         }
         limiter.process(L, R, n); // never above -1 dBFS, stereo-linked
 
@@ -1653,6 +1663,14 @@ void AmpsurdProcessor::updateLatency()
 
 void AmpsurdProcessor::timerCallback()
 {
+    if (needsRecovery.exchange(false))
+    {
+        // NaN / inf inside the signal chain: prepare everything again (fresh amp, filter and effect states)
+        suspendProcessing(true);
+        prepareToPlay(currentSampleRate.load(), currentMaxBlock);
+        suspendProcessing(false);
+        recoveries.fetch_add(1);
+    }
     for (int s = 0; s < kNumSlots; ++s)
         engine.getSlot(s).collectGarbage();
 

@@ -217,11 +217,30 @@ void PlayerRecorder::process(double* L, double* R, int n, int ampsurdLatency, bo
     lastAmpsurdLatency.store(ampsurdLatency, std::memory_order_relaxed);
     const auto st = (State) state.load(std::memory_order_acquire);
     const bool running = st == State::playing || st == State::recording;
+    const auto pan = ampsurd::Engine::panGains(takePan.load(std::memory_order_relaxed));
+    const double vol = juce::Decibels::decibelsToGain((double) takeGainDb.load(std::memory_order_relaxed), -100.0);
+    // the live guitar on the monitors while recording (incl. count-in and pause): GUITAR VOL and PAN,
+    // like the take it becomes; otherwise unchanged. Applied AFTER the guitar was recorded.
+    const bool liveAsTrack = st == State::recording || st == State::pausedRec;
+    auto monitorLive = [&](int from) {
+        const double tl = liveAsTrack ? vol * pan[0] : 1.0, tr = liveAsTrack ? vol * pan[1] : 1.0;
+        if (juce::exactlyEqual(liveL, tl) && juce::exactlyEqual(liveR, tr) && juce::exactlyEqual(tl, 1.0) && juce::exactlyEqual(tr, 1.0)) return; // untouched (bit-transparent)
+        for (int i = from; i < n; ++i)
+        {
+            liveL += (tl - liveL) * 0.002;
+            liveR += (tr - liveR) * 0.002;
+            L[i] *= liveL;
+            R[i] *= liveR;
+        }
+        if (std::abs(tl - liveL) < 1e-7) liveL = tl;
+        if (std::abs(tr - liveR) < 1e-7) liveR = tr;
+    };
 
     // count-in (REC from STOP): only clicks; the song does not move and nothing is recorded yet
     if (running && countInLeft.load(std::memory_order_relaxed) > 0)
     {
         const juce::int64 left = countInLeft.load(std::memory_order_relaxed);
+        monitorLive(0);
         addClicks(L, R, n, (double) (countInEnd - left), 2);
         countInLeft.store(std::max<juce::int64>(0, left - n), std::memory_order_relaxed);
         limiter.process(L, R, n);
@@ -270,6 +289,8 @@ void PlayerRecorder::process(double* L, double* R, int n, int ampsurdLatency, bo
             }
         }
 
+        monitorLive(0); // after the recording: the file keeps the guitar as it is
+
         const double tB = backingReady.load() ? juce::Decibels::decibelsToGain((double) backingGainDb.load(), -100.0) : 0.0;
         // while a correction is being recorded, the old take is silent from the punch-in on
         const bool muted = st == State::recording && pos >= muteTakeFrom.load(std::memory_order_relaxed);
@@ -308,8 +329,10 @@ void PlayerRecorder::process(double* L, double* R, int n, int ampsurdLatency, bo
                 for (int i = 0; i < n - off; ++i)
                 {
                     gT += (tT - gT) * 0.002;
-                    L[off + i] += gT * a[i];
-                    R[off + i] += gT * b[i];
+                    panTL += (pan[0] - panTL) * 0.002;
+                    panTR += (pan[1] - panTR) * 0.002;
+                    L[off + i] += gT * panTL * a[i];
+                    R[off + i] += gT * panTR * b[i];
                     pk = std::max(pk, std::max(std::abs(a[i]), std::abs(b[i])) * (float) gT);
                 }
                 if (pk > takePeak.load(std::memory_order_relaxed)) takePeak.store(pk, std::memory_order_relaxed);
@@ -320,13 +343,19 @@ void PlayerRecorder::process(double* L, double* R, int n, int ampsurdLatency, bo
         juce::int64 expected = pos; // only advance if the message thread did not move the position meanwhile
         songPos.compare_exchange_strong(expected, pos + n, std::memory_order_relaxed);
     }
+    else if (liveAsTrack)
+    {
+        monitorLive(0); // REC paused: the guitar sounds as it will on the track
+    }
     else if (st == State::stopped && clickOn.load(std::memory_order_relaxed))
     {
+        monitorLive(0);
         addClicks(L, R, n, (double) freeClickPos, 0); // practising without the transport
         freeClickPos += n;
     }
     else
     {
+        monitorLive(0); // glides back to unchanged after recording
         currentBeat.store(-1, std::memory_order_relaxed);
         clickSource = -1;
     }
@@ -849,6 +878,7 @@ struct MixSpec
     bool backing = false, take = false;
     juce::File backingFile, takeFile;
     double backingGain = 1.0, takeGain = 1.0;
+    std::array<double, 2> takePan { 1.0, 1.0 };
     juce::int64 takeStart = 0, start = 0, end = 0;
 };
 
@@ -890,7 +920,11 @@ juce::String renderTimeline(juce::AudioFormatManager& fm, const MixSpec& m, doub
             if (off < n)
             {
                 take->read(tl.data(), tr.data(), n - off);
-                for (int i = 0; i < n - off; ++i) { L[(size_t) (off + i)] += m.takeGain * tl[(size_t) i]; R[(size_t) (off + i)] += m.takeGain * tr[(size_t) i]; }
+                for (int i = 0; i < n - off; ++i)
+                {
+                    L[(size_t) (off + i)] += m.takeGain * m.takePan[0] * tl[(size_t) i];
+                    R[(size_t) (off + i)] += m.takeGain * m.takePan[1] * tr[(size_t) i];
+                }
             }
         }
         lim.process(L.data(), R.data(), n);
@@ -916,6 +950,7 @@ juce::String PlayerRecorder::renderMix(bool withBacking, juce::AudioBuffer<float
     m.takeFile = takeFile;
     m.backingGain = juce::Decibels::decibelsToGain((double) backingGainDb.load(), -100.0);
     m.takeGain = juce::Decibels::decibelsToGain((double) takeGainDb.load(), -100.0);
+    m.takePan = ampsurd::Engine::panGains(takePan.load());
     m.takeStart = takeStart.load();
     const juce::int64 takeEnd = m.take ? m.takeStart + takeLength.load() : 0;
     m.start = backingReady.load() ? 0 : (m.take ? m.takeStart : 0);
@@ -941,6 +976,7 @@ juce::String PlayerRecorder::runExport(const juce::File& dest, ExportOptions o)
     m.takeFile = takeFile;
     m.backingGain = juce::Decibels::decibelsToGain((double) backingGainDb.load(), -100.0);
     m.takeGain = juce::Decibels::decibelsToGain((double) takeGainDb.load(), -100.0);
+    m.takePan = ampsurd::Engine::panGains(takePan.load());
     m.takeStart = takeStart.load();
     const juce::int64 takeEnd = m.take ? m.takeStart + takeLength.load() : 0;
     // guitar alone still starts at the backing's start (it lines up with it in a DAW)

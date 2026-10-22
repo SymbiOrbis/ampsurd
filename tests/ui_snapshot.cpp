@@ -7,6 +7,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <cmath>
+#include <limits>
 #include <iostream>
 
 #include "../plugin/PluginEditor.h"
@@ -366,6 +367,7 @@ int main(int argc, char** argv)
         save(*ed, out.getChildFile("17b_fx_pitch.png"));
         // PITCH adds its delay to the reported latency (and removes it when off)
         juce::AudioBuffer<float> pb(2, 256);
+        pb.clear(); // (an AudioBuffer is not cleared when it is created)
         juce::MidiBuffer pm;
         proc->processBlock(pb, pm);
         e->refreshAll();
@@ -409,6 +411,49 @@ int main(int argc, char** argv)
         pl->stop();
         proc->setNonRealtime(false);
         wavFile.deleteFile();
+    }
+
+    // ROBUST: a block of garbage (NaN, inf, 1e30) from a misbehaving driver must not silence AMPSURD
+    {
+        juce::AudioBuffer<float> g(2, 256);
+        for (int i = 0; i < 256; ++i)
+            for (int c = 0; c < 2; ++c)
+                g.setSample(c, i, i % 3 == 0 ? std::numeric_limits<float>::quiet_NaN() : i % 3 == 1 ? std::numeric_limits<float>::infinity() : 1e30f);
+        proc->processBlock(g, midi);
+        proc->runHousekeeping();
+        float peak = 0.0f;
+        bool finite = true;
+        for (int k = 0; k < 200; ++k)
+        {
+            juce::AudioBuffer<float> b(2, 256);
+            for (int i = 0; i < 256; ++i)
+            {
+                const float v = 0.3f * (float) std::sin(2 * juce::MathConstants<double>::pi * 110 * (k * 256 + i) / 48000.0);
+                b.setSample(0, i, v);
+                b.setSample(1, i, v);
+            }
+            proc->processBlock(b, midi);
+            if (k % 8 == 0) proc->runHousekeeping();
+            for (int i = 0; i < 256; ++i) finite = finite && std::isfinite(b.getSample(0, i)) && std::isfinite(b.getSample(1, i));
+            if (k > 150) peak = juce::jmax(peak, b.getMagnitude(0, 0, 256));
+        }
+        // the second line of defence (NaN made inside, e.g. by a model): everything is prepared again
+        proc->requestRecoveryForTest();
+        proc->runHousekeeping();
+        float after = 0.0f;
+        for (int k = 0; k < 120; ++k)
+        {
+            juce::AudioBuffer<float> b(2, 256);
+            for (int i = 0; i < 256; ++i)
+                for (int c = 0; c < 2; ++c)
+                    b.setSample(c, i, 0.3f * (float) std::sin(2 * juce::MathConstants<double>::pi * 110 * (k * 256 + i) / 48000.0));
+            proc->processBlock(b, midi);
+            if (k > 80) after = juce::jmax(after, b.getMagnitude(0, 0, 256));
+        }
+        std::cout << (proc->getRecoveryCount() == 1 && after > 0.01f ? "[PASS]" : "[FAIL]")
+                  << " RECOVERY: after a reset of the signal chain the amps play again (peak " << after << ")\n";
+        std::cout << (finite && peak > 0.01f ? "[PASS]" : "[FAIL]") << " ROBUST: NaN / inf / 1e30 input block -> output stays finite, the amps play again (peak "
+                  << peak << ", recoveries " << proc->getRecoveryCount() << ")\n";
     }
 
     // 3. preset round trip

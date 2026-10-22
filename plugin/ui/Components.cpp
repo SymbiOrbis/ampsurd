@@ -1646,11 +1646,27 @@ Timeline::Timeline(PlayerRecorder& p) : player(p)
     scroll.setColour(juce::ScrollBar::thumbColourId, textFaint);
     scroll.setColour(juce::ScrollBar::trackColourId, raised);
     addAndMakeVisible(scroll);
+
+    guitarPan.setSliderStyle(juce::Slider::LinearHorizontal);
+    guitarPan.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+    guitarPan.setRange(-100.0, 100.0, 1.0);
+    guitarPan.setValue(player.getTakePan() * 100.0, juce::dontSendNotification);
+    guitarPan.setDoubleClickReturnValue(true, 0.0);
+    guitarPan.setWantsKeyboardFocus(false);
+    guitarPan.setTooltip("PAN of the GUITAR track: the take, and your guitar while recording (the recording itself is not changed). "
+                         "Double-click: centre");
+    guitarPan.onValueChange = [this] {
+        player.setTakePan((float) guitarPan.getValue() / 100.0f);
+        repaint(0, 0, kLabelW, getHeight());
+    };
+    addAndMakeVisible(guitarPan);
 }
 
 void Timeline::resized()
 {
-    scroll.setBounds(getLocalBounds().withTrimmedLeft(64).removeFromBottom(kScrollH));
+    scroll.setBounds(getLocalBounds().withTrimmedLeft(kLabelW).removeFromBottom(kScrollH));
+    const auto g = guitarLane();
+    guitarPan.setBounds(4, g.getCentreY() - 6, kLabelW - 12, 18);
     updateScrollBar();
 }
 
@@ -1832,8 +1848,18 @@ void Timeline::paint(juce::Graphics& g)
     // labels
     g.setColour(textDim);
     g.setFont(Fonts::get().semibold(10.5f));
-    g.drawText("BACKING", backingLane().withX(0).withWidth(58), juce::Justification::centredLeft, false);
-    g.drawText("GUITAR", guitarLane().withX(0).withWidth(58), juce::Justification::centredLeft, false);
+    g.drawText("BACKING", backingLane().withX(0).withWidth(kLabelW - 6), juce::Justification::centredLeft, false);
+    {
+        const auto gl = guitarLane();
+        g.drawText("GUITAR", juce::Rectangle<int>(0, gl.getCentreY() - 22, kLabelW - 6, 16), juce::Justification::centredLeft, false);
+        const int p = juce::roundToInt(guitarPan.getValue());
+        g.setFont(Fonts::get().regular(10.5f));
+        g.setColour(textFaint);
+        g.drawText("PAN " + (p == 0 ? juce::String("C") : (p < 0 ? "L" : "R") + juce::String(std::abs(p))),
+                   juce::Rectangle<int>(0, gl.getCentreY() + 12, kLabelW - 6, 14), juce::Justification::centredLeft, false);
+        g.setColour(textDim);
+        g.setFont(Fonts::get().semibold(10.5f));
+    }
 
     // ruler: a tick step that leaves >= 70 px between labels
     {
@@ -2028,6 +2054,8 @@ PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), pla
     };
     setupDb(backVol, -40.0, 6.0, [this](float v) { player.setBackingGainDb(v); }, player.getBackingGainDb(), "dB");
     setupDb(takeVol, -40.0, 6.0, [this](float v) { player.setTakeGainDb(v); }, player.getTakeGainDb(), "dB");
+    takeVol.setTooltip("GUITAR VOL: the GUITAR track's level - the take when it plays, and your guitar on the monitors while "
+                       "recording. The recording itself is not changed");
     setupDb(offset, -50.0, 50.0, [this](float v) { player.setOffsetMs(v); }, player.getOffsetMs(), "ms");
     offset.setTooltip("Fine-tune where recordings land, if your audio driver reports its latency slightly wrong");
 
