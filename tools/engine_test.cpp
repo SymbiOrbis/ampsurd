@@ -237,7 +237,7 @@ int main(int argc, char** argv)
 
             rot[1] = c.phaseDeg * kPi / 180.0;
             const auto cov = CaptureAnalyzer::covariance(*rig, delays, pol, rot, lg);
-            eng.setCovariance(cov.C, cov.valid);
+            eng.setCovariance(cov.C, cov.valid, cov.band); // with the blend tone EQ
 
             EngineSettings s;
             s.slots[0].mix = (float) c.wA; s.slots[1].mix = (float) (100.0 - c.wA);
@@ -265,6 +265,78 @@ int main(int argc, char** argv)
                         c.wA, 100 - c.wA, c.phaseDeg, eng.getCompensationDb(), errDb);
         }
         check(worst < 0.5, "MIX: real engine output loudness matches the target in every setting (worst %.2f dB)", worst);
+    }
+
+    // ---------------- 6c. Blend tone: a 50:50 blend keeps the tone of its amps ----------------
+    {
+        auto bandPower = [&](const std::vector<double>& y, double fc) { // one octave, RBJ band-pass twice
+            const double w = 2 * kPi * fc / sr, q = 1.414, alpha = std::sin(w) / (2 * q), a0 = 1 + alpha;
+            const double b0 = alpha / a0, b2 = -alpha / a0, a1 = -2 * std::cos(w) / a0, a2 = (1 - alpha) / a0;
+            double x1 = 0, x2 = 0, y1 = 0, y2 = 0, u1 = 0, u2 = 0, v1 = 0, v2 = 0, pw = 0;
+            const size_t from = (size_t) (0.3 * sr);
+            for (size_t i = 0; i < y.size(); ++i)
+            {
+                const double o = b0 * y[i] + b2 * x2 - a1 * y1 - a2 * y2;
+                x2 = x1; x1 = y[i]; y2 = y1; y1 = o;
+                const double o2 = b0 * o + b2 * u2 - a1 * v1 - a2 * v2;
+                u2 = u1; u1 = o; v2 = v1; v1 = o2;
+                if (i >= from) pw += o2 * o2;
+            }
+            return pw / (double) (y.size() - from);
+        };
+        std::array<std::shared_ptr<const CaptureAnalyzer::Measurement>, kNumSlots> meas {};
+        meas[0] = CaptureAnalyzer::measure(CaptureAnalyzer::render(*loadAt(argv[1]), test, false), sr);
+        meas[1] = CaptureAnalyzer::measure(CaptureAnalyzer::render(*loadAt(argv[2]), test, false), sr);
+        const auto rig = CaptureAnalyzer::analyseRig(meas);
+        std::array<double, kNumSlots> delays = rig->autoDelay, pol { 1, 1, 1, 1, 1 }, rot {}, lg { 1, 1, 1, 1, 1 };
+        for (int i = 0; i < 2; ++i)
+        {
+            pol[(size_t) i] = rig->align[(size_t) i].polarity;
+            lg[(size_t) i] = CaptureAnalyzer::levelMatchGain(rig->loudnessDb[(size_t) i]);
+        }
+        const auto cov = CaptureAnalyzer::covariance(*rig, delays, pol, rot, lg);
+        // renders the test signal with slot weights (100 / 0 = one amp alone); withTone = band data given
+        auto run = [&](double wA, bool withTone, Engine* keep = nullptr) {
+            Engine local;
+            Engine& eng = keep ? *keep : local;
+            eng.getSlot(0).submit(loadAt(argv[1]));
+            eng.getSlot(1).submit(loadAt(argv[2]));
+            eng.prepare(sr, 256, 10.0);
+            if (withTone) eng.setCovariance(cov.C, cov.valid, cov.band);
+            else eng.setCovariance(cov.C, cov.valid);
+            EngineSettings st;
+            st.slots[0].mix = (float) wA; st.slots[1].mix = (float) (100.0 - wA);
+            for (int i = 0; i < 2; ++i)
+            {
+                st.slots[(size_t) i].delaySamples = delays[(size_t) i];
+                st.slots[(size_t) i].polarity = pol[(size_t) i];
+                st.slots[(size_t) i].levelGain = lg[(size_t) i];
+            }
+            if (wA >= 100.0) st.slots[1].mute = true;
+            if (wA <= 0.0) st.slots[0].mute = true;
+            std::vector<double> out(test.size());
+            for (size_t pos = 0; pos < test.size(); pos += 256)
+                eng.process(test.data() + pos, out.data() + pos, (int) std::min<size_t>(256, test.size() - pos), st);
+            return out;
+        };
+        const auto aloneA = run(100, true), aloneB = run(0, true);
+        check(aloneA == run(100, false) && aloneB == run(0, false), "BLEND TONE: one amp alone -> no tone EQ, output bit-identical");
+        Engine probe;
+        const auto blendOld = run(50, false), blendNew = run(50, true, &probe);
+        double worstOld = 0, worstNew = 0;
+        for (double fc : { 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0 })
+        {
+            const double target = 0.5 * (bandPower(aloneA, fc) + bandPower(aloneB, fc));
+            const double dOld = 10 * std::log10(bandPower(blendOld, fc) / target), dNew = 10 * std::log10(bandPower(blendNew, fc) / target);
+            std::printf("[INFO] 50:50 blend vs. the average of its amps, %5.0f Hz: %+5.1f dB without tone EQ, %+5.1f dB with\n", fc, dOld, dNew);
+            worstOld = std::max(worstOld, std::abs(dOld));
+            worstNew = std::max(worstNew, std::abs(dNew));
+        }
+        std::printf("[INFO] blend tone EQ (dB):");
+        for (int b = 0; b < BlendToneEq::kBands; ++b) std::printf(" %+.1f", probe.getToneCorrectionDb(b));
+        std::printf("\n");
+        check(worstNew < 1.2 && worstNew < worstOld, "BLEND TONE: 50:50 within %.2f dB of its amps' average in every band, 250 Hz-8 kHz (%.2f dB without)",
+              worstNew, worstOld);
     }
 
     // ---------------- 6b. Frankenstein in the real engine ----------------

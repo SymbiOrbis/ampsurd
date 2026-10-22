@@ -41,6 +41,7 @@ void Engine::prepare(double sr, int maxBlockSize, double maxDelayMs)
     scratchR.assign((size_t) maxBlock, 0.0);
     globalEq.prepare(sr);
     globalEqR.prepare(sr);
+    blendTone.prepare(sr);
     frankenstein.prepare(sr, maxBlock);
     frankMix = 0.0;
     splitter.prepare(sr, maxBlock);
@@ -70,6 +71,49 @@ void Engine::setCovariance(const std::array<std::array<double, kNumSlots>, kNumS
             cov[(size_t) i][(size_t) j].store(C[(size_t) i][(size_t) j], std::memory_order_relaxed);
         covValid[(size_t) i].store(valid[(size_t) i], std::memory_order_release);
     }
+    bandCovValid.store(false, std::memory_order_release);
+}
+
+void Engine::setCovariance(const Matrix& C, const std::array<bool, kNumSlots>& valid,
+                           const std::array<Matrix, BlendToneEq::kBands>& bands) noexcept
+{
+    for (int b = 0; b < BlendToneEq::kBands; ++b)
+        for (int i = 0; i < kNumSlots; ++i)
+            for (int j = 0; j < kNumSlots; ++j)
+                bandCov[(size_t) b][(size_t) i][(size_t) j].store(bands[(size_t) b][(size_t) i][(size_t) j], std::memory_order_relaxed);
+    setCovariance(C, valid);
+    bandCovValid.store(true, std::memory_order_release);
+}
+
+BlendToneEq::Gains Engine::computeToneCorrection(const std::array<double, kNumSlots>& p,
+                                                 const std::array<Matrix, BlendToneEq::kBands>& bands,
+                                                 const std::array<bool, kNumSlots>& valid,
+                                                 const std::array<std::array<double, 2>, kNumSlots>& pan, double G) noexcept
+{
+    BlendToneEq::Gains out {};
+    int audible = 0;
+    for (int i = 0; i < kNumSlots; ++i)
+        if (p[(size_t) i] > 0.0)
+        {
+            if (!valid[(size_t) i]) return out; // not measured yet: no tone correction
+            ++audible;
+        }
+    if (audible < 2 || G <= 0.0) return out;
+    double total = 0.0;
+    std::array<double, BlendToneEq::kBands> e {};
+    for (int b = 0; b < BlendToneEq::kBands; ++b)
+    {
+        for (int i = 0; i < kNumSlots; ++i)
+            e[(size_t) b] += p[(size_t) i] * std::max(0.0, bands[(size_t) b][(size_t) i][(size_t) i]);
+        total += e[(size_t) b];
+    }
+    for (int b = 0; b < BlendToneEq::kBands; ++b)
+    {
+        if (e[(size_t) b] <= 1e-5 * total) continue; // practically nothing in this band: leave it alone
+        const double Gb = computeCompensation(p, bands[(size_t) b], valid, pan);
+        out[(size_t) b] = std::clamp(20.0 * std::log10(Gb / G), -BlendToneEq::kMaxCorrectionDb, BlendToneEq::kMaxCorrectionDb);
+    }
+    return out;
 }
 
 std::array<bool, kNumSlots> Engine::computeAudible(const EngineSettings& s, const std::array<bool, kNumSlots>& isLoaded) noexcept
@@ -367,6 +411,24 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
         if (std::abs(targetR - gr) < 1e-9) gr = targetR;
         gains[(size_t) i] = g;
         gainsR[(size_t) i] = gr;
+    }
+
+    // 4b. Tone of the blend: per-band mix law on top of G (BlendToneEq.h). Not in NOTES mode.
+    {
+        BlendToneEq::Gains t {};
+        if (!notesRouting && bandCovValid.load(std::memory_order_acquire))
+        {
+            std::array<Matrix, BlendToneEq::kBands> B {};
+            for (int b = 0; b < BlendToneEq::kBands; ++b)
+                for (int i = 0; i < kNumSlots; ++i)
+                    for (int j = 0; j < kNumSlots; ++j)
+                        B[(size_t) b][(size_t) i][(size_t) j] = bandCov[(size_t) b][(size_t) i][(size_t) j].load(std::memory_order_relaxed);
+            t = computeToneCorrection(p, B, valid, pan, G);
+        }
+        blendTone.setTargets(t);
+        for (int b = 0; b < BlendToneEq::kBands; ++b)
+            toneDb[(size_t) b].store((float) blendTone.getTargets()[(size_t) b], std::memory_order_relaxed);
+        blendTone.process(out, outR != nullptr ? R : nullptr, n);
     }
 
     // 5. "Create Frankenstein": frequency-split blending of the same aligned, EQ'd, level-matched paths.

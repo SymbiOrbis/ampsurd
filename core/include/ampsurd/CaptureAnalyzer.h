@@ -19,6 +19,7 @@
 #include <memory>
 #include <vector>
 
+#include "ampsurd/BlendToneEq.h"
 #include "ampsurd/Engine.h"
 
 namespace ampsurd
@@ -72,6 +73,8 @@ public:
     {
         Matrix C {};
         std::array<bool, kNumSlots> valid {};
+        // the same, split into the BlendToneEq bands (C = sum of all bands + what lies outside 20 Hz-20 kHz)
+        std::array<Matrix, BlendToneEq::kBands> band {};
     };
     static Covariance covariance(const std::array<std::shared_ptr<const Measurement>, kNumSlots>& m,
                                  const std::array<std::array<Spectrum, kNumSlots>, kNumSlots>& cross,

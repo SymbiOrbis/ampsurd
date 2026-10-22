@@ -6,6 +6,26 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-22 — Session 3i: blend tone EQ (a blend keeps the tone of its amps) — Claude (Opus 5.5)
+
+- Owner approved the fix for the darker 50:50 blend (Session 3h). New `core/BlendToneEq`: the mix law is
+  applied once more in 10 frequency bands (octaves up to 2.4 kHz, half octaves above; the measured
+  covariance is now also split into these bands by `CaptureAnalyzer::covariance`). Band b needs G_b / G on
+  top of the broadband G so the blend has, in every band, the percentage-weighted average power of its amps.
+  A static, smoothed (50 ms) EQ on the fader blend applies it: low shelf 150 Hz, 8 bells one band wide, high
+  shelf 9.6 kHz (Simper SVF), filter gains fitted so the cascade hits the wanted value at each band centre;
+  +-6 dB per band; bands with practically no energy are left alone.
+- Like G it changes only with the mix / captures / alignment, never with the playing. One amp alone, an
+  unmeasured amp, NOTES mode or Frankenstein TONE (which has its own band split): no EQ, bit-identical.
+  Applied after the fader sum, before the Frankenstein crossfade and the Global EQ; same EQ on L and R.
+- Measured (tools/blend_spectrum, octave bands 250 Hz - 8 kHz, blend vs. the average of its two amps):
+  A2 + LSTM 50:50 worst -2.5 dB -> -0.6 dB (125 Hz +0.8); A2 + WaveNet -2.2 -> -0.5; LSTM + WaveNet
+  +2.5 -> -1.1; A2 + LSTM 70:30 / 30:70 worst 1.1 / 2.7 -> 0.2 / 0.7 dB.
+- engine_test (CI, both OSes): BLEND TONE one amp alone bit-identical with and without band data; 50:50
+  A2 + WaveNet A1 within 0.43 dB in every band (2.14 dB without); the MIX loudness test now runs with the
+  tone EQ and still matches the target within 0.06 dB.
+- Not done: listening test by the owner with his own captures.
+
 ## 2026-10-22 — Session 3h: metronome HI-HAT, video diagnostics, blend tone measured — Claude (Opus 5.5)
 
 - Owner: the click is quiet even at maximum. VOL range -40..+12 dB (the player limiter keeps the sum at

@@ -20,6 +20,9 @@
 //      dynamics are untouched. Limited to [-6, +7] dB; until a capture has been measured it
 //      is treated as fully coherent (G = 1, i.e. never louder than expected).
 //   3. Path gain = p_i * G * levelGain_i, smoothed (no zipper noise, no clicks on mute/solo).
+//   4. TONE of the blend (BlendToneEq.h): the same law per frequency band, G_b; the blend gets a static,
+//      smoothed EQ of G_b / G so every band has the weighted average power of its amps (without it a
+//      50:50 blend of two different amps was 2-4 dB darker in the highs). One amp alone: no EQ at all.
 //
 // Threading: prepare() non-RT with audio stopped; setCovariance() from any thread;
 // process() on the audio thread only (lock-free, allocation-free).
@@ -28,6 +31,7 @@
 #include <atomic>
 #include <vector>
 
+#include "ampsurd/BlendToneEq.h"
 #include "ampsurd/CaptureSlot.h"
 #include "ampsurd/Frankenstein.h"
 #include "ampsurd/IrSlot.h"
@@ -82,8 +86,22 @@ public:
     IrSlot& getIrSlot(int i) noexcept { return irSlots[(size_t) i]; }
 
     // Any thread. C[i][j] = covariance of aligned capture outputs; valid[i] = slot i measured.
+    // This form has no band data: the blend's tone is not corrected.
     void setCovariance(const std::array<std::array<double, kNumSlots>, kNumSlots>& C,
                        const std::array<bool, kNumSlots>& valid) noexcept;
+    using Matrix = std::array<std::array<double, kNumSlots>, kNumSlots>;
+    // With the covariance split into the BlendToneEq bands: the blend's tone is corrected too.
+    void setCovariance(const Matrix& C, const std::array<bool, kNumSlots>& valid,
+                       const std::array<Matrix, BlendToneEq::kBands>& bands) noexcept;
+
+    // Pure function: the blend EQ (dB per BlendToneEq band) on top of the broadband G. All 0 when fewer
+    // than two measured amps are audible.
+    static BlendToneEq::Gains computeToneCorrection(const std::array<double, kNumSlots>& p,
+                                                    const std::array<Matrix, BlendToneEq::kBands>& bands,
+                                                    const std::array<bool, kNumSlots>& valid,
+                                                    const std::array<std::array<double, 2>, kNumSlots>& pan, double G) noexcept;
+    // Any thread (diagnostics / tests): the blend EQ currently wanted for band b (dB).
+    float getToneCorrectionDb(int b) const noexcept { return toneDb[(size_t) b].load(std::memory_order_relaxed); }
 
     // Audio thread. Outputs must not alias the input; n <= maxBlockSize.
     void process(const double* in, double* outL, double* outR, int n, const EngineSettings& settings) noexcept;
@@ -137,6 +155,10 @@ private:
 
     std::array<std::array<std::atomic<double>, kNumSlots>, kNumSlots> cov;
     std::array<std::atomic<bool>, kNumSlots> covValid;
+    std::array<std::array<std::array<std::atomic<double>, kNumSlots>, kNumSlots>, BlendToneEq::kBands> bandCov;
+    std::atomic<bool> bandCovValid { false };
+    BlendToneEq blendTone;
+    std::array<std::atomic<float>, BlendToneEq::kBands> toneDb {};
 
     std::array<std::atomic<float>, kNumSlots> effectivePercent;
     std::array<std::atomic<bool>, kNumSlots> loaded;

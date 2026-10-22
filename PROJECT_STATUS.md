@@ -59,6 +59,7 @@ https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.1
 | Five fixed slots, load / remove / swap with 20 ms crossfade | done | VST3 host test with 5 captures; 93 hot-swaps under random block sizes, no glitches/NaN |
 | Linked, normalised mix faders + percentages | done | moving fader 1 to 42 % → others 14.5 % each, total 100 %; engine normalises automation too |
 | Mix law (constant perceived loudness) | done, measured | `mix_experiment`: within ±0.02 dB of target over 331 mixes (vs. −4.6 dB for plain percentages) — `docs/REVIEW.md` §5 |
+| Blend tone EQ (a blend keeps its amps' tone) | done, measured; listening test pending | per-band mix law, static EQ; 50:50 within ±0.6 dB of its amps per octave (was −2.5 dB in the highs) — `core/BlendToneEq.h`, `tools/blend_spectrum` |
 | Level match (measured by AMPSURD, K-weighted) | done | 5 captures 14 dB apart via file metadata → all at −18.0 dB |
 | SOLO / MUTE (stored mix kept) | done | `engine_test` |
 | EDIT selection, 10-band EQ per path: band 1 low cut, bands 2–9 bells, band 10 high cut (12 dB/oct); wheel changes the nearest point; EQ OFF bypasses all bands | done | measured response = drawn curve (0.000 dB error); default EQ bit-transparent; low cut never boosts |

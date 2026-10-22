@@ -243,6 +243,12 @@ CaptureAnalyzer::Covariance CaptureAnalyzer::covariance(
         }
     }
 
+    double sr = 48000.0;
+    for (const auto& mm : m)
+        if (mm) sr = mm->sampleRate;
+    std::vector<int> bandOf((size_t) kBins);
+    for (int k = 0; k < kBins; ++k) bandOf[(size_t) k] = BlendToneEq::bandOfHz((double) k * sr / kFftSize);
+
     for (int i = 0; i < kNumSlots; ++i)
         for (int j = i; j < kNumSlots; ++j)
         {
@@ -250,12 +256,17 @@ CaptureAnalyzer::Covariance CaptureAnalyzer::covariance(
             const auto& S = cross[(size_t) i][(size_t) j];
             if (S.size() != (size_t) kBins) continue;
             double acc = 0.0;
+            std::array<double, BlendToneEq::kBands> bacc {};
             for (int k = 1; k < kBins - 1; ++k) // skip DC and Nyquist
             {
                 const double w = binWeights ? (*binWeights)[(size_t) k] : 1.0;
-                acc += 2.0 * w * (S[(size_t) k] * ph[(size_t) i][(size_t) k] * std::conj(ph[(size_t) j][(size_t) k])).real();
+                const double v = 2.0 * w * (S[(size_t) k] * ph[(size_t) i][(size_t) k] * std::conj(ph[(size_t) j][(size_t) k])).real();
+                acc += v;
+                if (const int b = bandOf[(size_t) k]; b >= 0) bacc[(size_t) b] += v;
             }
             out.C[(size_t) i][(size_t) j] = out.C[(size_t) j][(size_t) i] = acc * scale;
+            for (int b = 0; b < BlendToneEq::kBands; ++b)
+                out.band[(size_t) b][(size_t) i][(size_t) j] = out.band[(size_t) b][(size_t) j][(size_t) i] = bacc[(size_t) b] * scale;
         }
     return out;
 }

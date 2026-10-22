@@ -135,5 +135,10 @@ untouched. The safety limiter still guarantees no clipping.
 (same test signal, at the current INPUT level) and matches all captures to -18 dB. Re-measured
 automatically when INPUT changes (debounced) or the sample rate changes.
 
+**Tone of the blend (added 2026-10-22):** one broadband G keeps the loudness, but amps add coherently in
+the lows / mids and much less in the highs, so a 50:50 blend came out 2-4 dB darker in the highs than its
+amps. The same law is now also applied per frequency band (10 bands) and the blend gets a static EQ of
+G_b / G (`core/BlendToneEq.h`, measured with `tools/blend_spectrum`; worst band error 2.5 -> 0.6 dB).
+
 Limitation: the experiment used NeuralAmpModelerCore's example/test models, not a real amp
 library. Run `ampsurd_mix_experiment` / `mix_experiment` on your own captures to confirm.

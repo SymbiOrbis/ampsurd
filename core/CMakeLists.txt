@@ -43,7 +43,8 @@ add_library(ampsurd_core STATIC
   src/Resampler.cpp
   src/ParallelRunner.cpp
   src/PitchShifter.cpp
-  src/RootEnhancer.cpp)
+  src/RootEnhancer.cpp
+  src/BlendToneEq.cpp)
 target_include_directories(ampsurd_core PUBLIC include)
 target_include_directories(ampsurd_core SYSTEM PRIVATE "${audiodsptools_SOURCE_DIR}/dsp")
 # NAM Core registers each architecture's loader through static initialisers. A plain

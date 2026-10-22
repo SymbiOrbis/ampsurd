@@ -1339,7 +1339,7 @@ void AmpsurdProcessor::updateCovariance(bool force)
         return;
     }
     const auto cov = CaptureAnalyzer::covariance(*r, delays, pol, phase, lg);
-    engine.setCovariance(cov.C, cov.valid);
+    engine.setCovariance(cov.C, cov.valid, cov.band);
 }
 
 AmpsurdProcessor::AlignInfo AmpsurdProcessor::getAlignInfo(int slot) const

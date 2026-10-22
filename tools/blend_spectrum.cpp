@@ -4,6 +4,7 @@
 // auto alignment, loudness compensation G), then compares the blend's power in octave bands with the
 // target: the average of the two captures' powers (what "half of A and half of B" should sound like).
 // A negative difference in the high bands = the blend sounds duller than either capture alone.
+// "+tone" = the same blend with AMPSURD's blend tone EQ (BlendToneEq, since 2026-10-22).
 //
 // Usage: blend_spectrum <a.nam> <b.nam> [mix of A in %, default 50]
 
@@ -13,6 +14,7 @@
 #include <cstdlib>
 #include <vector>
 
+#include "ampsurd/BlendToneEq.h"
 #include "ampsurd/CaptureAnalyzer.h"
 #include "ampsurd/CaptureModel.h"
 #include "ampsurd/Engine.h"
@@ -90,16 +92,32 @@ int main(int argc, char** argv)
     const double G = Engine::computeCompensation(p, C.C, valid);
     std::vector<double> blend(y[0].size());
     for (size_t i = 0; i < blend.size(); ++i) blend[i] = G * (p[0] * y[0][i] + p[1] * y[1][i]);
-    std::printf("mix %.0f : %.0f, loudness compensation G = %+.2f dB\n\n", pa * 100, (1 - pa) * 100, 20 * std::log10(G));
-    std::printf("%8s %10s %10s %10s %14s %12s\n", "band Hz", "A dB", "B dB", "blend dB", "blend - target", "coherence");
+    std::printf("mix %.0f : %.0f, loudness compensation G = %+.2f dB\n", pa * 100, (1 - pa) * 100, 20 * std::log10(G));
+    std::array<std::array<double, 2>, kNumSlots> centred {};
+    for (auto& c : centred) c = { 1.0, 1.0 };
+    const auto tone = Engine::computeToneCorrection(p, C.band, valid, centred, G);
+    std::printf("blend tone EQ (dB per band):");
+    for (double v : tone) std::printf(" %+.1f", v);
+    std::printf("\n\n");
+    std::vector<double> toned = blend;
+    {
+        BlendToneEq eq;
+        eq.prepare(sr);
+        eq.setTargets(tone);
+        std::vector<double> warm((size_t) sr, 0.0);
+        eq.process(warm.data(), nullptr, (int) warm.size()); // let the smoothed gains arrive
+        eq.process(toned.data(), nullptr, (int) toned.size());
+    }
+    std::printf("%8s %8s %8s %10s %14s %12s %10s\n", "band Hz", "A dB", "B dB", "blend dB", "blend - target", "coherence", "+tone");
     for (double fc : { 63.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0 })
     {
-        const double PA = bandPower(y[0], fc, sr), PB = bandPower(y[1], fc, sr), PM = bandPower(blend, fc, sr);
+        const double PA = bandPower(y[0], fc, sr), PB = bandPower(y[1], fc, sr), PM = bandPower(blend, fc, sr),
+                     PT = bandPower(toned, fc, sr);
         const double target = p[0] * PA + p[1] * PB;
         // how coherently A and B add in this band: 1 = in phase, 0 = uncorrelated, -1 = cancel
         const double cross2 = (PM / (G * G) - p[0] * p[0] * PA - p[1] * p[1] * PB) / (2 * p[0] * p[1] * std::sqrt(PA * PB) + 1e-30);
-        std::printf("%8.0f %+10.1f %+10.1f %+10.1f %+14.1f %+12.2f\n", fc, 10 * std::log10(PA), 10 * std::log10(PB), 10 * std::log10(PM),
-                    10 * std::log10(PM / target), cross2);
+        std::printf("%8.0f %+8.1f %+8.1f %+10.1f %+14.1f %+12.2f %+10.1f\n", fc, 10 * std::log10(PA), 10 * std::log10(PB), 10 * std::log10(PM),
+                    10 * std::log10(PM / target), cross2, 10 * std::log10(PT / target));
     }
     return 0;
 }

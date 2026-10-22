@@ -49,6 +49,10 @@ New in 0.9.1:
 - VIDEO takes (standalone app): film yourself with the computer's camera while you record (own camera
   window, one continuous take from STOP) and save an MP4 with AMPSURD's sound (GUITAR + BACKING or
   GUITAR ONLY). New: please report whether picture and sound are together (SOUND OFFSET fixes it).
+- Blending amps keeps their tone: a 50:50 blend used to sound slightly darker than either amp alone (the
+  highs of different amps partly cancel). AMPSURD now measures this per frequency band and corrects it with a
+  fixed, automatic EQ on the blend (one amp alone: no change).
+- Metronome: sharper HI-HAT click (or BEEP) and VOL up to +12 dB.
 - Fix: a burst of invalid audio from a driver could silence AMPSURD until it was restarted.
 - macOS: app, VST3 and Audio Unit (macOS 10.15 Catalina or newer, Apple Silicon and Intel).
 

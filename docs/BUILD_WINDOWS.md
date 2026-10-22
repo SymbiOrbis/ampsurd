@@ -262,6 +262,9 @@ REAPER picks up the new version.
     camera window and save again; note the value. A second REC asks REPLACE? (REC again within 3 s).
     With a video take, REC during playback (punch-in) is refused. Close the camera window = VIDEO off.
 
+43. Blend tone: load two different amps, 100:0 vs. 50:50 vs. 0:100 at matched loudness: the 50:50 blend
+    should sound like "half of each", not darker than both. (The automatic EQ is fixed while you play.)
+
 Expected latency shown by REAPER: 104 samples at 48 kHz, 123 at 44.1 kHz.
 
 Optional measurements (in Developer PowerShell):
