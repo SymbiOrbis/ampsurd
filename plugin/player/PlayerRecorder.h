@@ -169,6 +169,8 @@ public:
     // start (bar 1, beat 1 = 0:00). Count-in: REC from STOP first plays 1 or 2 bars of clicks.
     // Message thread (any time); the audio thread reads atomics.
     void setMetronome(bool on, double bpm, int beatsPerBar, bool compound, float volumeDb, int countInBars);
+    // click sound: 0 = BEEP (short tone), 1 = HI-HAT (short bright noise: cuts through distorted guitar)
+    void setClickSound(int s) { clickSound.store(juce::jlimit(0, 1, s)); }
     bool isCountingIn() const { return countInLeft.load(std::memory_order_relaxed) > 0; }
     int getCountInBeatsLeft() const;
     int getCurrentBeat() const { return currentBeat.load(std::memory_order_relaxed); } // 0-based in the bar, -1 = silent
@@ -262,6 +264,10 @@ private:
     int clickPos = -1;            // samples since the current click started (-1: none)
     int clickSource = -1;         // which grid the last clicks came from (a change restarts the grid)
     double clickFreq = 1000.0, clickAmp = 0.0;
+    std::atomic<int> clickSound { 0 };
+    int clickSoundNow = 0;
+    juce::uint32 hatSeed = 1;
+    double hatX1 = 0.0, hatX2 = 0.0, hatDecay = 1.0;
 
     double sampleRate = 48000.0;
     int maxBlock = 512;

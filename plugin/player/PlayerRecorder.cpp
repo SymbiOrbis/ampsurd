@@ -411,12 +411,33 @@ void PlayerRecorder::addClicks(double* L, double* R, int n, double s0, int sourc
             clickFreq = accent ? 1600.0 : second ? 1250.0 : 1000.0;
             clickAmp = vol * (accent ? 1.0 : second ? 0.8 : 0.6);
             clickPos = 0;
+            clickSoundNow = clickSound.load(std::memory_order_relaxed);
+            // HI-HAT: the same noise every time (so EVEN clicks are identical); accent = a little longer
+            hatSeed = 0x9E3779B9u;
+            hatX1 = hatX2 = 0.0;
+            hatDecay = std::exp(-1.0 / ((accent ? 0.035 : second ? 0.028 : 0.022) * sampleRate));
             currentBeat.store(inBar, std::memory_order_relaxed);
         }
         if (clickPos >= 0)
         {
-            const double env = clickAmp * std::min(1.0, clickPos * attack) * std::pow(decay, (double) clickPos);
-            const double v = env * std::sin(2.0 * juce::MathConstants<double>::pi * clickFreq * clickPos / sampleRate);
+            double v = 0.0;
+            if (clickSoundNow == 1)
+            {
+                // white noise, twice differentiated (+12 dB/octave: bright, like a closed hi-hat), fast decay
+                hatSeed ^= hatSeed << 13;
+                hatSeed ^= hatSeed >> 17;
+                hatSeed ^= hatSeed << 5;
+                const double x = (double) (hatSeed & 0xffffff) / (double) 0x800000 - 1.0;
+                const double d2 = x - 2.0 * hatX1 + hatX2;
+                hatX2 = hatX1;
+                hatX1 = x;
+                v = 0.5 * d2 * clickAmp * std::min(1.0, clickPos * attack) * std::pow(hatDecay, (double) clickPos);
+            }
+            else
+            {
+                const double env = clickAmp * std::min(1.0, clickPos * attack) * std::pow(decay, (double) clickPos);
+                v = env * std::sin(2.0 * juce::MathConstants<double>::pi * clickFreq * clickPos / sampleRate);
+            }
             L[i] += v;
             R[i] += v;
             if (++clickPos >= clickLen) clickPos = -1;

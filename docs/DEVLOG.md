@@ -6,6 +6,23 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-22 — Session 3h: metronome HI-HAT, video diagnostics, blend tone measured — Claude (Opus 5.5)
+
+- Owner: the click is quiet even at maximum. VOL range -40..+12 dB (the player limiter keeps the sum at
+  -1 dBFS); click sound HI-HAT (white noise differentiated twice = +12 dB/octave, 22 / 35 ms decay, same
+  noise every click) or BEEP; HI-HAT is the default of the player window (saved). recorder_test HI-HAT:
+  ~35000 zero crossings/s, EVEN clicks identical, +12 dB louder and limited. (The old METRONOME test now sets
+  BEEP itself: the player window opened by an earlier test applies its saved sound.)
+- Owner: the video "probably was not recorded". Camera errors now reach the status line, and 2.5 s after
+  STOP the camera file is checked (missing / empty -> a clear message, otherwise its size and how to save).
+- Owner: a ~50:50 blend of two amps has fewer highs than either amp alone. tools/blend_spectrum measures it
+  (level match + alignment + G as in the engine, octave bands vs. the power average of both): with the
+  example models the 250 Hz - 1 kHz bands add coherently (+0.6..+0.8) and get +1.2..+2.1 dB, while
+  4-8 kHz add incoherently or partly cancel (-0.4..+0.1) and end up -0.7..-2.5 dB: the blend is 2-4 dB
+  darker in the highs relative to the mids. Cause: one broadband loudness compensation G for bands that add
+  differently (different amps' highs are less correlated; tiny time offsets comb at high frequencies).
+  Proposed fix (owner to decide): frequency-dependent compensation G(f) from the cross-spectra.
+
 ## 2026-10-22 — Session 3g: VIDEO takes — Claude (Opus 5.5)
 
 - Owner: record the PC's camera too (with / without video), two saving options; one continuous take is

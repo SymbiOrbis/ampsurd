@@ -615,7 +615,7 @@ private:
     juce::TextButton clickButton { "CLICK" }, tapButton { "TAP" };
     juce::Slider bpmSlider, clickVol;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> bpmAtt;
-    juce::ComboBox meterBox, countInBox;
+    juce::ComboBox meterBox, countInBox, soundBox;
     std::vector<double> taps;
     juce::Rectangle<int> beatArea;
     std::unique_ptr<juce::FileChooser> chooser;

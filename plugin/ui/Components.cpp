@@ -2010,6 +2010,9 @@ PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), pla
     videoButton.setClickingTogglesState(true);
     videoButton.setWantsKeyboardFocus(false);
     videoButton.onClick = [this] { setVideo(videoButton.getToggleState()); };
+    camera.onError = [sp = juce::Component::SafePointer<PlayerPanel>(this)](const juce::String& e) {
+        juce::MessageManager::callAsync([sp, e] { if (sp != nullptr) sp->setStatus("Camera: " + e); });
+    };
     videoButton.setEnabled(VideoCapture::isSupported());
     videoButton.setTooltip(VideoCapture::isSupported()
                                ? juce::String("VIDEO on: REC also films you with the computer's camera (its own window). A video take is one "
@@ -2105,7 +2108,7 @@ PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), pla
     bpmSlider.setTooltip("Tempo (also the tempo of the delays in SYNC). Click the value to type it");
     clickVol.setSliderStyle(juce::Slider::LinearHorizontal);
     clickVol.setTextBoxStyle(juce::Slider::TextBoxRight, false, 56, 20);
-    clickVol.setRange(-40.0, 0.0, 0.5);
+    clickVol.setRange(-40.0, 12.0, 0.5); // up to +12 dB: audible over a loud rig (the sum is limited, never clips)
     clickVol.setValue(pf.getDoubleValue("clickVol", -12.0), juce::dontSendNotification);
     clickVol.setTextValueSuffix(" dB");
     clickVol.setDoubleClickReturnValue(true, -12.0);
@@ -2113,6 +2116,11 @@ PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), pla
     meterBox.addItemList(meters, 1);
     meterBox.setSelectedItemIndex(juce::jlimit(0, meters.size() - 1, pf.getIntValue("clickMeter", 2)), juce::dontSendNotification);
     meterBox.setTooltip("Time signature (the first beat of each bar is accented). EVEN: every click sounds the same");
+    soundBox.addItem("HI-HAT", 2);
+    soundBox.addItem("BEEP", 1);
+    soundBox.setSelectedId(juce::jlimit(1, 2, pf.getIntValue("clickSound", 2)), juce::dontSendNotification);
+    soundBox.setTooltip("Click sound: HI-HAT (bright, cuts through distorted guitar) or BEEP");
+    addAndMakeVisible(soundBox);
     countInBox.addItem("NO COUNT-IN", 1);
     countInBox.addItem("COUNT-IN 1 BAR", 2);
     countInBox.addItem("COUNT-IN 2 BARS", 3);
@@ -2127,12 +2135,14 @@ PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), pla
         f.setValue("clickVol", clickVol.getValue());
         f.setValue("clickMeter", meterBox.getSelectedItemIndex());
         f.setValue("clickCountIn", countInBox.getSelectedId());
+        f.setValue("clickSound", soundBox.getSelectedId());
         f.saveIfNeeded();
     };
     clickButton.onClick = changed;
     clickVol.onValueChange = changed;
     meterBox.onChange = changed;
     countInBox.onChange = changed;
+    soundBox.onChange = changed;
     bpmSlider.onValueChange = [this] { applyMetronome(); };
     tapButton.onClick = [this] {
         const double now = juce::Time::getMillisecondCounterHiRes();
@@ -2157,6 +2167,7 @@ void PlayerPanel::applyMetronome()
 {
     static constexpr int beats[] = { 2, 3, 4, 5, 6, 7, 1 };
     const int m = juce::jlimit(0, 6, meterBox.getSelectedItemIndex());
+    player.setClickSound(soundBox.getSelectedId() - 1);
     player.setMetronome(clickButton.getToggleState(), bpmSlider.getValue(), beats[m], m == 4, (float) clickVol.getValue(),
                         countInBox.getSelectedId() - 1);
 }
@@ -2223,6 +2234,8 @@ void PlayerPanel::resized()
         tapButton.setBounds(row.removeFromLeft(52));
         row.removeFromLeft(10);
         meterBox.setBounds(row.removeFromLeft(74));
+        row.removeFromLeft(6);
+        soundBox.setBounds(row.removeFromLeft(92));
         row.removeFromLeft(14);
         clickVol.setBounds(row.removeFromLeft(190).withTrimmedLeft(34));
         row.removeFromLeft(14);
@@ -2441,11 +2454,23 @@ void PlayerPanel::finishVideoTake()
     videoRecording = false;
     juce::File f;
     const auto firstFrame = camera.stopRecording(f);
-    if (f != juce::File())
+    if (f == juce::File())
     {
-        player.attachVideo(f, firstFrame);
-        setStatus("Video take recorded. SAVE AS... -> MP4 VIDEO saves it with AMPSURD's sound.");
+        setStatus("VIDEO: the camera was not recording - no video for this take.");
+        return;
     }
+    player.attachVideo(f, firstFrame);
+    setStatus("Video take recorded. To save it: SAVE AS... with MP4 VIDEO in the format list.");
+    // the camera finishes its file a moment after STOP: check that it really exists
+    juce::Timer::callAfterDelay(2500, [sp = juce::Component::SafePointer<PlayerPanel>(this), f] {
+        if (sp == nullptr) return;
+        if (!f.existsAsFile() || f.getSize() < 1024)
+            sp->setStatus("VIDEO: the camera did not write a video file (" + f.getFileName()
+                          + "). Is the camera used by another app? Please report it with your camera's name.");
+        else
+            sp->setStatus("Video take recorded (" + juce::File::descriptionOfSizeInBytes(f.getSize())
+                          + "). To save it: SAVE AS... with MP4 VIDEO in the format list.");
+    });
 }
 
 void PlayerPanel::saveVideo()

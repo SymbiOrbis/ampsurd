@@ -460,6 +460,7 @@ int main()
         pl->renderNow();
         waitIdle();
         pl->toStart();
+        pl->setClickSound(0); // BEEP (the player window, opened by an earlier test, sets its saved choice)
         pl->setMetronome(true, 120.0, 4, false, -6.0f, 0);
         run(0.3, nullptr);
         pl->play();
@@ -493,6 +494,45 @@ int main()
         bool even = lv.size() >= 4;
         for (float v : lv) even = even && std::abs(v - lv[0]) < 0.01f * lv[0] + 1e-4f;
         check(even, "METRONOME: EVEN -> all " + juce::String((int) lv.size()) + " clicks sound the same");
+
+        // HI-HAT: bright (many zero crossings), all clicks alike with EVEN, +12 dB much louder than 0 dB
+        auto hatRun = [&](float volDb, float& peak, double& zcPerSecond, bool& alike) {
+            pl->setClickSound(1);
+            pl->setMetronome(true, 120.0, 1, false, volDb, 0);
+            pl->toStart();
+            run(0.1, nullptr);
+            pl->play();
+            const auto h = run(2.2, nullptr);
+            pl->stop();
+            peak = h.getMagnitude(0, 0, h.getNumSamples());
+            int zc = 0, active = 0;
+            for (int i = 1; i < h.getNumSamples(); ++i)
+                if (std::abs(h.getSample(0, i)) > 0.02f * peak)
+                {
+                    ++active;
+                    if ((h.getSample(0, i) > 0) != (h.getSample(0, i - 1) > 0)) ++zc;
+                }
+            zcPerSecond = active > 0 ? zc * sr / active : 0.0;
+            std::vector<float> lv2;
+            int last2 = -100000;
+            for (int i = 0; i < h.getNumSamples(); ++i)
+                if (std::abs(h.getSample(0, i)) > 0.01f * peak && i - last2 > 4000)
+                {
+                    last2 = i;
+                    lv2.push_back(h.getMagnitude(0, i, std::min(1200, h.getNumSamples() - i)));
+                }
+            alike = lv2.size() >= 4;
+            for (float v : lv2) alike = alike && std::abs(v - lv2[0]) < 0.01f * lv2[0] + 1e-4f;
+        };
+        float p0 = 0, p12 = 0;
+        double zc0 = 0, zc12 = 0;
+        bool alike0 = false, alike12 = false;
+        hatRun(0.0f, p0, zc0, alike0);
+        hatRun(12.0f, p12, zc12, alike12);
+        pl->setClickSound(0);
+        check(zc0 > 4000.0 && alike0 && p12 > 1.8f * p0 && p12 <= 0.8913f,
+              "METRONOME HI-HAT: bright (" + juce::String((int) zc0) + " zero crossings / s), EVEN clicks alike, +12 dB peak "
+                  + juce::String(p12, 3) + " vs 0 dB " + juce::String(p0, 3) + " (limited, never clips)");
 
         // count-in 1 bar (2 s at 120 BPM, 4/4), then recording; the take must contain no click
         pl->setMetronome(true, 120.0, 4, false, -6.0f, 1);
