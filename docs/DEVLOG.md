@@ -25,6 +25,9 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 - Camera permission text (Info.plist), PRIVACY.md. Tests here: sync arithmetic and take rules
   (recorder_test, CI on both OSes), camera window render. Not tested with a real camera (none here):
   the owner tests on Windows, a Mac tester on macOS.
+- Owner: in EDIT the OUTPUT row did not fit any more (centre area 40 px lower since the gate strip).
+  LEVEL heading removed, INPUT / OUTPUT moved up, alignment rows 4 px tighter; the loudness note fits too.
+  IR editor, ROOT and Frankenstein checked in screenshots.
 
 ## 2026-10-22 — Session 3f: GUITAR track PAN / monitor volume; NaN robustness — Claude (Opus 5.5)
 

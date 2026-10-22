@@ -1024,11 +1024,11 @@ void AlignPanel::resized()
     freeButton.setBounds(modes.removeFromLeft(bw));
     modes.removeFromLeft(8);
     resetButton.setBounds(modes);
-    r.removeFromTop(42);
+    r.removeFromTop(40);
     auto t = r.removeFromTop(22);
     t.removeFromLeft(56);
     timeSlider.setBounds(t);
-    r.removeFromTop(6);
+    r.removeFromTop(4);
     auto ph = r.removeFromTop(22);
     ph.removeFromLeft(56);
     phaseSlider.setBounds(ph);
@@ -1122,12 +1122,12 @@ void LevelPanel::setSlot(int s)
 
 void LevelPanel::resized()
 {
+    // INPUT and OUTPUT right under the alignment (no LEVEL heading: the centre area is lower now)
     auto r = getLocalBounds();
-    r.removeFromTop(20);
     auto a = r.removeFromTop(22);
     a.removeFromLeft(56);
     inputSlider.setBounds(a);
-    r.removeFromTop(6);
+    r.removeFromTop(4);
     auto b = r.removeFromTop(22);
     b.removeFromLeft(56);
     outputSlider.setBounds(b);
@@ -1135,12 +1135,11 @@ void LevelPanel::resized()
 
 void LevelPanel::paint(juce::Graphics& g)
 {
-    drawLabel(g, "LEVEL", { 0, 0, getWidth(), 16 }, textDim);
     drawLabel(g, "INPUT", { 0, inputSlider.getY(), 54, inputSlider.getHeight() }, text);
     drawLabel(g, "OUTPUT", { 0, outputSlider.getY(), 54, outputSlider.getHeight() }, text);
     g.setColour(textDim);
     g.setFont(Fonts::get().regular(11.5f));
-    g.drawText(info, 0, outputSlider.getBottom() + 4, getWidth(), 16, juce::Justification::centredLeft, true);
+    g.drawText(info, 0, outputSlider.getBottom() + 2, getWidth(), 14, juce::Justification::centredLeft, true);
 }
 
 void LevelPanel::refresh()
@@ -1227,9 +1226,9 @@ void EditPanel::resized()
     auto right = r.removeFromRight(300);
     r.removeFromRight(24);
     graph.setBounds(r);
-    align.setBounds(right.removeFromTop(140));
-    right.removeFromTop(10);
-    level.setBounds(right.removeFromTop(90));
+    align.setBounds(right.removeFromTop(134));
+    right.removeFromTop(6);
+    level.setBounds(right.removeFromTop(64));
 }
 
 void EditPanel::paint(juce::Graphics& g)
