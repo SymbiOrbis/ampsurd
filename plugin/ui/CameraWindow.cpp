@@ -45,6 +45,19 @@ CameraView::CameraView(VideoCapture& c, PlayerRecorder& p) : camera(c), player(p
                             "Applies when saving (also to takes already recorded). Double-click: 0");
     addAndMakeVisible(offsetSlider);
 
+    addAndMakeVisible(recButton);
+    recButton.setTooltip("Starts a video take from the beginning (with count-in if it is on). Press again to stop. Shortcut: R");
+    recButton.onClick = [this] { if (onRec) onRec(); };
+    addAndMakeVisible(saveButton);
+    saveButton.setTooltip("Saves the video take as an .mp4: picture from the camera, sound from AMPSURD");
+    saveButton.onClick = [this] { if (onSave) onSave(); };
+    addAndMakeVisible(soundBox);
+    soundBox.addItem("GUITAR + BACKING", 1);
+    soundBox.addItem("GUITAR ONLY", 2);
+    soundBox.setSelectedId(1, juce::dontSendNotification);
+    soundBox.setTooltip("The sound of the saved video (the same choice as SAVE AS in the player)");
+    soundBox.onChange = [this] { if (onSoundChoice) onSoundChoice(soundBox.getSelectedId()); };
+
     listCameras();
     if (!VideoCapture::isSupported()) message = "Video recording is not available on this system.";
     else if (cameraBox.getNumItems() == 0) message = "No camera found. Connect one and open this window again.";
@@ -89,10 +102,17 @@ void CameraView::resized()
     auto top = r.removeFromTop(26);
     top.removeFromLeft(70);
     cameraBox.setBounds(top.removeFromLeft(juce::jmin(320, top.getWidth())));
+    r.removeFromBottom(22); // status line
     auto bottom = r.removeFromBottom(26);
     bottom.removeFromLeft(110);
     offsetSlider.setBounds(bottom.removeFromLeft(juce::jmin(300, bottom.getWidth())));
-    r.removeFromBottom(26); // the note above the offset
+    r.removeFromBottom(24); // the note above the offset
+    auto controls = r.removeFromBottom(34);
+    recButton.setBounds(controls.removeFromLeft(110).withSizeKeepingCentre(110, 30));
+    controls.removeFromLeft(10);
+    saveButton.setBounds(controls.removeFromLeft(120).withSizeKeepingCentre(120, 30));
+    controls.removeFromLeft(10);
+    soundBox.setBounds(controls.removeFromLeft(juce::jmin(180, controls.getWidth())).withSizeKeepingCentre(juce::jmin(180, controls.getWidth()), 26));
     r.reduce(0, 8);
     if (preview != nullptr) preview->setBounds(r);
 }
@@ -104,13 +124,22 @@ void CameraView::paint(juce::Graphics& g)
     g.setColour(textDim);
     g.setFont(Fonts::get().label(11.0f));
     g.drawText("CAMERA", r.removeFromTop(26).removeFromLeft(66), juce::Justification::centredLeft, false);
+    {
+        auto st = r.removeFromBottom(22);
+        g.setFont(Fonts::get().regular(12.0f));
+        g.setColour(text);
+        g.drawFittedText(status, st, juce::Justification::centredLeft, 1, 0.85f);
+        g.setFont(Fonts::get().label(11.0f));
+        g.setColour(textDim);
+    }
     auto bottom = r.removeFromBottom(26);
     g.drawText("SOUND OFFSET", bottom.removeFromLeft(106), juce::Justification::centredLeft, false);
-    auto note = r.removeFromBottom(26);
+    auto note = r.removeFromBottom(24);
     g.setFont(Fonts::get().regular(12.0f));
     g.setColour(textFaint);
     g.drawText("The sound of the video is AMPSURD's own (as when you save audio), not the camera's microphone.", note,
                juce::Justification::centredLeft, true);
+    r.removeFromBottom(34); // REC / SAVE row
     r.reduce(0, 8);
     g.setColour(line);
     g.drawRect(r);
@@ -123,23 +152,49 @@ void CameraView::paint(juce::Graphics& g)
     if (camera.isRecording())
     {
         // shown as text, not only by colour
-        const auto tag = juce::Rectangle<int>(r.getRight() - 110, r.getY() + 8, 100, 22);
+        const auto tag = juce::Rectangle<int>(r.getRight() - 150, r.getY() + 8, 140, 22);
         g.setColour(accent);
         g.fillRoundedRectangle(tag.toFloat(), 3.0f);
         g.setColour(juce::Colours::white);
         g.setFont(Fonts::get().semibold(12.0f));
-        g.drawText(juce::String::charToString((juce::juce_wchar) 0x25CF) + " REC VIDEO", tag, juce::Justification::centred, false);
+        const int secs = (int) player.getPositionSeconds();
+        g.drawText(juce::String::charToString((juce::juce_wchar) 0x25CF) + " REC VIDEO " + juce::String(secs / 60) + ":"
+                       + juce::String(secs % 60).paddedLeft('0', 2),
+                   tag, juce::Justification::centred, false);
     }
 }
 
 void CameraView::refresh()
 {
+    using S = PlayerRecorder::State;
+    const auto st = player.getState();
+    const bool recording = st == S::recording || st == S::pausedRec;
+    const juce::String recText = player.isCountingIn() ? "COUNT-IN " + juce::String(player.getCountInBeatsLeft())
+                               : recording ? juce::String::charToString((juce::juce_wchar) 0x25A0) + " STOP"
+                                           : juce::String::charToString((juce::juce_wchar) 0x25CF) + " REC";
+    if (recButton.getButtonText() != recText) recButton.setButtonText(recText);
+    recButton.setToggleState(recording, juce::dontSendNotification);
+    recButton.setEnabled(camera.isOpen() || recording);
+    saveButton.setEnabled(!recording && player.takeHasVideo());
+    soundBox.setEnabled(!recording);
     if (camera.isRecording() != recordingShown)
     {
         recordingShown = camera.isRecording();
         cameraBox.setEnabled(!recordingShown);
-        repaint();
     }
+    if (recordingShown) repaint(); // the running time
+}
+
+void CameraView::setStatus(const juce::String& s)
+{
+    if (s == status) return;
+    status = s;
+    repaint();
+}
+
+void CameraView::setSoundChoice(int id)
+{
+    if (soundBox.getSelectedId() != id) soundBox.setSelectedId(id, juce::dontSendNotification);
 }
 
 CameraWindow::CameraWindow(VideoCapture& c, PlayerRecorder& p, std::function<void()> onClosed)
@@ -149,11 +204,11 @@ CameraWindow::CameraWindow(VideoCapture& c, PlayerRecorder& p, std::function<voi
     setLookAndFeel(&lnf);
     auto v = std::make_unique<CameraView>(c, p);
     contentView = v.get();
-    v->setSize(560, 470);
+    v->setSize(600, 560);
     setContentOwned(v.release(), true);
     setUsingNativeTitleBar(true);
     setResizable(true, false);
-    setResizeLimits(360, 320, 1920, 1400);
+    setResizeLimits(480, 420, 1920, 1400);
     centreWithSize(getWidth(), getHeight());
     setVisible(true);
 }

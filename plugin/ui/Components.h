@@ -567,7 +567,7 @@ private:
     double centreSeconds() const { return viewStart + 0.5 * secondsPerPixel * laneArea().getWidth(); }
     static constexpr int kLabelW = 80; // left column: track names, the GUITAR track's PAN
     juce::Rectangle<int> laneArea() const { return getLocalBounds().withTrimmedLeft(kLabelW).withTrimmedBottom(kScrollH + 4); }
-    static constexpr int kScrollH = 16;
+    static constexpr int kScrollH = 8; // half of the first version (owner, 2026-10-22)
     void scrollBarMoved(juce::ScrollBar*, double newRangeStart) override;
     void updateScrollBar();
     juce::Rectangle<int> rulerArea() const { return laneArea().removeFromTop(16); }
@@ -592,7 +592,7 @@ public:
     void paint(juce::Graphics&) override;
     void resized() override;
     void refresh();
-    void recordPressed(); // REC button and the R key: audio take / punch, or a VIDEO take (VIDEO on)
+    void recordPressed(bool fromCameraWindow = false); // REC (player, camera window) and the R key: audio take / punch, or a VIDEO take (VIDEO on)
     std::function<void()> onClose;
 
 private:
@@ -601,7 +601,8 @@ private:
     void saveVideo();
     void setVideo(bool on);   // VIDEO on: camera window + camera; off: both closed
     void finishVideoTake();   // after a video take stopped: the camera file joins the take
-    void setStatus(const juce::String& s) { status = s; repaint(); }
+    void startVideoTake();    // camera file + recording from STOP
+    void setStatus(const juce::String& s);
 
     AmpsurdProcessor& proc;
     PlayerRecorder& player;

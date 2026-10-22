@@ -219,12 +219,30 @@ void PlayerRecorder::process(double* L, double* R, int n, int ampsurdLatency, bo
     const bool running = st == State::playing || st == State::recording;
     const auto pan = ampsurd::Engine::panGains(takePan.load(std::memory_order_relaxed));
     const double vol = juce::Decibels::decibelsToGain((double) takeGainDb.load(std::memory_order_relaxed), -100.0);
-    // the live guitar on the monitors while recording (incl. count-in and pause): GUITAR VOL and PAN,
-    // like the take it becomes; otherwise unchanged. Applied AFTER the guitar was recorded.
+    // GUITAR PAN = where your guitar sits in the stereo image, always (also before REC, so you hear where
+    // it will be). It is applied BEFORE the guitar is recorded: panned left -> the take is in the left
+    // channel (stereo layering: one take left, BOUNCE, the next one right). Centre = untouched.
+    {
+        const double tl = pan[0], tr = pan[1];
+        if (!(juce::exactlyEqual(panLiveL, tl) && juce::exactlyEqual(panLiveR, tr) && juce::exactlyEqual(tl, 1.0) && juce::exactlyEqual(tr, 1.0)))
+        {
+            for (int i = 0; i < n; ++i)
+            {
+                panLiveL += (tl - panLiveL) * 0.002;
+                panLiveR += (tr - panLiveR) * 0.002;
+                L[i] *= panLiveL;
+                R[i] *= panLiveR;
+            }
+            if (std::abs(tl - panLiveL) < 1e-7) panLiveL = tl;
+            if (std::abs(tr - panLiveR) < 1e-7) panLiveR = tr;
+        }
+    }
+    // GUITAR VOL: the live guitar on the monitors while recording (incl. count-in and pause), like the take
+    // it becomes; otherwise unchanged. Applied AFTER the guitar was recorded (the file keeps its level).
     const bool liveAsTrack = st == State::recording || st == State::pausedRec;
     auto monitorLive = [&](int from) {
-        const double tl = liveAsTrack ? vol * pan[0] : 1.0, tr = liveAsTrack ? vol * pan[1] : 1.0;
-        if (juce::exactlyEqual(liveL, tl) && juce::exactlyEqual(liveR, tr) && juce::exactlyEqual(tl, 1.0) && juce::exactlyEqual(tr, 1.0)) return; // untouched (bit-transparent)
+        const double tl = liveAsTrack ? vol : 1.0, tr = tl;
+        if (juce::exactlyEqual(liveL, tl) && juce::exactlyEqual(liveR, tr) && juce::exactlyEqual(tl, 1.0)) return; // untouched (bit-transparent)
         for (int i = from; i < n; ++i)
         {
             liveL += (tl - liveL) * 0.002;
@@ -251,7 +269,7 @@ void PlayerRecorder::process(double* L, double* R, int n, int ampsurdLatency, bo
     {
         const juce::int64 pos = songPos.load(std::memory_order_relaxed);
 
-        // 1. record the guitar exactly as AMPSURD outputs it (before the tracks are added). Every pass
+        // 1. record the guitar as AMPSURD outputs it, with GUITAR PAN (before the tracks are added). Every pass
         //    is recorded while a take exists (so a correction can be extended to before its punch-in).
         if (passActive.load(std::memory_order_acquire))
         {
@@ -291,7 +309,7 @@ void PlayerRecorder::process(double* L, double* R, int n, int ampsurdLatency, bo
             }
         }
 
-        monitorLive(0); // after the recording: the file keeps the guitar as it is
+        monitorLive(0); // after the recording: the file keeps the guitar's level
 
         const double tB = backingReady.load() ? juce::Decibels::decibelsToGain((double) backingGainDb.load(), -100.0) : 0.0;
         // while a correction is being recorded, the old take is silent from the punch-in on
@@ -330,11 +348,9 @@ void PlayerRecorder::process(double* L, double* R, int n, int ampsurdLatency, bo
                 float pk = 0.0f;
                 for (int i = 0; i < n - off; ++i)
                 {
-                    gT += (tT - gT) * 0.002;
-                    panTL += (pan[0] - panTL) * 0.002;
-                    panTR += (pan[1] - panTR) * 0.002;
-                    L[off + i] += gT * panTL * a[i];
-                    R[off + i] += gT * panTR * b[i];
+                    gT += (tT - gT) * 0.002; // the take already has its pan (recorded with it)
+                    L[off + i] += gT * a[i];
+                    R[off + i] += gT * b[i];
                     pk = std::max(pk, std::max(std::abs(a[i]), std::abs(b[i])) * (float) gT);
                 }
                 if (pk > takePeak.load(std::memory_order_relaxed)) takePeak.store(pk, std::memory_order_relaxed);
@@ -912,7 +928,6 @@ struct MixSpec
     bool backing = false, take = false;
     juce::File backingFile, takeFile;
     double backingGain = 1.0, takeGain = 1.0;
-    std::array<double, 2> takePan { 1.0, 1.0 };
     juce::int64 takeStart = 0, start = 0, end = 0;
 };
 
@@ -956,8 +971,8 @@ juce::String renderTimeline(juce::AudioFormatManager& fm, const MixSpec& m, doub
                 take->read(tl.data(), tr.data(), n - off);
                 for (int i = 0; i < n - off; ++i)
                 {
-                    L[(size_t) (off + i)] += m.takeGain * m.takePan[0] * tl[(size_t) i];
-                    R[(size_t) (off + i)] += m.takeGain * m.takePan[1] * tr[(size_t) i];
+                    L[(size_t) (off + i)] += m.takeGain * tl[(size_t) i];
+                    R[(size_t) (off + i)] += m.takeGain * tr[(size_t) i];
                 }
             }
         }
@@ -984,7 +999,6 @@ juce::String PlayerRecorder::renderMix(bool withBacking, juce::AudioBuffer<float
     m.takeFile = takeFile;
     m.backingGain = juce::Decibels::decibelsToGain((double) backingGainDb.load(), -100.0);
     m.takeGain = juce::Decibels::decibelsToGain((double) takeGainDb.load(), -100.0);
-    m.takePan = ampsurd::Engine::panGains(takePan.load());
     m.takeStart = takeStart.load();
     const juce::int64 takeEnd = m.take ? m.takeStart + takeLength.load() : 0;
     m.start = backingReady.load() ? 0 : (m.take ? m.takeStart : 0);
@@ -1010,7 +1024,6 @@ juce::String PlayerRecorder::runExport(const juce::File& dest, ExportOptions o)
     m.takeFile = takeFile;
     m.backingGain = juce::Decibels::decibelsToGain((double) backingGainDb.load(), -100.0);
     m.takeGain = juce::Decibels::decibelsToGain((double) takeGainDb.load(), -100.0);
-    m.takePan = ampsurd::Engine::panGains(takePan.load());
     m.takeStart = takeStart.load();
     const juce::int64 takeEnd = m.take ? m.takeStart + takeLength.load() : 0;
     // guitar alone still starts at the backing's start (it lines up with it in a DAW)

@@ -6,6 +6,22 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-22 — Session 3k: owner's notes on the last build — Claude (Opus 5.5)
+
+- GUITAR PAN is now RECORDED (owner: stereo layering - click centre, take left, BOUNCE, take right). The pan
+  is applied to the live guitar always (centre = untouched) and before the take is written; the take plays
+  back, exports and bounces as recorded (no pan applied again). GUITAR VOL unchanged (monitors while
+  recording + playback level, never the file). recorder_test: file hard left, playback with PAN centre still
+  left only.
+- Camera window: REC / STOP, SAVE MP4..., sound choice (synced with the player's GUITAR + BACKING /
+  GUITAR ONLY), running time in the REC VIDEO tag, the player's status line at the bottom. REC there with a
+  take present asks "Replace it?" (dialog) instead of the 3 s double press. A video take starts at the
+  song's start. Window 600 x 560.
+- Timeline scroll bar 16 -> 8 px (owner: half).
+- A / B / COPY TO B explained (chat). Blend tone measured at 1/6 octave (blend_spectrum ... fine): before
+  the correction -4.9 dB at 4.5 kHz, with it within +-1.6 dB (mostly +-0.5). Owner still hears fewer highs:
+  asked which build / captures / IRs before a finer (continuous) correction curve.
+
 ## 2026-10-22 — Session 3j: DOUBLER (experimental double tracking) — Claude (Opus 5.5)
 
 - Owner: a tester suggested a doubler like MIMIQ and sent his REAPER script ("Performance Doubler 2.2").

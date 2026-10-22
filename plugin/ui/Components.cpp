@@ -1655,8 +1655,8 @@ Timeline::Timeline(PlayerRecorder& p) : player(p)
     guitarPan.setValue(player.getTakePan() * 100.0, juce::dontSendNotification);
     guitarPan.setDoubleClickReturnValue(true, 0.0);
     guitarPan.setWantsKeyboardFocus(false);
-    guitarPan.setTooltip("PAN of the GUITAR track: the take, and your guitar while recording (the recording itself is not changed). "
-                         "Double-click: centre");
+    guitarPan.setTooltip("PAN of your guitar: set it BEFORE REC - the take is recorded where you hear it (left = left channel). "
+                         "Stereo layering: record left, BOUNCE, record the next take right. Double-click: centre");
     guitarPan.onValueChange = [this] {
         player.setTakePan((float) guitarPan.getValue() / 100.0f);
         repaint(0, 0, kLabelW, getHeight());
@@ -2346,7 +2346,11 @@ void PlayerPanel::refresh()
     pauseButton.setToggleState(st == S::pausedPlay || st == S::pausedRec, juce::dontSendNotification);
     pauseButton.setButtonText(st == S::pausedPlay || st == S::pausedRec ? "CONTINUE" : "PAUSE");
     if (videoRecording && st != S::recording && st != S::pausedRec) finishVideoTake(); // STOP ended the video take
-    if (cameraWindow != nullptr) cameraWindow->view().refresh();
+    if (cameraWindow != nullptr)
+    {
+        cameraWindow->view().setSoundChoice(contentBox.getSelectedId());
+        cameraWindow->view().refresh();
+    }
     if (replaceArmedAt > 0.0 && juce::Time::getMillisecondCounterHiRes() - replaceArmedAt > 3000.0) replaceArmedAt = -1.0;
     if (videoButton.getToggleState())
         recButton.setButtonText(st == S::recording || st == S::pausedRec ? "STOP REC" : replaceArmedAt > 0.0 ? "REPLACE?" : "REC");
@@ -2401,8 +2405,13 @@ void PlayerPanel::setVideo(bool on)
                     if (sp != nullptr && !sp->videoRecording) sp->setVideo(false);
                 });
             });
+        auto& v = cameraWindow->view();
+        v.onRec = [this] { recordPressed(true); };
+        v.onSave = [this] { saveVideo(); };
+        v.onSoundChoice = [this](int id) { contentBox.setSelectedId(id, juce::sendNotificationSync); };
+        v.setSoundChoice(contentBox.getSelectedId());
         cameraWindow->toFront(true);
-        setStatus("VIDEO on: REC from STOP records a video take (picture from the camera, sound from AMPSURD).");
+        setStatus("VIDEO on: press REC in the camera window (or in the player) - picture from the camera, sound from AMPSURD.");
     }
     else
     {
@@ -2413,17 +2422,52 @@ void PlayerPanel::setVideo(bool on)
     }
 }
 
-void PlayerPanel::recordPressed()
+void PlayerPanel::setStatus(const juce::String& s)
+{
+    status = s;
+    repaint();
+    if (cameraWindow != nullptr) cameraWindow->view().setStatus(s);
+}
+
+void PlayerPanel::startVideoTake()
+{
+    using S = PlayerRecorder::State;
+    if (player.getState() != S::stopped) player.stop();
+    player.toStart(); // a video take is one continuous take from the start of the song
+    const auto err = camera.startRecording(player.getRecordingsFolder().getChildFile("Takes"));
+    if (err.isNotEmpty()) { setStatus(err); return; }
+    videoRecording = true;
+    player.record();
+    if (player.getState() != S::recording) { finishVideoTake(); setStatus("The recording could not start."); return; }
+    setStatus("Recording a video take... press STOP (or REC) when you are done.");
+}
+
+void PlayerPanel::recordPressed(bool fromCameraWindow)
 {
     using S = PlayerRecorder::State;
     const auto st = player.getState();
     if (videoButton.getToggleState())
     {
         if (st == S::recording || st == S::pausedRec) { player.stop(); return; } // a video take ends with REC or STOP
-        if (st != S::stopped) { setStatus("VIDEO: a video take starts from STOP (one continuous take)."); return; }
+        if (st != S::stopped && !fromCameraWindow) { setStatus("VIDEO: a video take starts from STOP (one continuous take)."); return; }
         if (!camera.isOpen()) { setStatus("VIDEO: no camera is open - see the camera window."); return; }
         if (player.hasTake() || !player.getClips().empty())
         {
+            if (fromCameraWindow)
+            {
+                // the camera window asks plainly instead of the "press twice" arming
+                auto opts = juce::MessageBoxOptions().withIconType(juce::MessageBoxIconType::QuestionIcon)
+                                .withTitle("New video take")
+                                .withMessage("There is already a take. Replace it with a new video take?\n(UNDO in the player brings the old one back.)")
+                                .withButton("REPLACE").withButton("CANCEL")
+                                .withAssociatedComponent(cameraWindow.get());
+                juce::AlertWindow::showAsync(opts, [sp = juce::Component::SafePointer<PlayerPanel>(this)](int result) {
+                    if (sp == nullptr || result != 1) return;
+                    sp->player.clearTake();
+                    sp->startVideoTake();
+                });
+                return;
+            }
             const double now = juce::Time::getMillisecondCounterHiRes();
             if (!(replaceArmedAt > 0.0 && now - replaceArmedAt < 3000.0))
             {
@@ -2434,11 +2478,7 @@ void PlayerPanel::recordPressed()
             replaceArmedAt = -1.0;
             player.clearTake();
         }
-        const auto err = camera.startRecording(player.getRecordingsFolder().getChildFile("Takes"));
-        if (err.isNotEmpty()) { setStatus(err); return; }
-        videoRecording = true;
-        player.record();
-        if (player.getState() != S::recording) { finishVideoTake(); setStatus("The recording could not start."); }
+        startVideoTake();
         return;
     }
     if (player.takeHasVideo() && st != S::stopped && st != S::recording && st != S::pausedRec)

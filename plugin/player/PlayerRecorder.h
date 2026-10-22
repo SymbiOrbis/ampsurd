@@ -2,7 +2,7 @@
 
 // PlayerRecorder: backing track + guitar recording, standalone app only.
 //
-//   AMPSURD guitar output (L/R) ──┬──────────────► record (the take, 32-bit float WAV, session rate)
+//   AMPSURD guitar output (L/R) ─ GUITAR PAN ─┬──► record (the take, 32-bit float WAV, session rate)
 //                                 └─► + backing × vol + take × vol ─► safety limiter (stereo, -1 dBFS) ─► out
 //
 // Timing: the take is placed on the song timeline so that it lines up with the backing you HEARD
@@ -137,9 +137,10 @@ public:
 
     void setBackingGainDb(float db) { backingGainDb.store(db); }
     void setTakeGainDb(float db) { takeGainDb.store(db); }
-    // GUITAR track pan (-1 = left .. +1 = right; same law as the amps' PAN). GUITAR VOL and PAN apply to
-    // the take when it plays AND to the live guitar while recording (what goes to the monitors) - never
-    // to the recorded file, which stays exactly as AMPSURD outputs the guitar.
+    // GUITAR PAN (-1 = left .. +1 = right; same law as the amps' PAN): where your guitar sits, always, and
+    // it is RECORDED with it (panned left -> the take is in the left channel; for stereo layering with
+    // BOUNCE). The take plays back as recorded. GUITAR VOL: the take's playback level, and the live guitar
+    // on the monitors while recording; never changes the recorded file.
     void setTakePan(float p) { takePan.store(juce::jlimit(-1.0f, 1.0f, p)); }
     float getTakePan() const { return takePan.load(); }
     float getBackingGainDb() const { return backingGainDb.load(); }
@@ -252,8 +253,8 @@ private:
     std::atomic<float> backingPeak { 0.0f }, takePeak { 0.0f };
     double gB = 1.0, gT = 1.0;
     std::atomic<float> takePan { 0.0f };
-    double panTL = 1.0, panTR = 1.0;      // smoothed pan gains of the take
     double liveL = 1.0, liveR = 1.0;      // smoothed monitor gains of the live guitar (recording only)
+    double panLiveL = 1.0, panLiveR = 1.0; // smoothed GUITAR PAN on the live guitar (before recording)
     // metronome
     std::atomic<bool> clickOn { false }, clickCompound { false };
     std::atomic<double> clickBpm { 120.0 };

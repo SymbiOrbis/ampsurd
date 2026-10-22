@@ -44,11 +44,11 @@ New in 0.9.1:
 - "CREATE FRANKENSTEIN" is now just "FRANKENSTEIN".
 - NOISE GATE always at hand: its meter, THRESHOLD and DECAY sit above INPUT at the bottom, visible while
   you edit amps and mix. The centre area shows GLOBAL by default: TUNER, Global EQ and the effects.
-- Player: PAN for the GUITAR track; GUITAR VOL and PAN also set your guitar on the monitors while
-  recording (the recording itself is not changed).
-- VIDEO takes (standalone app): film yourself with the computer's camera while you record (own camera
-  window, one continuous take from STOP) and save an MP4 with AMPSURD's sound (GUITAR + BACKING or
-  GUITAR ONLY). New: please report whether picture and sound are together (SOUND OFFSET fixes it).
+- Player: PAN for your guitar - the take is recorded where you pan it (stereo layering: record left,
+  BOUNCE, record right). GUITAR VOL also sets your guitar on the monitors while recording.
+- VIDEO takes (standalone app): film yourself with the computer's camera while you record and save an MP4
+  with AMPSURD's sound (GUITAR + BACKING or GUITAR ONLY) - REC / STOP and SAVE MP4 right in the camera
+  window. Please report whether picture and sound are together (SOUND OFFSET fixes it).
 - Blending amps keeps their tone: a 50:50 blend used to sound slightly darker than either amp alone (the
   highs of different amps partly cancel). AMPSURD now measures this per frequency band and corrects it with a
   fixed, automatic EQ on the blend (one amp alone: no change).

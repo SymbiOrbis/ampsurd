@@ -6,12 +6,13 @@
 // A negative difference in the high bands = the blend sounds duller than either capture alone.
 // "+tone" = the same blend with AMPSURD's blend tone EQ (BlendToneEq, since 2026-10-22).
 //
-// Usage: blend_spectrum <a.nam> <b.nam> [mix of A in %, default 50]
+// Usage: blend_spectrum <a.nam> <b.nam> [mix of A in %, default 50] [fine = 1/6-octave bands]
 
 #include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <string>
 #include <vector>
 
 #include "ampsurd/BlendToneEq.h"
@@ -27,9 +28,10 @@ namespace
 constexpr double kPi = 3.14159265358979323846;
 
 // power of y in a one-octave band around fc (RBJ band-pass, constant 0 dB peak, applied twice)
+double bandQ = 1.414;
 double bandPower(const std::vector<double>& y, double fc, double sr)
 {
-    const double w = 2 * kPi * fc / sr, q = 1.414, al = std::sin(w) / (2 * q), a0 = 1 + al;
+    const double w = 2 * kPi * fc / sr, q = bandQ, al = std::sin(w) / (2 * q), a0 = 1 + al;
     const double b0 = al / a0, b2 = -al / a0, a1 = -2 * std::cos(w) / a0, a2 = (1 - al) / a0;
     double x1 = 0, x2 = 0, y1 = 0, y2 = 0, u1 = 0, u2 = 0, v1 = 0, v2 = 0, p = 0;
     const size_t from = (size_t) (0.1 * sr);
@@ -109,7 +111,14 @@ int main(int argc, char** argv)
         eq.process(toned.data(), nullptr, (int) toned.size());
     }
     std::printf("%8s %8s %8s %10s %14s %12s %10s\n", "band Hz", "A dB", "B dB", "blend dB", "blend - target", "coherence", "+tone");
-    for (double fc : { 63.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0 })
+    std::vector<double> centres { 63.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0 };
+    if (argc > 4 && std::string(argv[4]) == "fine")
+    {
+        centres.clear();
+        for (double f = 100.0; f < 13000.0; f *= std::pow(2.0, 1.0 / 6.0)) centres.push_back(f);
+        bandQ = 8.65; // 1/6 octave
+    }
+    for (double fc : centres)
     {
         const double PA = bandPower(y[0], fc, sr), PB = bandPower(y[1], fc, sr), PM = bandPower(blend, fc, sr),
                      PT = bandPower(toned, fc, sr);

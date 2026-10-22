@@ -251,16 +251,20 @@ REAPER picks up the new version.
 
 40. GLOBAL is the default: close EDIT / IR / PLAYER / ROOT -> GLOBAL (tuner, EQ, effects) comes back.
     Frankenstein on -> its map; the vertical GLOBAL button opens GLOBAL, its CLOSE returns.
-41. Player: PAN under GUITAR (left of the guitar track) and GUITAR VOL change the take AND your guitar
-    on the monitors while recording; the recorded file is unchanged (play it back with VOL 0 dB / C).
+41. Player: PAN under GUITAR (left of the guitar track) is where your guitar sits - set it BEFORE REC: the
+    take is recorded there (hard left = only the left channel) and plays back as recorded. Stereo layering:
+    PAN left, record, BOUNCE, PAN right, record the next take. GUITAR VOL: the take's level and your guitar
+    on the monitors while recording (not in the file). The scroll bar under the guitar track is 8 px high.
 
 42. VIDEO takes (standalone, needs a camera): PLAYER / REC -> VIDEO: the camera window opens (choose the
-    camera, you see yourself). From STOP press REC: the count-in / recording starts and the window shows
-    REC VIDEO; play, then STOP (or REC). SAVE AS... with MP4 VIDEO -> choose GUITAR + BACKING or GUITAR ONLY
-    first -> an .mp4 that plays in a normal video player (picture from the camera, sound from AMPSURD).
-    Check: are picture and sound together (clap or a hard pick stroke)? If not, move SOUND OFFSET in the
-    camera window and save again; note the value. A second REC asks REPLACE? (REC again within 3 s).
-    With a video take, REC during playback (punch-in) is refused. Close the camera window = VIDEO off.
+    camera, you see yourself). In the camera window press REC: the song goes to the start, count-in /
+    recording starts, the window shows REC VIDEO and the time; play, then STOP (same button). SAVE MP4...
+    in the camera window (sound: GUITAR + BACKING or GUITAR ONLY, the same choice as in the player) -> an
+    .mp4 that plays in a normal video player (picture from the camera, sound from AMPSURD). The player's
+    status line is shown at the bottom of the camera window too. REC with a take already there asks
+    "Replace it?" (UNDO brings the old one back). REC in the player / the R key work as before (a second
+    REC within 3 s replaces). Check: are picture and sound together (clap or a hard pick stroke)? If not,
+    move SOUND OFFSET and save again; note the value. Close the camera window = VIDEO off.
 
 43. Blend tone: load two different amps, 100:0 vs. 50:50 vs. 0:100 at matched loudness: the 50:50 blend
     should sound like "half of each", not darker than both. (The automatic EQ is fixed while you play.)
