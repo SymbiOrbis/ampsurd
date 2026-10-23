@@ -577,8 +577,8 @@ private:
     double xToTime(float x) const { return viewStart + (double) (x - (float) laneArea().getX()) * secondsPerPixel; }
     float timeToX(double t) const { return (float) laneArea().getX() + (float) ((t - viewStart) / secondsPerPixel); }
     double centreSeconds() const { return viewStart + 0.5 * secondsPerPixel * laneArea().getWidth(); }
-    static constexpr int kBoxW = 24;   // the delete box before each track name
-    static constexpr int kLabelW = 104; // left column: delete box, track names, the GUITAR track's PAN
+    static constexpr int kBoxW = 22;   // the delete box right before each track
+    static constexpr int kLabelW = 100; // left column: track names, the GUITAR track's PAN, the delete boxes next to the tracks
     void askDelete(int which);         // 0 backing, 1 guitar: shows DELETE / CANCEL over that track
     juce::Rectangle<int> laneArea() const { return getLocalBounds().withTrimmedLeft(kLabelW).withTrimmedBottom(kScrollH + 4); }
     static constexpr int kScrollH = 8; // half of the first version (owner, 2026-10-22)

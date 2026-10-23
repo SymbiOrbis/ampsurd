@@ -6,6 +6,19 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-23 — Session 3r: the video gets its sound automatically; delete boxes next to the tracks — Claude (Opus 5.5)
+
+- Owner: video and track are recorded, but separately - the video has no sound. Checked his Recordings
+  (folder access granted): the camera WMV (WMV3 1280x720, 33 s, ~30 fps) and the take WAV exist, but no MP4
+  was ever written. The WMV carries no frame rate (r_frame_rate 1000/1 = the ASF time base); the Windows mux
+  passed that to the H.264 encoder, which rejects it. Fix: a frame rate outside 5..120 fps -> 30 fps (frames
+  keep their own time stamps). And the MP4 WITH the sound is now made automatically when a video take ends
+  (when the camera file is complete); SAVE MP4 makes another one (e.g. after changing SOUND OFFSET or the
+  sound choice). The take stays a separate audio track as before.
+- Delete boxes: right next to each track, centred on it (owner); labels back at the left.
+- Not testable here (Media Foundation is Windows-only): the owner's test decides; a failure shows the exact
+  error text in the camera window / player status.
+
 ## 2026-10-23 — Session 3q: delete boxes, MUTE, the owner's process rule — Claude (Opus 5.5)
 
 - Owner rule: answer questions and ASK before implementing a proposed solution (PROJECT_STATUS). The

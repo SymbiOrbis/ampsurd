@@ -253,8 +253,9 @@ REAPER picks up the new version.
     Frankenstein on -> its map; the vertical GLOBAL button opens GLOBAL, its CLOSE returns.
 41. Player: PAN under GUITAR (left of the guitar track) is where your guitar sits - set it BEFORE REC: the
     take is recorded there (hard left = only the left channel) and plays back as recorded. Stereo layering:
-    PAN left, record, BOUNCE, PAN right, record the next take. The square X before BACKING / GUITAR deletes
-    that track after DELETE / CANCEL (guitar: UNDO brings it back); CLEAR TAKE is gone.
+    PAN left, record, BOUNCE, PAN right, record the next take. The square X next to BACKING / GUITAR deletes
+    that track after DELETE / CANCEL (guitar: UNDO brings it back); the X sits right next to the track.
+    CLEAR TAKE is gone.
     MUTE (master row, right of BYPASS): the whole output to silence, red while on; not saved. UNDO takes back the last recording and, when
     there is none left, the last BOUNCE (the backing from before and the take come back). GUITAR VOL: the take's level and your guitar
     on the monitors while recording (not in the file). The scroll bar under the guitar track is 8 px high.
@@ -262,7 +263,8 @@ REAPER picks up the new version.
 42. VIDEO takes (standalone, needs a camera): PLAYER / REC -> VIDEO: the camera window opens (choose the
     camera, you see yourself; the window stays in front of AMPSURD). In the camera window: REC - the song goes
     to the start, count-in / recording starts, the window shows REC VIDEO and the time; play, then STOP (same
-    button). PLAY - the take's video with AMPSURD's sound (STOP: same button). SAVE MP4 - saved straight into
+    button). Right after STOP the MP4 WITH the sound is made automatically (status: the file name). PLAY -
+    the take's video with AMPSURD's sound (STOP: same button). SAVE MP4 - another MP4 straight into
     Documents / AMPSURD / Recordings (no dialog), sound GUITAR + BACKING or GUITAR ONLY (next to it); the
     status line at the bottom says the file name or why it failed; SHOW FILE opens the folder. REC with a
     take already there shows REPLACE? - press REC again within 3 s (UNDO brings the old take back). Check:

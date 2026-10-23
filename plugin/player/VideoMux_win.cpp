@@ -67,6 +67,10 @@ juce::String muxVideoToMp4(const juce::File& video, const juce::AudioBuffer<floa
     UINT32 w = 0, h = 0, fn = 30, fd = 1;
     MFGetAttributeSize(native.Get(), MF_MT_FRAME_SIZE, &w, &h);
     if (FAILED(MFGetAttributeRatio(native.Get(), MF_MT_FRAME_RATE, &fn, &fd)) || fn == 0 || fd == 0) { fn = 30; fd = 1; }
+    // camera WMV files often carry no real frame rate (the ASF time base, 1000 fps, was seen on the owner's
+    // camera; the frames come at ~30 fps). The H.264 encoder rejects such rates: use 30 fps for anything
+    // outside 5..120 (the frames keep their own time stamps, so the timing stays right).
+    if ((double) fn / (double) fd < 5.0 || (double) fn / (double) fd > 120.0) { fn = 30; fd = 1; }
     w &= ~1u; // H.264: even sizes
     h &= ~1u;
     if (w == 0 || h == 0) return "The camera file has no picture.";

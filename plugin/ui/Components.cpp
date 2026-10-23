@@ -1716,9 +1716,11 @@ void Timeline::resized()
     scroll.setBounds(getLocalBounds().withTrimmedLeft(kLabelW).removeFromBottom(kScrollH));
     const auto g = guitarLane();
     const auto bl = backingLane();
-    guitarPan.setBounds(kBoxW + 2, g.getCentreY() - 6, kLabelW - kBoxW - 10, 18);
-    delBacking.setBounds(4, bl.getCentreY() - 7, 14, 14);
-    delGuitar.setBounds(4, juce::jmax(bl.getBottom() + 2, g.getCentreY() - 21), 14, 14); // next to the name "GUITAR"
+    guitarPan.setBounds(4, g.getCentreY() - 6, kLabelW - kBoxW - 8, 18);
+    // right next to each track, centred on it (owner 2026-10-23)
+    const int bs = juce::jlimit(10, 14, juce::jmin(bl.getHeight(), g.getHeight()) - 2);
+    delBacking.setBounds(kLabelW - bs - 4, bl.getCentreY() - bs / 2, bs, bs);
+    delGuitar.setBounds(kLabelW - bs - 4, g.getCentreY() - bs / 2, bs, bs);
     if (confirming >= 0)
     {
         const auto lane = confirming == 0 ? bl : g;
@@ -1908,15 +1910,15 @@ void Timeline::paint(juce::Graphics& g)
     // labels
     g.setColour(textDim);
     g.setFont(Fonts::get().semibold(10.5f));
-    g.drawText("BACKING", backingLane().withX(kBoxW + 2).withWidth(kLabelW - kBoxW - 8), juce::Justification::centredLeft, false);
+    g.drawText("BACKING", backingLane().withX(0).withWidth(kLabelW - kBoxW - 4), juce::Justification::centredLeft, false);
     {
         const auto gl = guitarLane();
-        g.drawText("GUITAR", juce::Rectangle<int>(kBoxW + 2, gl.getCentreY() - 22, kLabelW - kBoxW - 8, 16), juce::Justification::centredLeft, false);
+        g.drawText("GUITAR", juce::Rectangle<int>(0, gl.getCentreY() - 22, kLabelW - kBoxW - 4, 16), juce::Justification::centredLeft, false);
         const int p = juce::roundToInt(guitarPan.getValue());
         g.setFont(Fonts::get().regular(10.5f));
         g.setColour(textFaint);
         g.drawText("PAN " + (p == 0 ? juce::String("C") : (p < 0 ? "L" : "R") + juce::String(std::abs(p))),
-                   juce::Rectangle<int>(kBoxW + 2, gl.getCentreY() + 12, kLabelW - kBoxW - 8, 14), juce::Justification::centredLeft, false);
+                   juce::Rectangle<int>(0, gl.getCentreY() + 12, kLabelW - kBoxW - 4, 14), juce::Justification::centredLeft, false);
         g.setColour(textDim);
         g.setFont(Fonts::get().semibold(10.5f));
     }
@@ -2563,7 +2565,7 @@ void PlayerPanel::finishVideoTake()
         return;
     }
     player.attachVideo(f, firstFrame);
-    setStatus("Video take recorded. To save it: SAVE AS... with MP4 VIDEO in the format list.");
+    setStatus("Video take recorded - the video with its sound is being made...");
     // the camera finishes its file a moment after STOP: check that it really exists
     juce::Timer::callAfterDelay(2500, [sp = juce::Component::SafePointer<PlayerPanel>(this), f] {
         if (sp == nullptr) return;
@@ -2571,8 +2573,7 @@ void PlayerPanel::finishVideoTake()
             sp->setStatus("VIDEO: the camera did not write a video file (" + f.getFileName()
                           + "). Is the camera used by another app? Please report it with your camera's name.");
         else
-            sp->setStatus("Video take recorded (" + juce::File::descriptionOfSizeInBytes(f.getSize())
-                          + "). To save it: SAVE AS... with MP4 VIDEO in the format list.");
+            sp->saveVideo(); // the video WITH its sound, right away (owner 2026-10-23); SAVE MP4 saves it again
     });
 }
 
