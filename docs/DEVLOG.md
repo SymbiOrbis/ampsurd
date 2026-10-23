@@ -6,6 +6,19 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-23 — Session 3n: camera window - PLAY, saving without a dialog — Claude (Opus 5.5)
+
+- Owner: saving the video does not work, the buttons do not react, the window only closes with X. Most
+  likely cause: the save dialog (and the "Replace?" dialog) opened behind the camera window, which stays on
+  top, and blocked the app. No dialogs any more: SAVE MP4 writes "AMPSURD video <date time>.mp4" straight
+  into Documents / AMPSURD / Recordings (status: the name, or the error text to report), SHOW FILE reveals
+  it; REC with a take there shows REPLACE? on the button (REC again within 3 s).
+- Owner: play the video back before saving. PLAY in the camera window: juce::VideoComponent plays the
+  take's camera file muted, the player plays the song from the matching position (song time = video time -
+  lead, the same sync as the saved MP4, incl. SOUND OFFSET); ends with the video, STOP, REC or SAVE.
+  Windows / macOS only (JUCE has no video playback on Linux).
+- Not testable here (no camera / video playback in the Linux build): needs the owner's test on Windows.
+
 ## 2026-10-22 — Session 3m: DOUBLER less flanger, camera window in front — Claude (Opus 5.5)
 
 - Owner: the DOUBLER sounds a bit like a flanger. Cause: an exact copy with a slowly moving delay summed with

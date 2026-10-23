@@ -47,8 +47,8 @@ New in 0.9.1:
 - Player: PAN for your guitar - the take is recorded where you pan it (stereo layering: record left,
   BOUNCE, record right). GUITAR VOL also sets your guitar on the monitors while recording.
 - VIDEO takes (standalone app): film yourself with the computer's camera while you record and save an MP4
-  with AMPSURD's sound (GUITAR + BACKING or GUITAR ONLY) - REC / STOP and SAVE MP4 right in the camera
-  window. Please report whether picture and sound are together (SOUND OFFSET fixes it).
+  with AMPSURD's sound (GUITAR + BACKING or GUITAR ONLY) - REC / STOP, PLAY (watch the take with its sound)
+  and SAVE MP4 (straight into Documents / AMPSURD / Recordings) right in the camera window. Please report whether picture and sound are together (SOUND OFFSET fixes it).
 - Blending amps keeps their tone: a 50:50 blend used to sound slightly darker than either amp alone (the
   highs of different amps partly cancel). AMPSURD now measures this per frequency band - also while you play,
   including your amp EQs - and corrects it with a slowly adapting, automatic EQ on the blend (one amp alone:

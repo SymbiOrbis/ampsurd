@@ -2409,6 +2409,9 @@ void PlayerPanel::setVideo(bool on)
         v.onRec = [this] { recordPressed(true); };
         v.onSave = [this] { saveVideo(); };
         v.onSoundChoice = [this](int id) { contentBox.setSelectedId(id, juce::sendNotificationSync); };
+        v.onShowFile = [this] { if (lastSavedVideo.existsAsFile()) lastSavedVideo.revealToUser(); };
+        v.hasSavedFile = [this] { return lastSavedVideo.existsAsFile(); };
+        v.replaceArmed = [this] { return replaceArmedAt > 0.0 && juce::Time::getMillisecondCounterHiRes() - replaceArmedAt < 3000.0; };
         v.setSoundChoice(contentBox.getSelectedId());
         cameraWindow->toFront(true);
         setStatus("VIDEO on: press REC in the camera window (or in the player) - picture from the camera, sound from AMPSURD.");
@@ -2448,31 +2451,17 @@ void PlayerPanel::recordPressed(bool fromCameraWindow)
     const auto st = player.getState();
     if (videoButton.getToggleState())
     {
+        if (cameraWindow != nullptr) cameraWindow->view().stopPlayback();
         if (st == S::recording || st == S::pausedRec) { player.stop(); return; } // a video take ends with REC or STOP
-        if (st != S::stopped && !fromCameraWindow) { setStatus("VIDEO: a video take starts from STOP (one continuous take)."); return; }
+        if (player.getState() != S::stopped && !fromCameraWindow) { setStatus("VIDEO: a video take starts from STOP (one continuous take)."); return; }
         if (!camera.isOpen()) { setStatus("VIDEO: no camera is open - see the camera window."); return; }
         if (player.hasTake() || !player.getClips().empty())
         {
-            if (fromCameraWindow)
-            {
-                // the camera window asks plainly instead of the "press twice" arming
-                auto opts = juce::MessageBoxOptions().withIconType(juce::MessageBoxIconType::QuestionIcon)
-                                .withTitle("New video take")
-                                .withMessage("There is already a take. Replace it with a new video take?\n(UNDO in the player brings the old one back.)")
-                                .withButton("REPLACE").withButton("CANCEL")
-                                .withAssociatedComponent(cameraWindow.get());
-                juce::AlertWindow::showAsync(opts, [sp = juce::Component::SafePointer<PlayerPanel>(this)](int result) {
-                    if (sp == nullptr || result != 1) return;
-                    sp->player.clearTake();
-                    sp->startVideoTake();
-                });
-                return;
-            }
             const double now = juce::Time::getMillisecondCounterHiRes();
             if (!(replaceArmedAt > 0.0 && now - replaceArmedAt < 3000.0))
             {
                 replaceArmedAt = now;
-                setStatus("REC again within 3 s: the take is replaced by a new video take (UNDO brings the old one back).");
+                setStatus("There is already a take: press REC again within 3 s to replace it with a new video take (UNDO brings the old one back).");
                 return;
             }
             replaceArmedAt = -1.0;
@@ -2520,33 +2509,37 @@ void PlayerPanel::saveVideo()
         setStatus("No video take yet: switch VIDEO on and record one (or wait a moment until the camera file is written).");
         return;
     }
+    if (videoSaving) { setStatus("The video is still being saved..."); return; }
+    // straight into Recordings, no dialog: a file dialog could open behind the camera window (which stays on
+    // top) and block the app (owner, 2026-10-23). SHOW FILE in the camera window opens the folder.
     const bool withBacking = contentBox.getSelectedId() == 1;
     auto folder = player.getRecordingsFolder();
     folder.createDirectory();
-    const auto suggested = folder.getNonexistentChildFile(withBacking ? "AMPSURD video" : "AMPSURD video guitar", ".mp4");
-    // in front of the camera window when it is open (it stays on top of AMPSURD)
-    juce::Component* parent = cameraWindow != nullptr ? static_cast<juce::Component*>(cameraWindow.get()) : nullptr;
-    chooser = std::make_unique<juce::FileChooser>("Save the video", suggested, "*.mp4", true, false, parent);
-    chooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
-                         [this, withBacking](const juce::FileChooser& fc) {
-                             auto f = fc.getResult();
-                             if (f == juce::File()) return;
-                             f = f.withFileExtension(".mp4");
-                             juce::AudioBuffer<float> mix;
-                             int start = 0;
-                             const auto err = player.renderMix(withBacking, mix, start);
-                             if (err.isNotEmpty()) { setStatus(err); return; }
-                             const double lead = player.videoAudioLeadSeconds(start);
-                             const double sr = player.getSampleRate();
-                             const auto video = player.getTakeVideo();
-                             setStatus("Saving the video... (about as long as the video itself)");
-                             juce::Thread::launch([sp = juce::Component::SafePointer<PlayerPanel>(this), video, mix = std::move(mix), sr, lead, f] {
-                                 const auto e = muxVideoToMp4(video, mix, sr, lead, f, {});
-                                 juce::MessageManager::callAsync([sp, e, f] {
-                                     if (sp != nullptr) sp->setStatus(e.isEmpty() ? "Saved: " + f.getFileName() : e);
-                                 });
-                             });
-                         });
+    const auto stamp = juce::Time::getCurrentTime().formatted("%Y-%m-%d %H-%M-%S");
+    const auto f = folder.getNonexistentChildFile((withBacking ? "AMPSURD video " : "AMPSURD video guitar ") + stamp, ".mp4");
+    juce::AudioBuffer<float> mix;
+    int start = 0;
+    const auto err = player.renderMix(withBacking, mix, start);
+    if (err.isNotEmpty()) { setStatus(err); return; }
+    const double lead = player.videoAudioLeadSeconds(start);
+    const double sr = player.getSampleRate();
+    const auto video = player.getTakeVideo();
+    videoSaving = true;
+    setStatus("Saving the video " + f.getFileName() + "... (about as long as the video itself)");
+    juce::Thread::launch([sp = juce::Component::SafePointer<PlayerPanel>(this), video, mix = std::move(mix), sr, lead, f] {
+        const auto e = muxVideoToMp4(video, mix, sr, lead, f, {});
+        juce::MessageManager::callAsync([sp, e, f] {
+            if (sp == nullptr) return;
+            sp->videoSaving = false;
+            if (e.isEmpty() && f.existsAsFile())
+            {
+                sp->lastSavedVideo = f;
+                sp->setStatus("Saved: " + f.getFileName() + " (Documents / AMPSURD / Recordings). SHOW FILE opens the folder.");
+            }
+            else
+                sp->setStatus("The video could not be saved: " + (e.isNotEmpty() ? e : juce::String("no file was written")) + ". Please report this text.");
+        });
+    });
 }
 
 void PlayerPanel::saveAs()

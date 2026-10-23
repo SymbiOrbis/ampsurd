@@ -257,14 +257,14 @@ REAPER picks up the new version.
     on the monitors while recording (not in the file). The scroll bar under the guitar track is 8 px high.
 
 42. VIDEO takes (standalone, needs a camera): PLAYER / REC -> VIDEO: the camera window opens (choose the
-    camera, you see yourself). In the camera window press REC: the song goes to the start, count-in /
-    recording starts, the window shows REC VIDEO and the time; play, then STOP (same button). SAVE MP4...
-    in the camera window (sound: GUITAR + BACKING or GUITAR ONLY, the same choice as in the player) -> an
-    .mp4 that plays in a normal video player (picture from the camera, sound from AMPSURD). The player's
-    status line is shown at the bottom of the camera window too. REC with a take already there asks
-    "Replace it?" (UNDO brings the old one back). REC in the player / the R key work as before (a second
-    REC within 3 s replaces). Check: are picture and sound together (clap or a hard pick stroke)? If not,
-    move SOUND OFFSET and save again; note the value. Close the camera window = VIDEO off.
+    camera, you see yourself; the window stays in front of AMPSURD). In the camera window: REC - the song goes
+    to the start, count-in / recording starts, the window shows REC VIDEO and the time; play, then STOP (same
+    button). PLAY - the take's video with AMPSURD's sound (STOP: same button). SAVE MP4 - saved straight into
+    Documents / AMPSURD / Recordings (no dialog), sound GUITAR + BACKING or GUITAR ONLY (next to it); the
+    status line at the bottom says the file name or why it failed; SHOW FILE opens the folder. REC with a
+    take already there shows REPLACE? - press REC again within 3 s (UNDO brings the old take back). Check:
+    are picture and sound together (clap or a hard pick stroke)? If not, move SOUND OFFSET, PLAY / save again;
+    note the value. Close the camera window = VIDEO off.
 
 43. Blend tone: load two different amps, 100:0 vs. 50:50 vs. 0:100 at matched loudness: the 50:50 blend
     should sound like "half of each", not darker than both. The automatic EQ learns while you play: give

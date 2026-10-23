@@ -48,9 +48,15 @@ CameraView::CameraView(VideoCapture& c, PlayerRecorder& p) : camera(c), player(p
     addAndMakeVisible(recButton);
     recButton.setTooltip("Starts a video take from the beginning (with count-in if it is on). Press again to stop. Shortcut: R");
     recButton.onClick = [this] { if (onRec) onRec(); };
+    addAndMakeVisible(playButton);
+    playButton.setTooltip("Plays the video take with AMPSURD's sound (the same as the saved video will have). Again: stop");
+    playButton.onClick = [this] { if (playingBack) stopPlayback(); else startPlayback(); };
     addAndMakeVisible(saveButton);
-    saveButton.setTooltip("Saves the video take as an .mp4: picture from the camera, sound from AMPSURD");
-    saveButton.onClick = [this] { if (onSave) onSave(); };
+    saveButton.setTooltip("Saves the video take as an .mp4 into Documents / AMPSURD / Recordings: picture from the camera, sound from AMPSURD");
+    saveButton.onClick = [this] { stopPlayback(); if (onSave) onSave(); };
+    addAndMakeVisible(showButton);
+    showButton.setTooltip("Shows the last saved video in Explorer / Finder");
+    showButton.onClick = [this] { if (onShowFile) onShowFile(); };
     addAndMakeVisible(soundBox);
     soundBox.addItem("GUITAR + BACKING", 1);
     soundBox.addItem("GUITAR ONLY", 2);
@@ -108,14 +114,22 @@ void CameraView::resized()
     offsetSlider.setBounds(bottom.removeFromLeft(juce::jmin(300, bottom.getWidth())));
     r.removeFromBottom(24); // the note above the offset
     auto controls = r.removeFromBottom(34);
-    recButton.setBounds(controls.removeFromLeft(110).withSizeKeepingCentre(110, 30));
-    controls.removeFromLeft(10);
-    saveButton.setBounds(controls.removeFromLeft(120).withSizeKeepingCentre(120, 30));
-    controls.removeFromLeft(10);
-    const int sw = juce::jmin(210, controls.getWidth());
+    recButton.setBounds(controls.removeFromLeft(96).withSizeKeepingCentre(96, 30));
+    controls.removeFromLeft(8);
+    playButton.setBounds(controls.removeFromLeft(86).withSizeKeepingCentre(86, 30));
+    controls.removeFromLeft(16);
+    saveButton.setBounds(controls.removeFromLeft(96).withSizeKeepingCentre(96, 30));
+    controls.removeFromLeft(8);
+    const int sw = juce::jmin(170, juce::jmax(0, controls.getWidth() - 104));
     soundBox.setBounds(controls.removeFromLeft(sw).withSizeKeepingCentre(sw, 26));
+    controls.removeFromLeft(8);
+    const int bw = juce::jmin(96, controls.getWidth());
+    showButton.setBounds(controls.removeFromLeft(bw).withSizeKeepingCentre(bw, 30));
     r.reduce(0, 8);
     if (preview != nullptr) preview->setBounds(r);
+   #if JUCE_WINDOWS || JUCE_MAC
+    if (playback != nullptr) playback->setBounds(r);
+   #endif
 }
 
 void CameraView::paint(juce::Graphics& g)
@@ -173,10 +187,21 @@ void CameraView::refresh()
     const juce::String recText = player.isCountingIn() ? "COUNT-IN " + juce::String(player.getCountInBeatsLeft())
                                : recording ? juce::String::charToString((juce::juce_wchar) 0x25A0) + " STOP"
                                            : juce::String::charToString((juce::juce_wchar) 0x25CF) + " REC";
-    if (recButton.getButtonText() != recText) recButton.setButtonText(recText);
+    const juce::String recShown = (!recording && !player.isCountingIn() && replaceArmed && replaceArmed()) ? juce::String("REPLACE?") : recText;
+    if (recButton.getButtonText() != recShown) recButton.setButtonText(recShown);
     recButton.setToggleState(recording, juce::dontSendNotification);
     recButton.setEnabled(camera.isOpen() || recording);
+    // playback ends with the video, or when the player was stopped elsewhere
+   #if JUCE_WINDOWS || JUCE_MAC
+    if (playingBack && (playback == nullptr || !playback->isPlaying() || st != S::playing)) stopPlayback();
+   #endif
+    const juce::String playText = playingBack ? juce::String::charToString((juce::juce_wchar) 0x25A0) + " STOP"
+                                              : juce::String::charToString((juce::juce_wchar) 0x25B6) + " PLAY";
+    if (playButton.getButtonText() != playText) playButton.setButtonText(playText);
+    playButton.setToggleState(playingBack, juce::dontSendNotification);
+    playButton.setEnabled(!recording && player.takeHasVideo());
     saveButton.setEnabled(!recording && player.takeHasVideo());
+    showButton.setEnabled(hasSavedFile && hasSavedFile());
     soundBox.setEnabled(!recording);
     if (camera.isRecording() != recordingShown)
     {
@@ -184,6 +209,55 @@ void CameraView::refresh()
         cameraBox.setEnabled(!recordingShown);
     }
     if (recordingShown) repaint(); // the running time
+}
+
+void CameraView::startPlayback()
+{
+   #if JUCE_WINDOWS || JUCE_MAC
+    const auto file = player.getTakeVideo();
+    if (!player.takeHasVideo()) { setStatus("No video take yet."); return; }
+    if (playback == nullptr || loadedVideo != file)
+    {
+        playback = std::make_unique<juce::VideoComponent>(false);
+        const auto r = playback->load(file);
+        if (r.failed()) { playback.reset(); setStatus("The video cannot be played: " + r.getErrorMessage()); return; }
+        loadedVideo = file;
+        addChildComponent(*playback);
+        resized();
+    }
+    playback->setAudioVolume(0.0f); // the camera has no sound worth hearing: AMPSURD plays it
+    // video time v belongs to song time v - lead (lead = how much earlier the song's start is than frame 0)
+    const double lead = player.videoAudioLeadSeconds(0);
+    const double song0 = juce::jmax(0.0, -lead), video0 = song0 + lead;
+    player.stop();
+    player.setPositionSeconds(song0);
+    playback->setPlayPosition(juce::jmax(0.0, video0));
+    if (preview != nullptr) preview->setVisible(false);
+    playback->setVisible(true);
+    playback->play();
+    player.play();
+    playingBack = true;
+    setStatus("Playing the video take with AMPSURD's sound. STOP: the same button.");
+    repaint();
+   #else
+    setStatus("Video playback is not available on this system.");
+   #endif
+}
+
+void CameraView::stopPlayback()
+{
+    if (!playingBack) return;
+    playingBack = false;
+   #if JUCE_WINDOWS || JUCE_MAC
+    if (playback != nullptr)
+    {
+        playback->stop();
+        playback->setVisible(false);
+    }
+   #endif
+    if (player.getState() == PlayerRecorder::State::playing) player.stop();
+    if (preview != nullptr) preview->setVisible(true);
+    repaint();
 }
 
 void CameraView::setStatus(const juce::String& s)
@@ -216,6 +290,7 @@ CameraWindow::CameraWindow(VideoCapture& c, PlayerRecorder& p, std::function<voi
 }
 CameraWindow::~CameraWindow()
 {
+    if (contentView != nullptr) contentView->stopPlayback();
     clearContentComponent();
     setLookAndFeel(nullptr);
 }

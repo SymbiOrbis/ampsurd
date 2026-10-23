@@ -630,8 +630,9 @@ private:
     juce::TextButton videoButton { "VIDEO" };
     VideoCapture camera;
     std::unique_ptr<CameraWindow> cameraWindow;
-    bool videoRecording = false;
+    bool videoRecording = false, videoSaving = false;
     double replaceArmedAt = -1.0;
+    juce::File lastSavedVideo;
 };
 
 // ---------------------------------------------------------------------------------------------

@@ -552,7 +552,7 @@ int main(int argc, char** argv)
         ampsurd::ui::CameraView view(cam, dummy);
         ampsurd::ui::LookAndFeel lf;
         view.setLookAndFeel(&lf);
-        view.setSize(560, 470);
+        view.setSize(600, 560); // as the real window
         save(view, out.getChildFile("20_camera_window.png"));
         view.setLookAndFeel(nullptr);
         std::cout << "[INFO] camera supported here: " << (VideoCapture::isSupported() ? "yes" : "no") << ", cameras: "
