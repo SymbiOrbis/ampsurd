@@ -236,15 +236,22 @@ public:
 
     // --- meters / diagnostics (any thread) ---
     float getCpuLoadPercent() const { return (float) loadMeasurer.getLoadAsPercentage(); }
-    // Dropouts since start: audio blocks AMPSURD did not finish in time, plus (standalone) the audio
-    // driver's own count of missed buffers. Any rise while playing = an audible click from CPU / driver.
+    // Dropouts: audio blocks AMPSURD did not finish in time, plus (standalone) the audio driver's own count
+    // of missed buffers. Any rise while playing = an audible click from CPU / driver. Not counted: the first
+    // 3 s after the audio starts and 2 s after an amp was loaded (the driver / the first block of a new
+    // capture are often late once - nothing you hear while playing). Message thread (editor timer).
     int getDropoutCount() const
     {
         int n = loadMeasurer.getXRunCount();
         if (deviceXRuns) n += juce::jmax(0, deviceXRuns());
-        return n;
+        const int last = dropLastRaw.exchange(n);
+        if (juce::Time::getMillisecondCounter() < dropGraceUntil.load() && n > last) dropBaseline += n - last;
+        return juce::jmax(0, n - dropBaseline.load());
     }
+    void startDropoutGrace(juce::uint32 ms) { dropGraceUntil.store(juce::jmax(dropGraceUntil.load(), juce::Time::getMillisecondCounter() + ms)); }
     void setDeviceXRunProvider(std::function<int()> f) { deviceXRuns = std::move(f); } // standalone, message thread
+    mutable std::atomic<int> dropLastRaw { 0 }, dropBaseline { 0 };
+    std::atomic<juce::uint32> dropGraceUntil { 0 };
     float getAndResetOutputPeak() { return outputPeak.exchange(0.0f); }
     float getAndResetOutputPeakL() { return outputPeakL.exchange(0.0f); } // left / right output (meter)
     float getAndResetOutputPeakR() { return outputPeakR.exchange(0.0f); }

@@ -371,6 +371,10 @@ void AmpsurdEditor::timerCallback()
         const int drops = proc.getDropoutCount();
         content.footer.setCpuText((drops > 0 ? "DROPOUTS " + juce::String(drops) + "   " : juce::String())
                                   + "CPU " + juce::String(juce::roundToInt(cpuAverage)) + "%");
+        content.footer.setTooltip(drops > 0 ? "DROPOUTS: how many times the audio was late since start - each one is a short click "
+                                              "(the computer or the audio driver did not keep up). If it rises while you play: a larger "
+                                              "buffer size (Options), ECO on the amps, or fewer amps."
+                                            : juce::String());
     }
     content.master.refresh();
     content.header.refresh();

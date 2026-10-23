@@ -557,6 +557,7 @@ bool AmpsurdProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 
 void AmpsurdProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
+    startDropoutGrace(3000); // starting audio: the first blocks / the driver are often late once
     const int maxBlock = juce::jmax(1, samplesPerBlock);
     const bool rateChanged = std::abs(sampleRate - currentSampleRate.load()) > 0.5;
     {
@@ -918,6 +919,7 @@ void AmpsurdProcessor::loadJob(int slot, juce::File file, int gen, bool /*adjust
     lastEco[(size_t) slot] = eco;
     engine.getSlot(slot).submit(std::move(result.model));
     setSlotStatus(slot, { SlotState::loaded, file.getFullPathName(), file.getFileNameWithoutExtension(), info, canEco, ecoActive });
+    startDropoutGrace(2000); // the new capture's first blocks
     {
         std::lock_guard<std::mutex> al(analysisMutex);
         auto& c = driveCurves[(size_t) slot];

@@ -661,7 +661,7 @@ private:
 // ---------------------------------------------------------------------------------------------
 // "BROUGHT TO YOU BY" + three equal logo areas. Logos are read from the embedded assets
 // plugin/assets/logos/logo_1|2|3.(svg|png); until they exist, clean placeholders are drawn.
-class BrandingFooter final : public juce::Component
+class BrandingFooter final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
     BrandingFooter();

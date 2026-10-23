@@ -6,6 +6,15 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-23 — Session 3p: DROPOUTS counter without the start-up one — Claude (Opus 5.5)
+
+- Owner: why is there always 1 dropout, what does it mean, does it need to be shown? It counts audio blocks
+  that were late (AMPSURD's own load measurer + the standalone driver's missed buffers) = audible clicks; it
+  is shown only when > 0. The constant 1 is almost certainly the start: the driver / the first blocks after
+  the audio starts (or after an amp is loaded) are often late once. Now not counted: the first 3 s after
+  prepareToPlay and 2 s after an amp finished loading. Tooltip on the footer explains it (larger buffer, ECO,
+  fewer amps). Not testable here (no real driver); owner to confirm it stays hidden.
+
 ## 2026-10-23 — Session 3o: UNDO takes back a BOUNCE — Claude (Opus 5.5)
 
 - Owner: not clear how to delete a bounced track. Before: BOUNCE replaced the backing and cleared the undo
