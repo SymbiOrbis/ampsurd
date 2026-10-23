@@ -57,6 +57,8 @@ New in 0.9.1:
 - DOUBLER (EXPERIMENTAL): double tracking from one guitar - 1 to 3 "second takes" left and right, each with
   its own timing, pitch and tone (TIGHT, LEVEL, WIDTH, LOW MONO, CHARACTER). No extra latency. Off by
   default. Feedback welcome.
+- SAVE AS can also save a pack (.ampsurdpack: the preset with its NAM captures and IRs) - end the name with
+  .ampsurdpack.
 - MUTE next to BYPASS: the whole output to silence (red while on). Player: delete a track with the X before
   its name (asks first); CLEAR TAKE removed.
 - Metronome: sharper HI-HAT click (or BEEP) and VOL up to +12 dB.

@@ -521,6 +521,11 @@ public:
     void resized() override;
     void refresh();
 
+    // SAVE AS writes what the chosen file type says: .ampsurd = the preset, .ampsurdpack = a pack (preset +
+    // the NAM / IR files it uses + README, the same as PRESET -> Export pack). Public for the tests.
+    bool saveAsFile(const juce::File& f, juce::String& error);
+    static constexpr const char* kSaveAsPatterns = "*.ampsurd;*.ampsurdpack";
+
 private:
     void showPresetMenu();
     void save(bool saveAs);

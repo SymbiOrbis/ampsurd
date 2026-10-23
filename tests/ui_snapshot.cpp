@@ -875,6 +875,47 @@ int main(int argc, char** argv)
         std::cout << (exported && nams == n && hasPreset && hasReadme && noFolders && imported && fromPack ? "[PASS]" : "[FAIL]")
                   << " PACK: exported " << zip.getNumEntries() << " files (" << nams << " captures + preset + README), imported and loaded from "
                   << unpacked.getFullPathName() << (err.isNotEmpty() ? " - " + err : juce::String()) << "\n";
+        // SAVE AS: the file dialog offers .ampsurd and .ampsurdpack; a .ampsurdpack name writes the pack (preset +
+        // captures + README, as PRESET -> Export pack), a .ampsurd name the preset
+        {
+            std::unique_ptr<juce::AudioProcessorEditor> ed2(p2.createEditor());
+            ampsurd::ui::HeaderBar* hb = nullptr;
+            juce::String tip;
+            std::function<void(juce::Component&)> find = [&](juce::Component& c) {
+                if (auto* h = dynamic_cast<ampsurd::ui::HeaderBar*>(&c)) hb = h;
+                if (auto* tb = dynamic_cast<juce::TextButton*>(&c)) if (tb->getButtonText() == "SAVE AS") tip = tb->getTooltip();
+                for (auto* ch : c.getChildren()) find(*ch);
+            };
+            find(*ed2);
+            const juce::String patterns = ampsurd::ui::HeaderBar::kSaveAsPatterns;
+            const auto pack2 = out.getChildFile("Save as pack.ampsurdpack"), preset2f = out.getChildFile("Save as preset.ampsurd");
+            pack2.deleteFile();
+            preset2f.deleteFile();
+            juce::String e2, e3;
+            const bool ok2 = hb != nullptr && hb->saveAsFile(pack2, e2);
+            const bool ok3 = hb != nullptr && hb->saveAsFile(preset2f, e3);
+            int nams2 = 0;
+            bool preset2 = false, readme2 = false;
+            if (ok2)
+            {
+                juce::ZipFile z2(pack2);
+                for (int k = 0; k < z2.getNumEntries(); ++k)
+                {
+                    const auto fn = z2.getEntry(k)->filename;
+                    nams2 += fn.endsWithIgnoreCase(".nam");
+                    preset2 = preset2 || fn.endsWithIgnoreCase(".ampsurd");
+                    readme2 = readme2 || fn == "README.txt";
+                }
+            }
+            const bool presetIsPreset = ok3 && preset2f.existsAsFile() && juce::ZipFile(preset2f).getNumEntries() == 0;
+            std::cout << (patterns.contains("*.ampsurd") && patterns.contains("*.ampsurdpack") && ok2 && nams2 >= 1 && preset2 && readme2
+                                  && presetIsPreset && tip == "Save the preset, or a pack with its NAM captures and IRs"
+                              ? "[PASS]" : "[FAIL]")
+                      << " SAVE AS: types '" << patterns << "'; .ampsurdpack -> pack with " << nams2 << " capture(s), preset " << preset2
+                      << ", README " << readme2 << "; .ampsurd -> preset " << presetIsPreset << " " << e2 << e3 << "\n";
+            pack2.deleteFile();
+            preset2f.deleteFile();
+        }
         if (fromPack) unpacked.deleteRecursively();
         pack.deleteFile();
     }

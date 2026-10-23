@@ -3660,6 +3660,7 @@ HeaderBar::HeaderBar(AmpsurdProcessor& p) : proc(p)
     presetButton.onClick = [this] { showPresetMenu(); };
     saveButton.onClick = [this] { save(false); };
     saveAsButton.onClick = [this] { save(true); };
+    saveAsButton.setTooltip("Save the preset, or a pack with its NAM captures and IRs");
     settingsButton.onClick = [this] { showSettings(); };
     presetButton.setTooltip("Presets store the complete rig: captures, mix, EQ, alignment and master");
     settingsButton.setTooltip("Settings");
@@ -3806,6 +3807,17 @@ void HeaderBar::showPresetMenu()
                     });
 }
 
+bool HeaderBar::saveAsFile(const juce::File& f, juce::String& error)
+{
+    if (f.hasFileExtension(".ampsurdpack")) return proc.exportPack(f, error); // preset + NAMs + IRs + README
+    if (!proc.savePreset(f.hasFileExtension(".ampsurd") ? f : f.withFileExtension(".ampsurd")))
+    {
+        error = "The preset could not be saved.";
+        return false;
+    }
+    return true;
+}
+
 void HeaderBar::exportPack()
 {
     const auto name = proc.getCurrentPresetName() == "Init" ? juce::String("My rig") : proc.getCurrentPresetName();
@@ -3854,12 +3866,22 @@ void HeaderBar::save(bool saveAs)
     proc.getPresetFolder().createDirectory();
     const auto suggestion = proc.getPresetFolder().getChildFile((proc.getCurrentPresetName() == "Init" ? juce::String("My rig")
                                                                                                        : proc.getCurrentPresetName()) + ".ampsurd");
-    chooser = std::make_unique<juce::FileChooser>("Save AMPSURD preset", suggestion, "*.ampsurd");
+    // file type .ampsurd = the preset, .ampsurdpack = a pack with the NAM captures and IRs (owner 2026-10-23)
+    chooser = std::make_unique<juce::FileChooser>("Save AMPSURD preset (.ampsurd) or pack with NAMs and IRs (.ampsurdpack)", suggestion,
+                                                  kSaveAsPatterns);
     chooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
                              | juce::FileBrowserComponent::warnAboutOverwriting,
                          [this](const juce::FileChooser& fc) {
                              const auto f = fc.getResult();
-                             if (f != juce::File()) proc.savePreset(f);
+                             if (f == juce::File()) return;
+                             juce::String err;
+                             const bool ok = saveAsFile(f, err);
+                             if (!ok)
+                                 juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, "Save as", err);
+                             else if (f.hasFileExtension(".ampsurdpack"))
+                                 juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon, "Pack saved",
+                                     f.getFullPathName() + "\n\nIt contains the preset and the capture / IR files it uses. Share it only "
+                                                           "when the licences of these files allow it.");
                              refresh();
                          });
 }

@@ -6,6 +6,17 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-23 — Session 3s: SAVE AS can write a pack — Claude (Opus 5.5)
+
+- Owner: SAVE AS should also offer .ampsurdpack (first asked for a small menu, then: just extend the file
+  type of the SAVE AS dialog). The dialog's file types are now "*.ampsurd;*.ampsurdpack": a name ending in
+  .ampsurdpack writes the pack (preset + used NAMs / IRs + README, the same as PRESET -> Export pack, with the
+  licence note afterwards), anything else the preset (.ampsurd). PRESET -> Export / Import unchanged.
+  Tooltip: "Save the preset, or a pack with its NAM captures and IRs". JUCE shows both patterns as ONE entry
+  in the Windows "Save as type" list.
+- ui_snapshot SAVE AS: both types offered; .ampsurdpack -> pack with 2 captures + preset + README;
+  .ampsurd -> a plain preset.
+
 ## 2026-10-23 — Session 3r: the video gets its sound automatically; delete boxes next to the tracks — Claude (Opus 5.5)
 
 - Owner: video and track are recorded, but separately - the video has no sound. Checked his Recordings
