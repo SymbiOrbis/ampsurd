@@ -12,8 +12,12 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
   type of the SAVE AS dialog). The dialog's file types are now "*.ampsurd;*.ampsurdpack": a name ending in
   .ampsurdpack writes the pack (preset + used NAMs / IRs + README, the same as PRESET -> Export pack, with the
   licence note afterwards), anything else the preset (.ampsurd). PRESET -> Export / Import unchanged.
-  Tooltip: "Save the preset, or a pack with its NAM captures and IRs". JUCE shows both patterns as ONE entry
-  in the Windows "Save as type" list.
+  Tooltip: "Save the preset, or a pack with its NAM captures and IRs". JUCE showed both patterns as ONE entry
+  in the Windows "Save as type" list - owner: they must be selectable one or the other. New SaveDialog
+  (own code): Windows = the system IFileSaveDialog with two entries ("AMPSURD preset (*.ampsurd)", "AMPSURD
+  pack with NAMs and IRs (*.ampsurdpack)", the extension follows the type); macOS = NSSavePanel with a
+  "Format" pop-up (the extension follows it); the chosen type decides the extension. Linux test builds keep
+  JUCE's chooser. Compiled for Windows / macOS by CI only.
 - ui_snapshot SAVE AS: both types offered; .ampsurdpack -> pack with 2 captures + preset + README;
   .ampsurd -> a plain preset.
 

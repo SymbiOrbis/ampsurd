@@ -46,11 +46,11 @@ target_sources(Ampsurd PRIVATE
   player/VideoCapture.cpp)
 # VIDEO takes: MP4 export with the operating system's own media framework
 if(WIN32)
-  target_sources(Ampsurd PRIVATE player/VideoMux_win.cpp)
+  target_sources(Ampsurd PRIVATE player/VideoMux_win.cpp ui/SaveDialog_win.cpp)
 elseif(APPLE)
-  target_sources(Ampsurd PRIVATE player/VideoMux_mac.mm)
+  target_sources(Ampsurd PRIVATE player/VideoMux_mac.mm ui/SaveDialog_mac.mm)
 else()
-  target_sources(Ampsurd PRIVATE player/VideoMux_none.cpp)
+  target_sources(Ampsurd PRIVATE player/VideoMux_none.cpp ui/SaveDialog_none.cpp)
 endif()
 
 # Embedded assets: fonts (Inter, SIL OFL), the footer logos (assets/logos/logo_1..3.svg|png) and the

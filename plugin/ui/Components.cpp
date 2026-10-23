@@ -1,4 +1,5 @@
 #include "Components.h"
+#include "SaveDialog.h"
 
 #include "BinaryData.h"
 #include "../UpdateCheck.h"
@@ -3866,7 +3867,25 @@ void HeaderBar::save(bool saveAs)
     proc.getPresetFolder().createDirectory();
     const auto suggestion = proc.getPresetFolder().getChildFile((proc.getCurrentPresetName() == "Init" ? juce::String("My rig")
                                                                                                        : proc.getCurrentPresetName()) + ".ampsurd");
-    // file type .ampsurd = the preset, .ampsurdpack = a pack with the NAM captures and IRs (owner 2026-10-23)
+    // file type .ampsurd = the preset, .ampsurdpack = a pack with the NAM captures and IRs (owner 2026-10-23):
+    // two separate "Save as type" entries (Windows) / a Format pop-up (macOS)
+    if (hasTypedSaveDialog())
+    {
+        int type = -1;
+        const auto f = showTypedSaveDialog(this, "Save AMPSURD preset or pack", suggestion,
+                                           { "AMPSURD preset", "AMPSURD pack with NAMs and IRs" }, { "ampsurd", "ampsurdpack" }, type);
+        if (f == juce::File()) return;
+        juce::String err;
+        const bool ok = saveAsFile(f, err);
+        if (!ok)
+            juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, "Save as", err);
+        else if (f.hasFileExtension(".ampsurdpack"))
+            juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon, "Pack saved",
+                f.getFullPathName() + "\n\nIt contains the preset and the capture / IR files it uses. Share it only "
+                                      "when the licences of these files allow it.");
+        refresh();
+        return;
+    }
     chooser = std::make_unique<juce::FileChooser>("Save AMPSURD preset (.ampsurd) or pack with NAMs and IRs (.ampsurdpack)", suggestion,
                                                   kSaveAsPatterns);
     chooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
