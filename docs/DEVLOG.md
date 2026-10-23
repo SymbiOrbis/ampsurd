@@ -6,6 +6,21 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-23 — Session 3q: delete boxes, MUTE, the owner's process rule — Claude (Opus 5.5)
+
+- Owner rule: answer questions and ASK before implementing a proposed solution (PROJECT_STATUS). The
+  DROPOUTS change (3p) was implemented without asking; the owner agreed afterwards.
+- Player: CLEAR TAKE removed; a square X (DeleteBox) before BACKING and GUITAR, tracks moved right (label
+  column 80 -> 104 px). X -> "Delete the ... track?" over the lane with DELETE (red) / CANCEL; guitar = clearTake
+  (UNDO brings it back), backing = removeBacking. Disabled while recording / when empty.
+- Master row: MUTE right of BYPASS - the whole output (incl. the player) to exact silence with a linear 20 ms
+  fade, back the same way; red when on (LookAndFeel property redWhenOn); not a parameter, so never saved
+  in a preset / project. Input / output blocks 240 px, BYPASS 80 px to make room.
+- ui_snapshot: MUTE (0.34 -> 0 -> 0.33, not in the state), DELETE BOXES (2 boxes, no CLEAR TAKE, CANCEL keeps,
+  DELETE removes, UNDO restores; 19b_player_delete.png).
+- Open questions to the owner: X on a bounced backing = delete it (now) or go back to the backing before the
+  bounce? Keep the REMOVE button next to LOAD BACKING (now the same as the X)?
+
 ## 2026-10-23 — Session 3p: DROPOUTS counter without the start-up one — Claude (Opus 5.5)
 
 - Owner: why is there always 1 dropout, what does it mean, does it need to be shown? It counts audio blocks

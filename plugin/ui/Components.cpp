@@ -1662,13 +1662,71 @@ Timeline::Timeline(PlayerRecorder& p) : player(p)
         repaint(0, 0, kLabelW, getHeight());
     };
     addAndMakeVisible(guitarPan);
+
+    delBacking.setTooltip("Delete the backing track (with everything bounced into it) - asks first");
+    delGuitar.setTooltip("Delete the guitar track - asks first (UNDO brings it back)");
+    delBacking.onClick = [this] { askDelete(0); };
+    delGuitar.onClick = [this] { askDelete(1); };
+    addAndMakeVisible(delBacking);
+    addAndMakeVisible(delGuitar);
+    confirmYes.getProperties().set("redWhenOn", true);
+    confirmYes.setToggleState(true, juce::dontSendNotification); // red: this deletes
+    confirmYes.onClick = [this] {
+        const int which = confirming;
+        askDelete(-1);
+        if (which == 0 && onDeleteBacking) onDeleteBacking();
+        if (which == 1 && onDeleteGuitar) onDeleteGuitar();
+    };
+    confirmNo.onClick = [this] { askDelete(-1); };
+    addChildComponent(confirmYes);
+    addChildComponent(confirmNo);
+}
+
+void DeleteBox::paintButton(juce::Graphics& g, bool highlighted, bool down)
+{
+    const auto r = getLocalBounds().toFloat().reduced(1.5f);
+    const auto c = !isEnabled() ? textFaint.withAlpha(0.4f) : (highlighted || down) ? accent : textDim;
+    g.setColour(c);
+    g.drawRoundedRectangle(r, 2.0f, 1.2f);
+    const auto x = r.reduced(r.getWidth() * 0.28f);
+    g.drawLine(x.getX(), x.getY(), x.getRight(), x.getBottom(), 1.4f);
+    g.drawLine(x.getRight(), x.getY(), x.getX(), x.getBottom(), 1.4f);
+}
+
+void Timeline::askDelete(int which)
+{
+    confirming = which;
+    confirmYes.setVisible(which >= 0);
+    confirmNo.setVisible(which >= 0);
+    resized();
+    repaint();
+}
+
+void Timeline::refreshDeleteBoxes(bool recording)
+{
+    const bool b = !recording && player.hasBacking();
+    const bool t = !recording && (player.hasTake() || !player.getClips().empty());
+    delBacking.setEnabled(b);
+    delGuitar.setEnabled(t);
+    if ((confirming == 0 && !b) || (confirming == 1 && !t)) askDelete(-1);
 }
 
 void Timeline::resized()
 {
     scroll.setBounds(getLocalBounds().withTrimmedLeft(kLabelW).removeFromBottom(kScrollH));
     const auto g = guitarLane();
-    guitarPan.setBounds(4, g.getCentreY() - 6, kLabelW - 12, 18);
+    const auto bl = backingLane();
+    guitarPan.setBounds(kBoxW + 2, g.getCentreY() - 6, kLabelW - kBoxW - 10, 18);
+    delBacking.setBounds(4, bl.getCentreY() - 7, 14, 14);
+    delGuitar.setBounds(4, juce::jmax(bl.getBottom() + 2, g.getCentreY() - 21), 14, 14); // next to the name "GUITAR"
+    if (confirming >= 0)
+    {
+        const auto lane = confirming == 0 ? bl : g;
+        auto r = lane.withTrimmedLeft(260).withSizeKeepingCentre(lane.getWidth() - 260, juce::jmin(26, lane.getHeight() - 2));
+        confirmYes.setBounds(r.removeFromLeft(80));
+        r.removeFromLeft(8);
+        confirmNo.setBounds(r.removeFromLeft(80));
+    }
     updateScrollBar();
 }
 
@@ -1850,15 +1908,15 @@ void Timeline::paint(juce::Graphics& g)
     // labels
     g.setColour(textDim);
     g.setFont(Fonts::get().semibold(10.5f));
-    g.drawText("BACKING", backingLane().withX(0).withWidth(kLabelW - 6), juce::Justification::centredLeft, false);
+    g.drawText("BACKING", backingLane().withX(kBoxW + 2).withWidth(kLabelW - kBoxW - 8), juce::Justification::centredLeft, false);
     {
         const auto gl = guitarLane();
-        g.drawText("GUITAR", juce::Rectangle<int>(0, gl.getCentreY() - 22, kLabelW - 6, 16), juce::Justification::centredLeft, false);
+        g.drawText("GUITAR", juce::Rectangle<int>(kBoxW + 2, gl.getCentreY() - 22, kLabelW - kBoxW - 8, 16), juce::Justification::centredLeft, false);
         const int p = juce::roundToInt(guitarPan.getValue());
         g.setFont(Fonts::get().regular(10.5f));
         g.setColour(textFaint);
         g.drawText("PAN " + (p == 0 ? juce::String("C") : (p < 0 ? "L" : "R") + juce::String(std::abs(p))),
-                   juce::Rectangle<int>(0, gl.getCentreY() + 12, kLabelW - 6, 14), juce::Justification::centredLeft, false);
+                   juce::Rectangle<int>(kBoxW + 2, gl.getCentreY() + 12, kLabelW - kBoxW - 8, 14), juce::Justification::centredLeft, false);
         g.setColour(textDim);
         g.setFont(Fonts::get().semibold(10.5f));
     }
@@ -1990,6 +2048,19 @@ void Timeline::paint(juce::Graphics& g)
         g.setColour(text);
         g.drawLine(px, (float) rulerArea().getY(), px, (float) lanes.getBottom(), 1.5f);
     }
+    // "delete?" over the track that asks
+    if (confirming >= 0)
+    {
+        const auto lane = confirming == 0 ? backingLane() : guitarLane();
+        g.setColour(background.withAlpha(0.92f));
+        g.fillRect(lane);
+        g.setColour(accent);
+        g.drawRect(lane, 1);
+        g.setColour(text);
+        g.setFont(Fonts::get().semibold(11.5f));
+        g.drawText(confirming == 0 ? "Delete the backing track?" : "Delete the guitar track? (UNDO brings it back)",
+                   lane.withTrimmedLeft(10).withWidth(246), juce::Justification::centredLeft, true);
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1998,7 +2069,7 @@ void Timeline::paint(juce::Graphics& g)
 PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), player(pl), timeline(pl)
 {
     addAndMakeVisible(timeline);
-    for (auto* b : { &startButton, &playButton, &pauseButton, &stopButton, &recButton, &undoButton, &clearButton, &zoomOutButton,
+    for (auto* b : { &startButton, &playButton, &pauseButton, &stopButton, &recButton, &undoButton, &zoomOutButton,
                      &zoomInButton, &fitButton, &loadButton, &removeButton, &saveButton, &bounceButton, &closeButton })
         addAndMakeVisible(*b);
     startButton.onClick = [this] { player.toStart(); };
@@ -2028,18 +2099,16 @@ PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), pla
                                           : "Bounce undone: your take is back (there was no backing track before).");
         }
     };
-    clearButton.onClick = [this] {
-        // removes the whole guitar track (UNDO brings it back) - click twice
-        const double now = juce::Time::getMillisecondCounterHiRes();
-        if (!(clearArmedAt > 0.0 && now - clearArmedAt < 3000.0))
-        {
-            clearArmedAt = now;
-            clearButton.setButtonText("SURE?");
-            return;
-        }
-        clearArmedAt = -1.0;
-        clearButton.setButtonText("CLEAR TAKE");
+    timeline.onDeleteGuitar = [this] {
+        if (videoRecording) return;
+        if (cameraWindow != nullptr) cameraWindow->view().stopPlayback();
         player.clearTake();
+        setStatus("Guitar track deleted (UNDO brings it back).");
+    };
+    timeline.onDeleteBacking = [this] {
+        if (cameraWindow != nullptr) cameraWindow->view().stopPlayback();
+        player.removeBacking();
+        setStatus("Backing track deleted.");
     };
     zoomInButton.onClick = [this] { timeline.zoomIn(); };
     zoomOutButton.onClick = [this] { timeline.zoomOut(); };
@@ -2060,7 +2129,6 @@ PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), pla
     pauseButton.setTooltip("Pause / continue (also while recording: the recording continues seamlessly)");
     undoButton.setTooltip("Undo the last recording or edge move - and, when there is none left, the last BOUNCE (the backing track "
                           "from before and your take come back)");
-    clearButton.setTooltip("Remove the whole guitar track (click twice; UNDO brings it back)");
     zoomInButton.setTooltip("Zoom in (or mouse wheel over the timeline; Shift + wheel scrolls)");
     zoomOutButton.setTooltip("Zoom out");
     fitButton.setTooltip("Show the whole song");
@@ -2202,8 +2270,6 @@ void PlayerPanel::resized()
     transport.removeFromLeft(6);
     transport.removeFromLeft(14);
     undoButton.setBounds(transport.removeFromLeft(70));
-    transport.removeFromLeft(6);
-    clearButton.setBounds(transport.removeFromLeft(104));
     transport.removeFromLeft(14);
     fitButton.setBounds(transport.removeFromRight(52));
     transport.removeFromRight(6);
@@ -2374,12 +2440,7 @@ void PlayerPanel::refresh()
     loadButton.setEnabled(!rec && !busy);
     removeButton.setEnabled(!rec && !busy && player.hasBacking());
     undoButton.setEnabled(!rec && player.canUndo());
-    clearButton.setEnabled(!rec && (player.hasTake() || !player.getClips().empty()));
-    if (clearArmedAt > 0.0 && juce::Time::getMillisecondCounterHiRes() - clearArmedAt > 3000.0)
-    {
-        clearArmedAt = -1.0;
-        clearButton.setButtonText("CLEAR TAKE");
-    }
+    timeline.refreshDeleteBoxes(rec);
     backLevel = std::max(player.getAndResetBackingPeak(), backLevel * 0.85f);
     takeLevel = std::max(player.getAndResetTakePeak(), takeLevel * 0.85f);
     timeline.followPlayhead();
@@ -3440,6 +3501,10 @@ MasterPanel::MasterPanel(AmpsurdProcessor& p) : proc(p), gate(p)
     bypassButton.setClickingTogglesState(true);
     addAndMakeVisible(bypassButton);
     bypassAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.params, "bypass", bypassButton);
+    addAndMakeVisible(muteButton);
+    muteButton.getProperties().set("redWhenOn", true);
+    muteButton.onClick = [this] { proc.setOutputMuted(!proc.isOutputMuted()); muteButton.setToggleState(proc.isOutputMuted(), juce::dontSendNotification); };
+    muteButton.setTooltip("MUTE: the whole output to silence (amps, effects and the player). Red = muted. Never saved with a preset");
     gateButton.setClickingTogglesState(true);
     addAndMakeVisible(gateButton);
     gateAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.params, "gateOn", gateButton);
@@ -3479,9 +3544,9 @@ void MasterPanel::resized()
     const int mid = row.getCentreY();
     auto r = row.reduced(16, 0);
     auto block = [&](juce::Slider& s, LevelMeter& m) {
-        auto b = r.removeFromLeft(268); // narrower since DOUBLER joined the buttons on the right
+        auto b = r.removeFromLeft(240); // narrower since DOUBLER and MUTE joined the buttons on the right
         b.removeFromLeft(64);
-        auto sl = b.removeFromLeft(118);
+        auto sl = b.removeFromLeft(104);
         s.setBounds(sl.withSizeKeepingCentre(sl.getWidth(), 24));
         b.removeFromLeft(14);
         m.setBounds(b.withSizeKeepingCentre(b.getWidth(), 6));
@@ -3509,7 +3574,9 @@ void MasterPanel::resized()
     }
     gateButton.setBounds(r.removeFromLeft(72).withSizeKeepingCentre(72, 28));
     r.removeFromLeft(6);
-    bypassButton.setBounds(r.removeFromLeft(86).withSizeKeepingCentre(86, 28));
+    bypassButton.setBounds(r.removeFromLeft(80).withSizeKeepingCentre(80, 28));
+    r.removeFromLeft(6);
+    muteButton.setBounds(r.removeFromLeft(64).withSizeKeepingCentre(64, 28));
 }
 
 void MasterPanel::paint(juce::Graphics& g)
@@ -3578,6 +3645,7 @@ void MasterPanel::refresh()
     frankButton.setToggleState(proc.isFrankensteinOn(), juce::dontSendNotification);
     rootButton.setToggleState(proc.isRootOn(), juce::dontSendNotification);
     doublerButton.setToggleState(proc.isDoublerOn(), juce::dontSendNotification);
+    muteButton.setToggleState(proc.isOutputMuted(), juce::dontSendNotification);
     if (limitHold != oldHold || limitHold > 0) repaint();
 }
 

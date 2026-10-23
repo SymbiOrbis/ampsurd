@@ -797,6 +797,19 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         }
         // standalone: record the guitar, add backing track + take, limit the sum
         if (player) player->process(L, R, n, latency, isNonRealtime());
+        {
+            // MUTE: everything (amps, effects, player) to silence
+            const double target = outputMuted.load(std::memory_order_relaxed) ? 1.0 : 0.0;
+            if (target != 0.0 || outMuteMix != 0.0)
+                for (int i = 0; i < n; ++i)
+                {
+                    // linear 20 ms fade: exactly silent when muted
+                    const double step = 1.0 / (0.020 * currentSampleRate.load(std::memory_order_relaxed));
+                    outMuteMix = target > outMuteMix ? juce::jmin(target, outMuteMix + step) : juce::jmax(target, outMuteMix - step);
+                    L[i] *= 1.0 - outMuteMix;
+                    R[i] *= 1.0 - outMuteMix;
+                }
+        }
         for (int i = 0; i < n; ++i)
         {
             double y = L[i];

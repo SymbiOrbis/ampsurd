@@ -1,6 +1,6 @@
 # AMPSURD — Project Status
 
-_Last updated: 2026-10-20 (Claude, session 3d)_
+_Last updated: 2026-10-23 (Claude, session 3q)_
 
 **Product name:** AMPSURD (formerly MONSTROSITY / QUINQUEPLEX).
 **What it is:** free, open-source (GNU AGPLv3) guitar plugin: one DI signal → up to five Neural
@@ -8,6 +8,9 @@ Amp Modeler captures in parallel → blended into one sound. Windows VST3 first.
 **Platforms:** Windows (VST3 + standalone) and macOS 10.15+ (VST3 + AU + standalone). **Owner rule
 (2026-10-20): every feature and look change is implemented for both Windows and macOS** (same code,
 both CI jobs green, docs for both).
+**Owner rule (2026-10-23): when the owner asks a QUESTION, answer it and ASK whether to implement the
+proposed solution - never implement a solution he has not approved.** (Requests he states as tasks are
+implemented directly.)
 **Current UI/UX specification:** `docs/UI_SPEC.md` (verbatim, 2026-10-07).
 
 > Everything below marked **tested** was run on a Linux build of the same code (unit tests,

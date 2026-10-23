@@ -477,6 +477,7 @@ private:
     AmpsurdProcessor& proc;
     juce::Slider inputSlider, outputSlider;
     juce::TextButton bypassButton { "BYPASS" }, gateButton { "GATE" }, frankButton { "FRANKENSTEIN" };
+    juce::TextButton muteButton { "MUTE" }; // the whole output to silence; red when on
     juce::TextButton rootButton { "ROOT" }; // experimental module (only with AMPSURD_ROOT)
     juce::TextButton doublerButton { "DOUBLER" }; // experimental module (only with AMPSURD_DOUBLER)
 
@@ -541,10 +542,21 @@ private:
 // Timeline of the player / recorder: backing track waveform above the guitar track waveform, a ruler,
 // the playhead and the clips (recorded corrections) with draggable start / end edges.
 // Click = go there, mouse wheel = zoom around the mouse, Shift + wheel (or horizontal) = scroll.
+// A square with an X: deletes the track next to it (asks first).
+class DeleteBox final : public juce::Button
+{
+public:
+    DeleteBox() : juce::Button("delete") {}
+    void paintButton(juce::Graphics&, bool highlighted, bool down) override;
+};
+
 class Timeline final : public juce::Component, private juce::ScrollBar::Listener
 {
 public:
     explicit Timeline(PlayerRecorder&);
+    // the X before each track: the panel deletes (backing: removeBacking, guitar: clearTake - UNDO brings it back)
+    std::function<void()> onDeleteBacking, onDeleteGuitar;
+    void refreshDeleteBoxes(bool recording); // ~30 Hz from the panel: enabled when there is something to delete
     void paint(juce::Graphics&) override;
     void resized() override;
     void mouseMove(const juce::MouseEvent&) override;
@@ -565,7 +577,9 @@ private:
     double xToTime(float x) const { return viewStart + (double) (x - (float) laneArea().getX()) * secondsPerPixel; }
     float timeToX(double t) const { return (float) laneArea().getX() + (float) ((t - viewStart) / secondsPerPixel); }
     double centreSeconds() const { return viewStart + 0.5 * secondsPerPixel * laneArea().getWidth(); }
-    static constexpr int kLabelW = 80; // left column: track names, the GUITAR track's PAN
+    static constexpr int kBoxW = 24;   // the delete box before each track name
+    static constexpr int kLabelW = 104; // left column: delete box, track names, the GUITAR track's PAN
+    void askDelete(int which);         // 0 backing, 1 guitar: shows DELETE / CANCEL over that track
     juce::Rectangle<int> laneArea() const { return getLocalBounds().withTrimmedLeft(kLabelW).withTrimmedBottom(kScrollH + 4); }
     static constexpr int kScrollH = 8; // half of the first version (owner, 2026-10-22)
     void scrollBarMoved(juce::ScrollBar*, double newRangeStart) override;
@@ -578,6 +592,9 @@ private:
     PlayerRecorder& player;
     juce::ScrollBar scroll { false }; // wide horizontal bar under the guitar track: drag to move along the song
     juce::Slider guitarPan;           // PAN of the GUITAR track (under its name)
+    DeleteBox delBacking, delGuitar;
+    juce::TextButton confirmYes { "DELETE" }, confirmNo { "CANCEL" };
+    int confirming = -1;              // which track asks "delete?" (-1 none)
     double viewStart = 0.0, secondsPerPixel = 0.02;
     bool fitted = false;
     EdgeHit hover, drag;
@@ -608,7 +625,7 @@ private:
     PlayerRecorder& player;
     Timeline timeline;
     juce::TextButton startButton { "|<" }, playButton { "PLAY" }, pauseButton { "PAUSE" }, stopButton { "STOP" }, recButton { "REC" },
-                     undoButton { "UNDO" }, clearButton { "CLEAR TAKE" }, zoomOutButton { "-" }, zoomInButton { "+" }, fitButton { "FIT" },
+                     undoButton { "UNDO" }, zoomOutButton { "-" }, zoomInButton { "+" }, fitButton { "FIT" },
                      loadButton { "LOAD BACKING" }, removeButton { "REMOVE" }, saveButton { "SAVE AS..." }, bounceButton { "BOUNCE" },
                      closeButton { "CLOSE" };
     juce::Slider backVol, takeVol, offset;
@@ -623,7 +640,6 @@ private:
     juce::Rectangle<int> beatArea;
     std::unique_ptr<juce::FileChooser> chooser;
     juce::String status;
-    double clearArmedAt = -1.0;
     float backLevel = 0.0f, takeLevel = 0.0f;
     juce::Rectangle<int> backMeter, takeMeter, statusArea, infoArea;
     // VIDEO takes (camera in its own window)

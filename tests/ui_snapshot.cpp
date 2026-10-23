@@ -140,6 +140,26 @@ int main(int argc, char** argv)
         for (int k = 0; k < 20; ++k) { buf.clear(); proc->processBlock(buf, midi); }
     }
 
+    // MUTE (master row): output to silence after a short fade, back when off; never saved with the state
+    {
+        auto tone = [&](juce::AudioBuffer<float>& b, int k) {
+            b.clear();
+            for (int i = 0; i < 256; ++i) b.setSample(0, i, 0.2f * (float) std::sin(2 * 3.14159265 * 110.0 * (k * 256 + i) / 48000.0));
+        };
+        juce::AudioBuffer<float> b(2, 256);
+        float before = 0, muted = 1, after = 0;
+        for (int k = 0; k < 20; ++k) { tone(b, k); proc->processBlock(b, midi); before = b.getMagnitude(0, 0, 256); }
+        proc->setOutputMuted(true);
+        juce::MemoryBlock state;
+        proc->getStateInformation(state);
+        for (int k = 0; k < 20; ++k) { tone(b, k); proc->processBlock(b, midi); muted = juce::jmax(b.getMagnitude(0, 0, 256), b.getMagnitude(1, 0, 256)); }
+        proc->setOutputMuted(false);
+        for (int k = 0; k < 20; ++k) { tone(b, k); proc->processBlock(b, midi); after = b.getMagnitude(0, 0, 256); }
+        const bool notSaved = !state.toString().contains("utMute");
+        std::cout << (before > 0.01f && muted < 1e-6f && after > 0.01f && notSaved ? "[PASS]" : "[FAIL]") << " MUTE: output " << before << " -> "
+                  << muted << " muted -> " << after << "; not saved with the state\n";
+    }
+
     float total = 0;
     for (int i = 0; i < 5; ++i) total += proc->params.getRawParameterValue(AmpsurdProcessor::slotParamId(i, "mix"))->load();
     std::cout << "after loading " << n << " captures, stored mix total = " << total << " %\n";
@@ -540,6 +560,45 @@ int main(int argc, char** argv)
         e->refreshAll();
         save(*ed, out.getChildFile("19_player.png"));
         pl->stop();
+        // the X before the GUITAR track asks first; DELETE removes the take, CANCEL keeps it
+        {
+            std::vector<ampsurd::ui::DeleteBox*> boxes;
+            std::function<void(juce::Component&)> collect = [&](juce::Component& c) {
+                if (auto* d = dynamic_cast<ampsurd::ui::DeleteBox*>(&c)) boxes.push_back(d);
+                for (auto* ch : c.getChildren()) if (ch->isVisible()) collect(*ch);
+            };
+            auto findButton = [&](const juce::String& t) -> juce::TextButton* {
+                std::function<juce::TextButton*(juce::Component&)> f = [&](juce::Component& c) -> juce::TextButton* {
+                    if (auto* tb = dynamic_cast<juce::TextButton*>(&c)) if (tb->getButtonText() == t && tb->isVisible()) return tb;
+                    for (auto* ch : c.getChildren()) if (ch->isVisible()) if (auto* r = f(*ch)) return r;
+                    return nullptr;
+                };
+                return f(*ed);
+            };
+            e->refreshAll();
+            collect(*ed);
+            pl->renderNow();
+            const bool hadTake = pl->hasTake();
+            bool ok = boxes.size() == 2 && hadTake && findButton("CLEAR TAKE") == nullptr;
+            if (ok)
+            {
+                boxes[1]->onClick(); // GUITAR (the second track)
+                auto* no = findButton("CANCEL");
+                ok = no != nullptr && findButton("DELETE") != nullptr;
+                if (no) no->onClick();
+                ok = ok && pl->hasTake() && findButton("DELETE") == nullptr;
+                boxes[1]->onClick();
+                save(*ed, out.getChildFile("19b_player_delete.png"));
+                if (auto* yes = findButton("DELETE")) yes->onClick();
+                pl->renderNow();
+                ok = ok && !pl->hasTake() && pl->hasBacking();
+                pl->undo();
+                pl->renderNow();
+                ok = ok && pl->hasTake();
+            }
+            std::cout << (ok ? "[PASS]" : "[FAIL]") << " DELETE BOXES: X before each track, no CLEAR TAKE; X GUITAR asks (CANCEL keeps it, "
+                      << "DELETE removes it, UNDO brings it back) (boxes " << boxes.size() << ", take " << hadTake << ")\n";
+        }
         proc->setNonRealtime(false);
         wavFile.deleteFile();
     }

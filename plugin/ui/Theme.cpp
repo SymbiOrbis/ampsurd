@@ -122,7 +122,9 @@ void LookAndFeel::drawButtonBackground(juce::Graphics& g, juce::Button& b, const
     const bool on = b.getToggleState();
     if (on)
     {
-        g.setColour(onFill.withAlpha(b.isEnabled() ? 1.0f : 0.3f));
+        // "redWhenOn": a warning switch (MUTE) is red when active, not white
+        const bool red = (bool) b.getProperties().getWithDefault("redWhenOn", false);
+        g.setColour((red ? accent : onFill).withAlpha(b.isEnabled() ? 1.0f : 0.3f));
         g.fillRoundedRectangle(r, 2.0f);
         return;
     }
@@ -155,7 +157,8 @@ void LookAndFeel::drawButtonText(juce::Graphics& g, juce::TextButton& b, bool, b
     using namespace colours;
     const bool on = b.getToggleState();
     g.setFont(getTextButtonFont(b, b.getHeight()));
-    g.setColour((on ? onText : text).withAlpha(b.isEnabled() ? 1.0f : 0.35f));
+    const bool red = on && (bool) b.getProperties().getWithDefault("redWhenOn", false);
+    g.setColour((red ? juce::Colours::white : on ? onText : text).withAlpha(b.isEnabled() ? 1.0f : 0.35f));
     g.drawFittedText(b.getButtonText(), b.getLocalBounds().reduced(3, 0), juce::Justification::centred, 1, 0.85f);
 }
 

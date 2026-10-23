@@ -252,6 +252,11 @@ public:
     void setDeviceXRunProvider(std::function<int()> f) { deviceXRuns = std::move(f); } // standalone, message thread
     mutable std::atomic<int> dropLastRaw { 0 }, dropBaseline { 0 };
     std::atomic<juce::uint32> dropGraceUntil { 0 };
+    // MUTE in the master row: the whole output (also the player's backing) fades to silence. Not a parameter:
+    // never saved with a preset or a project, so nothing ever loads muted.
+    void setOutputMuted(bool m) { outputMuted.store(m); }
+    bool isOutputMuted() const { return outputMuted.load(); }
+    std::atomic<bool> outputMuted { false };
     float getAndResetOutputPeak() { return outputPeak.exchange(0.0f); }
     float getAndResetOutputPeakL() { return outputPeakL.exchange(0.0f); } // left / right output (meter)
     float getAndResetOutputPeakR() { return outputPeakR.exchange(0.0f); }
@@ -393,6 +398,7 @@ private:
     std::vector<float> rawBuffer;
     std::atomic<bool> tunerVisible { false };
     double muteMix = 0.0;
+    double outMuteMix = 0.0; // MUTE (master row): whole output to silence, 20 ms fade
     std::atomic<float> gateKeyPeak { 0.0f }, gateGain { 1.0f };
     std::atomic<float>* gateOnParam = nullptr;
     std::atomic<float>* gateThresholdParam = nullptr;
