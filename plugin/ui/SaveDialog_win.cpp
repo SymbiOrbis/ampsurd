@@ -8,10 +8,12 @@
 #include <shobjidl.h>
 #include <wrl/client.h>
 
+#include <string>
 #include <vector>
 
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "uuid.lib")
 
 using Microsoft::WRL::ComPtr;
 
@@ -25,7 +27,9 @@ juce::File showTypedSaveDialog(juce::Component* parent, const juce::String& titl
     struct Uninit { HRESULT hr; ~Uninit() { if (SUCCEEDED(hr)) CoUninitialize(); } } uninit { init };
 
     ComPtr<IFileSaveDialog> dlg;
-    if (FAILED(CoCreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dlg)))) return {};
+    if (FAILED(CoCreateInstance(__uuidof(FileSaveDialog), nullptr, CLSCTX_INPROC_SERVER, __uuidof(IFileSaveDialog),
+                                reinterpret_cast<void**>(dlg.GetAddressOf()))))
+        return {};
 
     // "AMPSURD preset (*.ampsurd)" | "*.ampsurd" ...
     std::vector<std::wstring> names, specs;
@@ -46,7 +50,7 @@ juce::File showTypedSaveDialog(juce::Component* parent, const juce::String& titl
     {
         ComPtr<IShellItem> folder;
         if (SUCCEEDED(SHCreateItemFromParsingName(suggestion.getParentDirectory().getFullPathName().toWideCharPointer(), nullptr,
-                                                  IID_PPV_ARGS(&folder))))
+                                                  __uuidof(IShellItem), reinterpret_cast<void**>(folder.GetAddressOf()))))
             dlg->SetFolder(folder.Get());
     }
     dlg->SetFileName(suggestion.getFileNameWithoutExtension().toWideCharPointer());
@@ -60,10 +64,10 @@ juce::File showTypedSaveDialog(juce::Component* parent, const juce::String& titl
     UINT index = 1;
     dlg->GetFileTypeIndex(&index);
     ComPtr<IShellItem> item;
-    if (FAILED(dlg->GetResult(&item))) return {};
+    if (FAILED(dlg->GetResult(item.GetAddressOf()))) return {};
     PWSTR path = nullptr;
     if (FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)) || path == nullptr) return {};
-    juce::File f(juce::String(path));
+    const juce::File f(juce::String(static_cast<const wchar_t*>(path)));
     CoTaskMemFree(path);
     chosenType = juce::jlimit(0, extensions.size() - 1, (int) index - 1);
     return f.withFileExtension("." + extensions[chosenType]); // the chosen type decides
