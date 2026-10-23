@@ -297,6 +297,23 @@ int main()
     const float layered = mix.getSample(0, 24000);
     check(std::abs(layered - 0.85f) < 0.02f, "LAYERS: click + first take + second take all at 0.5 s (" + juce::String(layered, 3) + " = 0.5 + 0.2 + 0.15)");
 
+    // UNDO takes back the second take, then the BOUNCE: the original backing and the first take are back
+    {
+        pl->undo();
+        pl->renderNow();
+        const bool secondGone = !pl->hasTake() && pl->getBackingName().startsWith("Bounce") && pl->nextUndoIsBounce();
+        pl->undo();
+        pl->renderNow();
+        juce::AudioBuffer<float> m2;
+        int so = 0;
+        pl->renderMix(true, m2, so);
+        const float v = m2.getNumSamples() > 24000 ? m2.getSample(0, 24000) : 0.0f;
+        check(secondGone && pl->hasBacking() && pl->getBackingName() == back48.getFileNameWithoutExtension() && pl->hasTake()
+                  && std::abs(v - 0.7f) < 0.02f,
+              "UNDO BOUNCE: 1st UNDO = the 2nd take, 2nd UNDO = the bounce: backing '" + pl->getBackingName() + "' and the 1st take are back ("
+                  + juce::String(v, 3) + " = 0.5 + 0.2)");
+    }
+
     // 7. never clips: full-scale backing + loud guitar
     {
         juce::AudioBuffer<float> loud(2, (int) (sr * 2));

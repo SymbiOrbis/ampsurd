@@ -253,7 +253,8 @@ REAPER picks up the new version.
     Frankenstein on -> its map; the vertical GLOBAL button opens GLOBAL, its CLOSE returns.
 41. Player: PAN under GUITAR (left of the guitar track) is where your guitar sits - set it BEFORE REC: the
     take is recorded there (hard left = only the left channel) and plays back as recorded. Stereo layering:
-    PAN left, record, BOUNCE, PAN right, record the next take. GUITAR VOL: the take's level and your guitar
+    PAN left, record, BOUNCE, PAN right, record the next take. UNDO takes back the last recording and, when
+    there is none left, the last BOUNCE (the backing from before and the take come back). GUITAR VOL: the take's level and your guitar
     on the monitors while recording (not in the file). The scroll bar under the guitar track is 8 px high.
 
 42. VIDEO takes (standalone, needs a camera): PLAYER / REC -> VIDEO: the camera window opens (choose the

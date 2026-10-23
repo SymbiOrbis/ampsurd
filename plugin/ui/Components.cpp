@@ -2018,7 +2018,16 @@ PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), pla
                                ? juce::String("VIDEO on: REC also films you with the computer's camera (its own window). A video take is one "
                                               "continuous take from STOP; SAVE AS... -> MP4 VIDEO saves it with AMPSURD's sound")
                                : juce::String("Video recording is not available on this system"));
-    undoButton.onClick = [this] { player.undo(); };
+    undoButton.onClick = [this] {
+        const bool bounce = player.nextUndoIsBounce();
+        player.undo();
+        if (bounce)
+        {
+            backVol.setValue(player.getBackingGainDb(), juce::dontSendNotification);
+            setStatus(player.hasBacking() ? "Bounce undone: the backing track from before and your take are back."
+                                          : "Bounce undone: your take is back (there was no backing track before).");
+        }
+    };
     clearButton.onClick = [this] {
         // removes the whole guitar track (UNDO brings it back) - click twice
         const double now = juce::Time::getMillisecondCounterHiRes();
@@ -2040,19 +2049,23 @@ PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), pla
     saveButton.onClick = [this] { saveAs(); };
     bounceButton.onClick = [this] {
         setStatus("Bouncing...");
-        player.bounce([this](const juce::String& err) { setStatus(err.isEmpty() ? "Bounced: backing + take are the new backing track. Record the next layer." : err); });
+        player.bounce([this](const juce::String& err) {
+            setStatus(err.isEmpty() ? "Bounced: backing + take are the new backing track. Record the next layer. (UNDO takes the bounce back.)" : err);
+        });
     };
     closeButton.onClick = [this] { if (onClose) onClose(); };
     startButton.setTooltip("Back to the start");
     recButton.setTooltip("No take yet: record it. With a take: punch in a correction here (the take is replaced from this point); "
                          "press again to punch out. Start PLAY a little earlier, then the correction's start can later be dragged earlier too.");
     pauseButton.setTooltip("Pause / continue (also while recording: the recording continues seamlessly)");
-    undoButton.setTooltip("Undo the last recording or edge move");
+    undoButton.setTooltip("Undo the last recording or edge move - and, when there is none left, the last BOUNCE (the backing track "
+                          "from before and your take come back)");
     clearButton.setTooltip("Remove the whole guitar track (click twice; UNDO brings it back)");
     zoomInButton.setTooltip("Zoom in (or mouse wheel over the timeline; Shift + wheel scrolls)");
     zoomOutButton.setTooltip("Zoom out");
     fitButton.setTooltip("Show the whole song");
-    bounceButton.setTooltip("Mix backing + take into a new backing track, to record another layer on top");
+    bounceButton.setTooltip("Mix backing + take into a new backing track, to record another layer on top. UNDO takes it back");
+    removeButton.setTooltip("Remove the backing track (with everything bounced into it). To take back only the last BOUNCE: UNDO");
     saveButton.setTooltip("Save the recording (guitar alone, or with the backing track)");
     loadButton.setTooltip("Backing track or click track: WAV, FLAC, MP3, OGG, AIFF");
 

@@ -45,7 +45,8 @@ New in 0.9.1:
 - NOISE GATE always at hand: its meter, THRESHOLD and DECAY sit above INPUT at the bottom, visible while
   you edit amps and mix. The centre area shows GLOBAL by default: TUNER, Global EQ and the effects.
 - Player: PAN for your guitar - the take is recorded where you pan it (stereo layering: record left,
-  BOUNCE, record right). GUITAR VOL also sets your guitar on the monitors while recording.
+  BOUNCE, record right). UNDO also takes back a BOUNCE. GUITAR VOL also sets your guitar on the monitors while
+  recording.
 - VIDEO takes (standalone app): film yourself with the computer's camera while you record and save an MP4
   with AMPSURD's sound (GUITAR + BACKING or GUITAR ONLY) - REC / STOP, PLAY (watch the take with its sound)
   and SAVE MP4 (straight into Documents / AMPSURD / Recordings) right in the camera window. Please report whether picture and sound are together (SOUND OFFSET fixes it).

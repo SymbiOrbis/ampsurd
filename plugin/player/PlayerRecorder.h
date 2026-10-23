@@ -97,7 +97,10 @@ public:
     // moves the edges of clip `index` (clamped to the recorded audio, at least 50 ms long); re-renders
     void setClipEdges(int index, juce::int64 in, juce::int64 out);
     void removeClip(int index);
-    bool canUndo() const { return !undoStack.empty(); }
+    // UNDO: the last recording / edge move, and - when there is none left - the last BOUNCE (the backing
+    // track before it and the guitar track come back; the bounce file stays in Recordings).
+    bool canUndo() const { return !undoStack.empty() || !bounceStack.empty(); }
+    bool nextUndoIsBounce() const { return undoStack.empty() && !bounceStack.empty(); }
     void undo();
     void clearTake();                  // remove the whole guitar track (files stay in Recordings/Takes)
 
@@ -241,6 +244,16 @@ private:
     // clips + composite
     std::vector<Clip> clips;
     std::vector<std::vector<Clip>> undoStack;
+    struct BounceUndo
+    {
+        juce::File backing;                    // none = there was no backing track
+        float backingGainDb = 0.0f;
+        std::vector<Clip> clips;
+        std::vector<std::vector<Clip>> undo;
+        juce::File video;
+        double videoFrame0 = 0.0;
+    };
+    std::vector<BounceUndo> bounceStack;
     std::atomic<int> renderGeneration { 0 }, adoptedGeneration { 0 };
     juce::String renderError;
     juce::ThreadPool renderJobs { juce::ThreadPoolOptions {}.withThreadName("AMPSURD composite").withNumberOfThreads(1) };

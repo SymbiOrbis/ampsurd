@@ -6,6 +6,15 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-23 — Session 3o: UNDO takes back a BOUNCE — Claude (Opus 5.5)
+
+- Owner: not clear how to delete a bounced track. Before: BOUNCE replaced the backing and cleared the undo
+  history; only REMOVE (the whole backing, original song included) was left. Now the bounce remembers the
+  backing file + VOL, the guitar track's clips, its undo history and the video; UNDO first undoes recordings
+  made after the bounce, then the bounce itself (bounce files stay in Recordings). Tooltips / status say so.
+  recorder_test UNDO BOUNCE: 1st UNDO = the 2nd take, 2nd UNDO = the bounce: backing 'clicks48' and the
+  1st take back (0.700 = 0.5 + 0.2).
+
 ## 2026-10-23 — Session 3n: camera window - PLAY, saving without a dialog — Claude (Opus 5.5)
 
 - Owner: saving the video does not work, the buttons do not react, the window only closes with X. Most
