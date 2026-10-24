@@ -22,6 +22,13 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 - Docs: README, BUILD_WINDOWS / BUILD_MACOS, CODE_SIGNING, RELEASE_SIGNING, RELEASE_NOTES.
 - Note: v0.9.1 (published as a pre-release with versioned names) does not answer the /latest/download links;
   they work from the next release on (or if v0.9.1 is changed - asked the owner).
+- Website material: tests/ui_snapshot has a web shots mode (AMPSURD_WEB_SHOTS=1 AMPSURD_FORCE_PLAYER=1,
+  `ui_snapshot <dir> <a.nam> <b.nam> <c.nam>`): a demo rig (the three NAM Core example captures under honest
+  names, a synthetic demo cabinet IR, mix 40/35/25, pans L30/C/R30, Global EQ, gate), the whole window and
+  precise 2x crops of each feature (slots, GLOBAL, tuner, gate / output row, header, EDIT EQ, COPY / PASTE, IR,
+  delay, reverb, pitch, Frankenstein, ROOT, DOUBLER, player with backing, take and metronome, preset menu drawn
+  with AMPSURD's look). 18 PNGs in website/screenshots/, plain-language texts in website/FEATURES.md (checked
+  against the code / tooltips). Camera window not shot (no camera here).
 
 ## 2026-10-24 — Session 3v: macOS signing + notarization in CI — Claude (Opus 5.5)
 

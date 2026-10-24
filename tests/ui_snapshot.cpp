@@ -36,12 +36,321 @@ static void setP(AmpsurdProcessor& p, const juce::String& id, float v)
     if (auto* rp = p.params.getParameter(id)) rp->setValueNotifyingHost(rp->convertTo0to1(v));
 }
 
+
+// ------------------------------------------------------------------------------------------------
+// Website screenshots (AMPSURD_WEB_SHOTS=1): a demo rig, the whole window and precise crops of the main
+// features, rendered at 2x. ui_snapshot <outDir> <a.nam> <b.nam> <c.nam>
+// ------------------------------------------------------------------------------------------------
+template <typename T>
+static T* findVisible(juce::Component& c)
+{
+    if (auto* t = dynamic_cast<T*>(&c)) if (c.isVisible()) return t;
+    for (auto* ch : c.getChildren())
+        if (ch->isVisible())
+            if (auto* r = findVisible<T>(*ch)) return r;
+    return nullptr;
+}
+
+static void writePng(const juce::Image& img, const juce::File& f)
+{
+    f.deleteFile();
+    juce::FileOutputStream os(f);
+    juce::PNGImageFormat().writeImageToStream(img, os);
+    std::cout << "wrote " << f.getFileName() << " (" << img.getWidth() << " x " << img.getHeight() << ")\n";
+}
+
+static void writeWav(const juce::File& f, const juce::AudioBuffer<float>& b, double sr)
+{
+    f.deleteFile();
+    std::unique_ptr<juce::OutputStream> os = f.createOutputStream();
+    juce::WavAudioFormat wav;
+    auto w = wav.createWriterFor(os, juce::AudioFormatWriterOptions {}.withSampleRate(sr).withNumChannels(b.getNumChannels()).withBitsPerSample(24));
+    w->writeFromAudioSampleBuffer(b, 0, b.getNumSamples());
+}
+
+static int webShots(const juce::File& out, int argc, char** argv)
+{
+    out.createDirectory();
+    const double sr = 48000.0;
+    const auto tmp = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("ampsurd-web-demo");
+    tmp.deleteRecursively();
+    tmp.createDirectory();
+    // the NAM Core example captures under plain names (what they are: examples, not real amp names)
+    const char* names[3] = { "NAM example A2", "NAM example LSTM", "NAM example WaveNet" };
+    juce::Array<juce::File> caps;
+    for (int i = 0; i < juce::jmin(3, argc - 2); ++i)
+    {
+        const auto dst = tmp.getChildFile(juce::String(names[i]) + ".nam");
+        juce::File(argv[i + 2]).copyFileTo(dst);
+        caps.add(dst);
+    }
+    // a synthetic demo cabinet IR (decaying, filtered noise)
+    const auto irFile = tmp.getChildFile("Demo cabinet IR.wav");
+    {
+        juce::AudioBuffer<float> ir(1, 7200);
+        juce::Random rnd(7);
+        double lp = 0, hp = 0, prev = 0;
+        for (int i = 0; i < ir.getNumSamples(); ++i)
+        {
+            const double n = rnd.nextFloat() * 2.0 - 1.0;
+            lp += (n - lp) * 0.35;                       // ~4-5 kHz roll-off
+            hp = 0.995 * (hp + lp - prev); prev = lp;     // no DC
+            ir.setSample(0, i, (float) (hp * std::exp(-i / 700.0) * 0.6));
+        }
+        writeWav(irFile, ir, sr);
+    }
+    // a backing track: a simple bass line and a hi-hat-like tick, 12 s
+    const auto backFile = tmp.getChildFile("Demo backing.wav");
+    {
+        juce::AudioBuffer<float> b(2, (int) (12 * sr));
+        juce::Random rnd(3);
+        const double notes[4] = { 41.2, 41.2, 49.0, 36.7 };
+        for (int i = 0; i < b.getNumSamples(); ++i)
+        {
+            const double t = i / sr, beat = std::fmod(t, 0.5), bar = std::floor(t / 2.0);
+            const double f = notes[(int) bar % 4];
+            const double bass = 0.25 * std::sin(2 * juce::MathConstants<double>::pi * f * t) * std::exp(-beat * 3.0);
+            const double tick = beat < 0.03 ? 0.08 * (rnd.nextFloat() * 2 - 1) * (1.0 - beat / 0.03) : 0.0;
+            b.setSample(0, i, (float) (bass + tick));
+            b.setSample(1, i, (float) (bass + tick));
+        }
+        writeWav(backFile, b, sr);
+    }
+
+    auto proc = std::make_unique<AmpsurdProcessor>();
+    proc->prepareToPlay(sr, 256);
+    proc->setNonRealtime(true);
+    for (int i = 0; i < caps.size(); ++i) proc->loadCapture(i, caps[i]);
+    for (int t = 0; t < 600; ++t)
+    {
+        bool busy = false;
+        for (int i = 0; i < caps.size(); ++i) busy = busy || proc->getSlotStatus(i).state == AmpsurdProcessor::SlotState::loading;
+        if (!busy) break;
+        pump(50);
+    }
+    juce::MidiBuffer midi;
+    juce::AudioBuffer<float> buf(2, 256);
+    const auto test = ampsurd::CaptureAnalyzer::makeTestSignal(sr);
+    size_t testPos = 0;
+    // plays the guitar-like test signal (meters, gate, tuner, learning) for `seconds`
+    auto play = [&](double seconds, std::function<float(size_t)> src = {}) {
+        for (int k = 0; k < (int) (seconds * sr / 256); ++k)
+        {
+            buf.clear();
+            for (int i = 0; i < 256; ++i)
+            {
+                buf.setSample(0, i, src ? src(testPos) : (float) test[testPos % test.size()]);
+                ++testPos;
+            }
+            proc->processBlock(buf, midi);
+        }
+    };
+    play(0.5);
+    for (int t = 0; t < 600 && !(proc->getAlignInfo(0).measured && proc->getAlignInfo(caps.size() - 1).measured); ++t)
+    {
+        play(0.02);
+        pump(20);
+    }
+    // the demo rig: mix 45 / 35 / 20, pans, an IR on amp 2, Global EQ, gate
+    proc->beginMixGesture(0); proc->setMixLinked(0, 45.0f); proc->endMixGesture(0);
+    proc->beginMixGesture(1); proc->setMixLinked(1, 35.0f); proc->endMixGesture(1);
+    setP(*proc, AmpsurdProcessor::slotParamId(0, "pan"), -30.0f);
+    setP(*proc, AmpsurdProcessor::slotParamId(2, "pan"), 30.0f);
+    proc->loadIr(1, irFile);
+    for (int t = 0; t < 200 && proc->getIrStatus(1).state != AmpsurdProcessor::IrState::loaded; ++t) { play(0.02); pump(20); }
+    const int G = AmpsurdProcessor::kGlobalEq;
+    setP(*proc, AmpsurdProcessor::slotParamId(G, "eqOn"), 1.0f);
+    setP(*proc, AmpsurdProcessor::bandParamId(G, 0, "freq"), 80.0f);
+    setP(*proc, AmpsurdProcessor::bandParamId(G, 3, "gain"), -2.5f);
+    setP(*proc, AmpsurdProcessor::bandParamId(G, 7, "gain"), 2.0f);
+    setP(*proc, AmpsurdProcessor::bandParamId(G, 9, "freq"), 10000.0f);
+    setP(*proc, "gateOn", 1.0f);
+    setP(*proc, "gateThreshold", -58.0f);
+    for (int t = 0; t < 30; ++t) { play(0.05); proc->runHousekeeping(); }
+
+    std::unique_ptr<juce::AudioProcessorEditor> ed(proc->createEditor());
+    auto* e = dynamic_cast<AmpsurdEditor*>(ed.get());
+    auto settle = [&](double seconds, std::function<float(size_t)> src = {}) {
+        for (int t = 0; t < (int) (seconds / 0.033); ++t) { play(0.033, src); proc->runHousekeeping(); e->refreshAll(); }
+    };
+    // full window, or the part of it that `c` covers (2x)
+    auto shot = [&](const juce::String& file, juce::Component* c = nullptr, int pad = 0) {
+        e->refreshAll();
+        auto img = ed->createComponentSnapshot(ed->getLocalBounds(), true, 2.0f);
+        if (c != nullptr)
+        {
+            auto r = ed->getLocalArea(c, c->getLocalBounds()).expanded(pad).getIntersection(ed->getLocalBounds());
+            img = img.getClippedImage(r * 2);
+        }
+        writePng(img, out.getChildFile(file));
+    };
+    auto shotUnion = [&](const juce::String& file, juce::Rectangle<int> r) {
+        auto img = ed->createComponentSnapshot(ed->getLocalBounds(), true, 2.0f);
+        writePng(img.getClippedImage(r.getIntersection(ed->getLocalBounds()) * 2), out.getChildFile(file));
+    };
+
+    // 1. the whole window, the default view (GLOBAL: tuner, Global EQ, effects); the tuner sees a held A string
+    auto noteA = [&](size_t i) { const double t = (double) i / sr;
+        double v = 0; for (int h = 1; h <= 6; ++h) v += std::sin(2 * juce::MathConstants<double>::pi * 110.0 * h * t) / h;
+        return (float) (0.25 * v); };
+    settle(1.0);
+    settle(0.6, noteA);
+    shot("01_full_window.png");
+    {
+        // 2. the five amp slots (faders, PAN, EDIT / IR / SOLO / MUTE)
+        juce::Rectangle<int> r;
+        std::function<void(juce::Component&)> slots = [&](juce::Component& c) {
+            if (dynamic_cast<ampsurd::ui::SlotComponent*>(&c) != nullptr) r = r.isEmpty() ? ed->getLocalArea(&c, c.getLocalBounds()) : r.getUnion(ed->getLocalArea(&c, c.getLocalBounds()));
+            for (auto* ch : c.getChildren()) slots(*ch);
+        };
+        slots(*ed);
+        shotUnion("02_amp_slots.png", r.expanded(4));
+    }
+    shot("03_global_tuner_eq_effects.png", findVisible<ampsurd::ui::GlobalEqPanel>(*ed), 2);
+    shot("04_tuner.png", findVisible<ampsurd::ui::TunerPanel>(*ed), 4);
+    settle(0.6);
+    shot("05_gate_input_output.png", findVisible<ampsurd::ui::MasterPanel>(*ed), 2);
+    shot("06_header_presets_undo_ab.png", findVisible<ampsurd::ui::HeaderBar>(*ed), 2);
+
+    // 3. EDIT: an amp's EQ, INPUT / OUTPUT, alignment; then COPY on amp 1 -> PASTE on amp 2
+    setP(*proc, AmpsurdProcessor::slotParamId(0, "eqOn"), 1.0f);
+    setP(*proc, AmpsurdProcessor::bandParamId(0, 2, "gain"), 3.0f);
+    setP(*proc, AmpsurdProcessor::bandParamId(0, 5, "gain"), -4.0f);
+    setP(*proc, AmpsurdProcessor::bandParamId(0, 7, "gain"), 2.5f);
+    setP(*proc, AmpsurdProcessor::bandParamId(0, 0, "freq"), 90.0f);
+    e->selectSlot(0);
+    settle(0.5);
+    shot("07_amp_edit_eq.png", findVisible<ampsurd::ui::EditPanel>(*ed), 2);
+    proc->copyEq(0);
+    e->selectSlot(1);
+    settle(0.3);
+    shot("08_eq_copy_paste.png", findVisible<ampsurd::ui::EditPanel>(*ed), 2);
+    e->selectSlot(-1);
+
+    // 4. the cabinet IR on amp 2 with its own EQ
+    e->showIr(1);
+    settle(0.3);
+    shot("09_cabinet_ir.png", findVisible<ampsurd::ui::IrPanel>(*ed), 2);
+    e->showIr(-1);
+
+    // 5. effects (in GLOBAL): delays, reverb, PITCH
+    setP(*proc, "fxD1On", 1.0f); setP(*proc, "fxD1Time", 380.0f);
+    setP(*proc, "fxD2On", 1.0f); setP(*proc, "fxD2Time", 756.0f); setP(*proc, "fxD2PingPong", 1.0f);
+    setP(*proc, "fxRevOn", 1.0f); setP(*proc, "fxRevType", 3.0f); setP(*proc, "fxRevDecay", 4.5f); setP(*proc, "fxRevPreDelay", 30.0f);
+    e->showGlobalEq(true);
+    e->showFxPage(0);
+    settle(0.3);
+    shot("10_effects_delay.png", findVisible<ampsurd::ui::GlobalEqPanel>(*ed), 2);
+    e->showFxPage(2);
+    settle(0.2);
+    shot("11_effects_reverb.png", findVisible<ampsurd::ui::GlobalEqPanel>(*ed), 2);
+    setP(*proc, "pitchOn", 1.0f); setP(*proc, "pitchSemi", -2.0f);
+    e->showFxPage(4);
+    settle(0.2);
+    shot("12_pitch_retune.png", findVisible<ampsurd::ui::GlobalEqPanel>(*ed), 2);
+    setP(*proc, "pitchOn", 0.0f);
+    setP(*proc, "fxD1On", 0.0f); setP(*proc, "fxD2On", 0.0f); setP(*proc, "fxRevOn", 0.0f);
+    e->showFxPage(0);
+
+    // 6. Frankenstein: lows from one amp, mids from another, highs from a third
+    proc->setFrankenstein(true);
+    proc->setFrankensteinSections(3);
+    setP(*proc, "frankWidth", 40.0f);
+    setP(*proc, "frankAmp1", 1.0f);
+    setP(*proc, "frankAmp2", 0.0f);
+    setP(*proc, "frankAmp3", 2.0f);
+    settle(0.5);
+    shot("13_frankenstein.png", findVisible<ampsurd::ui::FrankensteinPanel>(*ed), 2);
+    proc->setFrankenstein(false);
+    settle(0.3);
+
+   #if AMPSURD_ROOT
+    // 7. ROOT (experimental): a low power chord
+    setP(*proc, "rootOn", 1.0f);
+    setP(*proc, "rootLow", 3.0f);
+    e->showRoot(true);
+    auto chord = [&](size_t i) { const double t = (double) i / sr;
+        return (float) (0.15 * (std::sin(2 * juce::MathConstants<double>::pi * 61.735 * t) + std::sin(2 * juce::MathConstants<double>::pi * 92.499 * t))); };
+    settle(0.8, chord);
+    shot("14_root.png", findVisible<ampsurd::ui::RootPanel>(*ed), 2);
+    e->showRoot(false);
+    setP(*proc, "rootOn", 0.0f);
+   #endif
+   #if AMPSURD_DOUBLER
+    // 8. DOUBLER (experimental)
+    setP(*proc, "dblOn", 1.0f);
+    e->showDoubler(true);
+    settle(1.0);
+    shot("15_doubler.png", findVisible<ampsurd::ui::DoublerPanel>(*ed), 2);
+    e->showDoubler(false);
+    setP(*proc, "dblOn", 0.0f);
+   #endif
+
+    // 9. player / recorder with metronome: a backing track, a recorded guitar take
+    if (auto* pl = proc->getPlayer())
+    {
+        pl->loadBacking(backFile);
+        pl->setMetronome(true, 120.0, 4, false, -12.0f, 1);
+        pl->toStart();
+        pl->record();
+        settle(5.0);
+        pl->stop();
+        pl->renderNow();
+        pl->setPositionSeconds(2.2);
+        pl->play();
+        settle(1.0);
+        pl->pause();
+        e->showPlayer(true);
+        settle(0.2);
+        shot("16_player_recorder.png", findVisible<ampsurd::ui::PlayerPanel>(*ed), 2);
+        shot("16b_full_window_player.png");
+        e->showPlayer(false);
+    }
+
+    // 10. the preset menu (rendered with AMPSURD's own look) - presets saved for the demo
+    {
+        const auto folder = proc->getPresetFolder();
+        folder.createDirectory();
+        for (auto n : { "Clean and crunch", "Demo rig", "Rhythm wall" }) proc->savePreset(folder.getChildFile(juce::String(n) + ".ampsurd"));
+        struct Item { juce::String text; bool sep = false, ticked = false, hi = false; };
+        std::vector<Item> items { { "Init (empty rig)" }, { {}, true } };
+        for (auto n : { "Clean and crunch", "Demo rig", "Rhythm wall" }) items.push_back({ n, false, juce::String(n) == "Demo rig" });
+        items.push_back({ {}, true });
+        items.push_back({ "Export pack (preset + captures + IRs)...", false, false, true });
+        items.push_back({ "Import pack..." });
+        items.push_back({ {}, true });
+        items.push_back({ "Open preset folder" });
+        items.push_back({ "Open packs folder" });
+        auto& lf = ed->getLookAndFeel();
+        const int w = 320;
+        int h = 6;
+        std::vector<int> heights;
+        for (auto& it : items) { int iw = 0, ih = 0; lf.getIdealPopupMenuItemSize(it.text, it.sep, -1, iw, ih); heights.push_back(ih); h += ih; }
+        h += 6;
+        juce::Image img(juce::Image::ARGB, w * 2, h * 2, true);
+        juce::Graphics g(img);
+        g.addTransform(juce::AffineTransform::scale(2.0f));
+        lf.drawPopupMenuBackground(g, w, h);
+        int y = 6;
+        for (size_t i = 0; i < items.size(); ++i)
+        {
+            lf.drawPopupMenuItem(g, { 0, y, w, heights[i] }, items[i].sep, true, items[i].hi, items[i].ticked, false, items[i].text, {}, nullptr, nullptr);
+            y += heights[i];
+        }
+        writePng(img, out.getChildFile("17_preset_menu.png"));
+    }
+    tmp.deleteRecursively();
+    return 0;
+}
+
 int main(int argc, char** argv)
 {
     if (argc < 3) { std::cerr << "Usage: ui_snapshot <outDir> <a.nam> [...]\n"; return 1; }
     juce::ScopedJuceInitialiser_GUI init;
     const juce::File out(argv[1]);
     out.createDirectory();
+    if (juce::SystemStats::getEnvironmentVariable("AMPSURD_WEB_SHOTS", "0") == "1")
+        return webShots(out, argc, argv); // website screenshots only (set AMPSURD_FORCE_PLAYER=1 too)
 
     {
         using ampsurd::isNewerVersion;
