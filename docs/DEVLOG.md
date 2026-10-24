@@ -20,6 +20,10 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 - ui_snapshot ONE HISTORY: sound, take deleted, sound -> Ctrl+Z x3 in reverse order, Ctrl+Y x3 forward;
   DELETE BOXES uses Ctrl+Z and checks the player has no UNDO button. recorder_test unchanged (BOUNCE / CLEAR
   undo through the player's history).
+- CI caught a crash (tone_test, both OSes): the line connecting the player to the history was placed under
+  an `if` without braces, so it ran without a player too (= the plugin in a DAW) and dereferenced null. Fixed
+  (braces); my local runs had all used AMPSURD_FORCE_PLAYER=1. CI now reports every test's exit code and
+  last lines as annotations (crashes without [FAIL] were invisible), the tools included.
 
 ## 2026-10-24 — Session 3t: player / video fixes after the owner's test — Claude (Opus 5.5)
 
