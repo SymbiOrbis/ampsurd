@@ -254,7 +254,7 @@ REAPER picks up the new version.
 41. Player: PAN under GUITAR (left of the guitar track) is where your guitar sits - set it BEFORE REC: the
     take is recorded there (hard left = only the left channel) and plays back as recorded. Stereo layering:
     PAN left, record, BOUNCE, PAN right, record the next take. The square X next to BACKING / GUITAR deletes
-    that track after DELETE / CANCEL (guitar: UNDO brings it back); the X sits right next to the track.
+    that track after DELETE / CANCEL (Ctrl+Z brings it back); the X sits right next to the track.
     CLEAR TAKE is gone.
     MUTE (master row, right of BYPASS): the whole output to silence, red while on; not saved. UNDO takes back the last recording and, when
     there is none left, the last BOUNCE (the backing from before and the take come back). GUITAR VOL: the take's level and your guitar

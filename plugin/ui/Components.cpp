@@ -1664,8 +1664,8 @@ Timeline::Timeline(PlayerRecorder& p) : player(p)
     };
     addAndMakeVisible(guitarPan);
 
-    delBacking.setTooltip("Delete the backing track (with everything bounced into it) - asks first");
-    delGuitar.setTooltip("Delete the guitar track - asks first (UNDO brings it back)");
+    delBacking.setTooltip("Delete the backing track - asks first (Ctrl+Z brings it back)");
+    delGuitar.setTooltip("Delete the guitar track - asks first (Ctrl+Z brings it back)");
     delBacking.onClick = [this] { askDelete(0); };
     delGuitar.onClick = [this] { askDelete(1); };
     addAndMakeVisible(delBacking);
@@ -2061,7 +2061,7 @@ void Timeline::paint(juce::Graphics& g)
         g.drawRect(lane, 1);
         g.setColour(text);
         g.setFont(Fonts::get().semibold(11.5f));
-        g.drawText(confirming == 0 ? "Delete the backing track?" : "Delete the guitar track? (UNDO brings it back)",
+        g.drawText(confirming == 0 ? "Delete the backing track?" : "Delete the guitar track? (Ctrl+Z brings it back)",
                    lane.withTrimmedLeft(10).withWidth(246), juce::Justification::centredLeft, true);
     }
 }
@@ -2072,7 +2072,7 @@ void Timeline::paint(juce::Graphics& g)
 PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), player(pl), timeline(pl)
 {
     addAndMakeVisible(timeline);
-    for (auto* b : { &startButton, &playButton, &pauseButton, &stopButton, &recButton, &undoButton, &zoomOutButton,
+    for (auto* b : { &startButton, &playButton, &pauseButton, &stopButton, &recButton, &zoomOutButton,
                      &zoomInButton, &fitButton, &loadButton, &removeButton, &saveButton, &bounceButton, &closeButton })
         addAndMakeVisible(*b);
     startButton.onClick = [this] { player.toStart(); };
@@ -2099,37 +2099,27 @@ PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), pla
                                ? juce::String("VIDEO on: REC also films you with the computer's camera (its own window). A video take is one "
                                               "continuous take from STOP; SAVE AS... -> MP4 VIDEO saves it with AMPSURD's sound")
                                : juce::String("Video recording is not available on this system"));
-    undoButton.onClick = [this] {
-        const bool bounce = player.nextUndoIsBounce();
-        player.undo();
-        if (bounce)
-        {
-            backVol.setValue(player.getBackingGainDb(), juce::dontSendNotification);
-            setStatus(player.hasBacking() ? "Bounce undone: the backing track from before and your take are back."
-                                          : "Bounce undone: your take is back (there was no backing track before).");
-        }
-    };
     timeline.onDeleteGuitar = [this] {
         if (videoRecording) return;
         if (cameraWindow != nullptr) cameraWindow->view().stopPlayback();
         player.clearTake();
-        setStatus("Guitar track deleted (UNDO brings it back).");
+        setStatus("Guitar track deleted (Ctrl+Z brings it back).");
     };
     timeline.onDeleteBacking = [this] {
         if (cameraWindow != nullptr) cameraWindow->view().stopPlayback();
-        player.removeBacking();
-        setStatus("Backing track deleted.");
+        player.deleteBacking();
+        setStatus("Backing track deleted (Ctrl+Z brings it back).");
     };
     zoomInButton.onClick = [this] { timeline.zoomIn(); };
     zoomOutButton.onClick = [this] { timeline.zoomOut(); };
     fitButton.onClick = [this] { timeline.fit(); };
     loadButton.onClick = [this] { loadBacking(); };
-    removeButton.onClick = [this] { player.removeBacking(); };
+    removeButton.onClick = [this] { player.deleteBacking(); };
     saveButton.onClick = [this] { saveAs(); };
     bounceButton.onClick = [this] {
         setStatus("Bouncing...");
         player.bounce([this](const juce::String& err) {
-            setStatus(err.isEmpty() ? "Bounced: backing + take are the new backing track. Record the next layer. (UNDO takes the bounce back.)" : err);
+            setStatus(err.isEmpty() ? "Bounced: backing + take are the new backing track. Record the next layer. (Ctrl+Z takes the bounce back.)" : err);
         });
     };
     closeButton.onClick = [this] { if (onClose) onClose(); };
@@ -2137,13 +2127,11 @@ PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), pla
     recButton.setTooltip("No take yet: record it. With a take: punch in a correction here (the take is replaced from this point); "
                          "press again to punch out. Start PLAY a little earlier, then the correction's start can later be dragged earlier too.");
     pauseButton.setTooltip("Pause / continue (also while recording: the recording continues seamlessly)");
-    undoButton.setTooltip("Undo the last recording or edge move - and, when there is none left, the last BOUNCE (the backing track "
-                          "from before and your take come back)");
     zoomInButton.setTooltip("Zoom in (or mouse wheel over the timeline; Shift + wheel scrolls)");
     zoomOutButton.setTooltip("Zoom out");
     fitButton.setTooltip("Show the whole song");
-    bounceButton.setTooltip("Mix backing + take into a new backing track, to record another layer on top. UNDO takes it back");
-    removeButton.setTooltip("Remove the backing track (with everything bounced into it). To take back only the last BOUNCE: UNDO");
+    bounceButton.setTooltip("Mix backing + take into a new backing track, to record another layer on top. Ctrl+Z takes it back");
+    removeButton.setTooltip("Remove the backing track (Ctrl+Z brings it back)");
     saveButton.setTooltip("Save the recording (guitar alone, or with the backing track)");
     loadButton.setTooltip("Backing track or click track: WAV, FLAC, MP3, OGG, AIFF");
 
@@ -2279,7 +2267,6 @@ void PlayerPanel::resized()
     videoButton.setBounds(transport.removeFromLeft(64));
     transport.removeFromLeft(6);
     transport.removeFromLeft(14);
-    undoButton.setBounds(transport.removeFromLeft(70));
     transport.removeFromLeft(14);
     fitButton.setBounds(transport.removeFromRight(52));
     transport.removeFromRight(6);
@@ -2449,7 +2436,9 @@ void PlayerPanel::refresh()
         b->setEnabled(!busy && !rec && player.hasTake() && !player.isRendering());
     loadButton.setEnabled(!rec && !busy);
     removeButton.setEnabled(!rec && !busy && player.hasBacking());
-    undoButton.setEnabled(!rec && player.canUndo());
+    // VOL of the backing can change by UNDO / REDO (the history restores it)
+    if (!backVol.isMouseButtonDown() && std::abs(backVol.getValue() - player.getBackingGainDb()) > 0.05)
+        backVol.setValue(player.getBackingGainDb(), juce::dontSendNotification);
     timeline.refreshDeleteBoxes(rec);
     backLevel = std::max(player.getAndResetBackingPeak(), backLevel * 0.85f);
     takeLevel = std::max(player.getAndResetTakePeak(), takeLevel * 0.85f);
@@ -2465,7 +2454,7 @@ void PlayerPanel::loadBacking()
     chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles, [this](const juce::FileChooser& fc) {
         const auto f = fc.getResult();
         if (!f.existsAsFile()) return;
-        const auto err = player.loadBacking(f);
+        const auto err = player.loadBackingAsStep(f);
         setStatus(err.isEmpty() ? "Backing track loaded." : err);
     });
 }
@@ -3690,10 +3679,10 @@ HeaderBar::HeaderBar(AmpsurdProcessor& p) : proc(p)
     bButton.onClick = [this] { proc.selectAb(1); refresh(); };
     copyAbButton.onClick = [this] { proc.copyAbToOther(); refresh(); };
    #if JUCE_MAC
-    undoButton.setTooltip("Undo (Cmd+Z): any change of the sound or the rig - not the recording (it has its own UNDO)");
+    undoButton.setTooltip("Undo (Cmd+Z): the last step, whatever it was - a change of the sound, a recording, BOUNCE, deleting a track");
     redoButton.setTooltip("Redo (Cmd+Shift+Z or Cmd+Y)");
    #else
-    undoButton.setTooltip("Undo (Ctrl+Z): any change of the sound or the rig - not the recording (it has its own UNDO)");
+    undoButton.setTooltip("Undo (Ctrl+Z): the last step, whatever it was - a change of the sound, a recording, BOUNCE, deleting a track");
     redoButton.setTooltip("Redo (Ctrl+Y)");
    #endif
     aButton.setTooltip("A / B compare: two complete rigs of this session. Switch between them to compare");

@@ -630,7 +630,7 @@ private:
     PlayerRecorder& player;
     Timeline timeline;
     juce::TextButton startButton { "|<" }, playButton { "PLAY" }, pauseButton { "PAUSE" }, stopButton { "STOP" }, recButton { "REC" },
-                     undoButton { "UNDO" }, zoomOutButton { "-" }, zoomInButton { "+" }, fitButton { "FIT" },
+                     zoomOutButton { "-" }, zoomInButton { "+" }, fitButton { "FIT" },
                      loadButton { "LOAD BACKING" }, removeButton { "REMOVE" }, saveButton { "SAVE AS..." }, bounceButton { "BOUNCE" },
                      closeButton { "CLOSE" };
     juce::Slider backVol, takeVol, offset;

@@ -127,7 +127,8 @@ void PlayerRecorder::prepare(double sr, int block)
             }
         };
         scale(clips);
-        for (auto& u : undoStack) scale(u);
+        for (auto& u : undoSnaps) scale(u.clips);
+        for (auto& u : redoSnaps) scale(u.clips);
         takeStart.store((juce::int64) std::llround((double) takeStart.load() * k));
     }
     sampleRate = sr;
@@ -682,10 +683,64 @@ void PlayerRecorder::record()
 // ---------------------------------------------------------------------------------------------
 // Clips -> composite take
 // ---------------------------------------------------------------------------------------------
+PlayerRecorder::Snapshot PlayerRecorder::snapshot() const
+{
+    return { backingReady.load() ? backingFile : juce::File(), backingGainDb.load(), clips, takeVideo, videoFrame0Timeline };
+}
+
+void PlayerRecorder::pushStep()
+{
+    undoSnaps.push_back(snapshot());
+    if (undoSnaps.size() > 100) undoSnaps.erase(undoSnaps.begin());
+    redoSnaps.clear();
+    if (onNewStep) onNewStep();
+}
+
+void PlayerRecorder::restore(const Snapshot& s)
+{
+    stop();
+    const juce::File cur = backingReady.load() ? backingFile : juce::File();
+    if (s.backing != cur)
+    {
+        if (s.backing.existsAsFile()) loadBacking(s.backing);
+        else removeBacking();
+    }
+    backingGainDb.store(s.backingGainDb);
+    clips = s.clips;
+    takeVideo = s.video;
+    videoFrame0Timeline = s.videoFrame0;
+    scheduleRender();
+}
+
+bool PlayerRecorder::nextUndoIsBounce() const
+{
+    if (undoSnaps.empty()) return false;
+    return undoSnaps.back().backing != (backingReady.load() ? backingFile : juce::File());
+}
+
+juce::String PlayerRecorder::loadBackingAsStep(const juce::File& f)
+{
+    const auto before = snapshot();
+    const auto err = loadBacking(f);
+    if (err.isEmpty())
+    {
+        undoSnaps.push_back(before);
+        redoSnaps.clear();
+        if (onNewStep) onNewStep();
+    }
+    return err;
+}
+
+void PlayerRecorder::deleteBacking()
+{
+    if (!backingReady.load()) return;
+    pushStep();
+    removeBacking();
+}
+
 void PlayerRecorder::commitClips(std::vector<Clip> next)
 {
-    undoStack.push_back(clips);
-    if (undoStack.size() > 50) undoStack.erase(undoStack.begin());
+    pushStep();
     clips = std::move(next);
     scheduleRender();
 }
@@ -710,29 +765,24 @@ void PlayerRecorder::removeClip(int index)
     commitClips(std::move(next));
 }
 
-void PlayerRecorder::undo()
+bool PlayerRecorder::undo()
 {
-    if (getState() == State::recording || getState() == State::pausedRec) return;
-    if (!undoStack.empty())
-    {
-        clips = undoStack.back();
-        undoStack.pop_back();
-        scheduleRender();
-        return;
-    }
-    if (bounceStack.empty()) return;
-    // un-bounce: the backing track from before the bounce, the guitar track as it was
-    auto b = std::move(bounceStack.back());
-    bounceStack.pop_back();
-    stop();
-    if (b.backing.existsAsFile()) loadBacking(b.backing);
-    else removeBacking();
-    backingGainDb.store(b.backingGainDb);
-    clips = std::move(b.clips);
-    undoStack = std::move(b.undo);
-    takeVideo = b.video;
-    videoFrame0Timeline = b.videoFrame0;
-    scheduleRender();
+    if (getState() == State::recording || getState() == State::pausedRec || undoSnaps.empty()) return false;
+    redoSnaps.push_back(snapshot());
+    const auto s = std::move(undoSnaps.back());
+    undoSnaps.pop_back();
+    restore(s);
+    return true;
+}
+
+bool PlayerRecorder::redo()
+{
+    if (getState() == State::recording || getState() == State::pausedRec || redoSnaps.empty()) return false;
+    undoSnaps.push_back(snapshot());
+    const auto s = std::move(redoSnaps.back());
+    redoSnaps.pop_back();
+    restore(s);
+    return true;
 }
 
 void PlayerRecorder::attachVideo(const juce::File& videoFile, juce::int64 firstFrameEpochMs)
@@ -1112,14 +1162,11 @@ juce::File PlayerRecorder::newBounceFile() const
 juce::String PlayerRecorder::adoptBounce(const juce::File& file)
 {
     stop();
-    // UNDO can take the bounce back: remember the backing and the guitar track as they were
-    bounceStack.push_back({ backingReady.load() ? backingFile : juce::File(), backingGainDb.load(), clips, undoStack, takeVideo,
-                            videoFrame0Timeline });
+    pushStep(); // UNDO takes the bounce back: the backing and the guitar track as they were
     // the bounce becomes the backing track; the take is now part of it
     ++renderGeneration;
     takeVideo = juce::File();
     clips.clear();
-    undoStack.clear();
     takeReady.store(false);
     swapTrack(take, nullptr);
     takeThumb.clear();

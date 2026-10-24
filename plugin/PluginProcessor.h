@@ -284,13 +284,17 @@ public:
     //     mix share, mute / solo, EQs, alignment, pan, levels, ECO); Frankenstein sections follow the amps ---
     void swapSlots(int a, int b);
 
-    // --- undo / redo of all settings, A/B compare (message thread) ---
-    // A settled change (nothing moved for 0.4 s) becomes one undo step; captures / IRs that stay the same
-    // are not reloaded. A and B are two complete rigs of this session (not saved in presets).
-    bool canUndo() const { return !undoStack.empty(); }
-    bool canRedo() const { return !redoStack.empty(); }
+    // --- undo / redo, A/B compare (message thread) ---
+    // ONE history (owner 2026-10-24: no categories of actions): a settled change of the sound / rig (nothing
+    // moved for 0.4 s) is a step, and so is every step of the player (a recording, an edge move, deleting a
+    // track, BOUNCE, loading a backing). undo() / redo() (Ctrl+Z / Ctrl+Y, the header arrows) take back / redo
+    // whatever was done last. Captures / IRs that stay the same are not reloaded. A and B are two complete
+    // rigs of this session (not saved in presets).
+    bool canUndo() const { return !undoOrder.empty(); }
+    bool canRedo() const { return !redoOrder.empty(); }
     void undo();
     void redo();
+    void notePlayerStep(); // the player made a step (message thread)
     int getAbSlot() const { return abCurrent; }       // 0 = A, 1 = B
     void selectAb(int which);
     void copyAbToOther();                             // the current rig becomes the other one too
@@ -518,6 +522,7 @@ private:
 
     // undo / A-B
     std::vector<juce::ValueTree> undoStack, redoStack;
+    std::vector<char> undoOrder, redoOrder; // 'S' = a sound / rig step, 'P' = a player step (newest last)
     std::atomic<bool> resetUndo { false }; // the host loaded a state: start the history there
     juce::ValueTree committedState;
     juce::uint64 committedHash = 0, pendingHash = 0;

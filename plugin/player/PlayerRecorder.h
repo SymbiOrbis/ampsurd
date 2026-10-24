@@ -97,11 +97,19 @@ public:
     // moves the edges of clip `index` (clamped to the recorded audio, at least 50 ms long); re-renders
     void setClipEdges(int index, juce::int64 in, juce::int64 out);
     void removeClip(int index);
-    // UNDO: the last recording / edge move, and - when there is none left - the last BOUNCE (the backing
-    // track before it and the guitar track come back; the bounce file stays in Recordings).
-    bool canUndo() const { return !undoStack.empty() || !bounceStack.empty(); }
-    bool nextUndoIsBounce() const { return undoStack.empty() && !bounceStack.empty(); }
-    void undo();
+    // History of the player's steps (recordings, edge moves, deleting a track, BOUNCE, loading a backing): one
+    // snapshot (backing + VOL, the guitar track's clips, its video) per step. UNDO / REDO move through it.
+    // Since 2026-10-24 the processor keeps ONE history for the sound and the player (Ctrl+Z / Ctrl+Y and the
+    // header arrows undo whatever was done last); onNewStep tells it that the player made a step.
+    bool canUndo() const { return !undoSnaps.empty(); }
+    bool canRedo() const { return !redoSnaps.empty(); }
+    bool nextUndoIsBounce() const; // the next UNDO brings another backing track back (takes back a BOUNCE / delete / load)
+    bool undo();                   // false: nothing to undo, or recording
+    bool redo();
+    std::function<void()> onNewStep;
+    void clearRedo() { redoSnaps.clear(); } // a newer step elsewhere (the sound) ends the redo branch
+    juce::String loadBackingAsStep(const juce::File& f); // LOAD BACKING by the user: an undoable step
+    void deleteBacking();                                // the X / REMOVE: an undoable step
     void clearTake();                  // remove the whole guitar track (files stay in Recordings/Takes)
 
     // --- VIDEO takes (standalone; camera: VideoCapture). A video take is one continuous recording from
@@ -243,17 +251,18 @@ private:
 
     // clips + composite
     std::vector<Clip> clips;
-    std::vector<std::vector<Clip>> undoStack;
-    struct BounceUndo
+    struct Snapshot
     {
-        juce::File backing;                    // none = there was no backing track
+        juce::File backing;                    // none = no backing track
         float backingGainDb = 0.0f;
         std::vector<Clip> clips;
-        std::vector<std::vector<Clip>> undo;
         juce::File video;
         double videoFrame0 = 0.0;
     };
-    std::vector<BounceUndo> bounceStack;
+    std::vector<Snapshot> undoSnaps, redoSnaps;
+    Snapshot snapshot() const;
+    void restore(const Snapshot&);
+    void pushStep();                           // before a change: remember the state, new branch (no redo)
     std::atomic<int> renderGeneration { 0 }, adoptedGeneration { 0 };
     juce::String renderError;
     juce::ThreadPool renderJobs { juce::ThreadPoolOptions {}.withThreadName("AMPSURD composite").withNumberOfThreads(1) };

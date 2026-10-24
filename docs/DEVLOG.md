@@ -6,6 +6,21 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-24 — Session 3u: ONE undo history (Ctrl+Z also undoes takes) — Claude (Opus 5.5)
+
+- Owner (approved): Ctrl+Z must undo any step, also a take - no categories of actions; the player's own UNDO
+  button is redundant (the header arrows and the shortcut do it) -> removed.
+- PlayerRecorder history is now snapshots (backing file + VOL, clips, video) with undo AND redo; steps:
+  recording / punch, edge move, deleting the guitar track, BOUNCE, deleting the backing (X / REMOVE),
+  LOAD BACKING. onNewStep reports each step to the processor.
+- AmpsurdProcessor keeps the order of all steps ('S' sound / rig, 'P' player): undo() / redo() (Ctrl+Z,
+  Ctrl+Shift+Z / Ctrl+Y, the header arrows) take back / redo whatever was done last; a new step of either
+  kind ends the redo branch of both. While recording the player step is not undone (nothing happens).
+- Tooltips / status texts say Ctrl+Z; the backing VOL slider follows a restored value.
+- ui_snapshot ONE HISTORY: sound, take deleted, sound -> Ctrl+Z x3 in reverse order, Ctrl+Y x3 forward;
+  DELETE BOXES uses Ctrl+Z and checks the player has no UNDO button. recorder_test unchanged (BOUNCE / CLEAR
+  undo through the player's history).
+
 ## 2026-10-24 — Session 3t: player / video fixes after the owner's test — Claude (Opus 5.5)
 
 - Owner: the recorder's mix does not play, the video does not start recording. His Recordings (folder

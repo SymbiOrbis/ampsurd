@@ -3,6 +3,8 @@
 
 #include "PluginProcessor.h"
 
+#include <algorithm>
+
 #include <cstring>
 
 namespace
@@ -65,6 +67,9 @@ void AmpsurdProcessor::trackUndo(double now)
     {
         undoStack.clear();
         redoStack.clear();
+        auto dropSound = [](std::vector<char>& v) { v.erase(std::remove(v.begin(), v.end(), 'S'), v.end()); };
+        dropSound(undoOrder);
+        dropSound(redoOrder);
         committedState = {};
     }
     const auto h = stateHash();
@@ -79,8 +84,16 @@ void AmpsurdProcessor::trackUndo(double now)
     if (now - pendingSince < kSettleMs || mixGestureSlot >= 0) return; // still moving
 
     undoStack.push_back(committedState);
-    if ((int) undoStack.size() > kMaxUndo) undoStack.erase(undoStack.begin());
+    undoOrder.push_back('S');
+    if ((int) undoStack.size() > kMaxUndo)
+    {
+        undoStack.erase(undoStack.begin());
+        const auto first = std::find(undoOrder.begin(), undoOrder.end(), 'S');
+        if (first != undoOrder.end()) undoOrder.erase(first);
+    }
     redoStack.clear();
+    redoOrder.clear();
+    if (player) player->clearRedo();
     committedState = createStateTree();
     committedHash = h;
 }
@@ -92,22 +105,57 @@ void AmpsurdProcessor::applySnapshot(const juce::ValueTree& t)
     committedHash = pendingHash = stateHash();
 }
 
+void AmpsurdProcessor::notePlayerStep()
+{
+    undoOrder.push_back('P');
+    redoOrder.clear();
+    redoStack.clear();
+}
+
 void AmpsurdProcessor::undo()
 {
-    if (undoStack.empty()) return;
-    redoStack.push_back(createStateTree());
-    const auto t = undoStack.back();
-    undoStack.pop_back();
-    applySnapshot(t);
+    while (!undoOrder.empty())
+    {
+        if (undoOrder.back() == 'S')
+        {
+            undoOrder.pop_back();
+            if (undoStack.empty()) continue; // out of step: skip
+            redoStack.push_back(createStateTree());
+            const auto t = undoStack.back();
+            undoStack.pop_back();
+            applySnapshot(t);
+            redoOrder.push_back('S');
+            return;
+        }
+        if (player == nullptr || !player->canUndo()) { undoOrder.pop_back(); continue; }
+        if (!player->undo()) return; // recording: not now
+        undoOrder.pop_back();
+        redoOrder.push_back('P');
+        return;
+    }
 }
 
 void AmpsurdProcessor::redo()
 {
-    if (redoStack.empty()) return;
-    undoStack.push_back(createStateTree());
-    const auto t = redoStack.back();
-    redoStack.pop_back();
-    applySnapshot(t);
+    while (!redoOrder.empty())
+    {
+        if (redoOrder.back() == 'S')
+        {
+            redoOrder.pop_back();
+            if (redoStack.empty()) continue;
+            undoStack.push_back(createStateTree());
+            const auto t = redoStack.back();
+            redoStack.pop_back();
+            applySnapshot(t);
+            undoOrder.push_back('S');
+            return;
+        }
+        if (player == nullptr || !player->canRedo()) { redoOrder.pop_back(); continue; }
+        if (!player->redo()) return;
+        redoOrder.pop_back();
+        undoOrder.push_back('P');
+        return;
+    }
 }
 
 void AmpsurdProcessor::selectAb(int which)

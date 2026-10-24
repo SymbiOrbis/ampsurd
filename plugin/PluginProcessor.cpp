@@ -532,6 +532,8 @@ AmpsurdProcessor::AmpsurdProcessor()
     // The player / recorder exists only in the standalone app (a DAW has its own tracks).
     if (wrapperType == wrapperType_Standalone || juce::SystemStats::getEnvironmentVariable("AMPSURD_FORCE_PLAYER", "0") == "1")
         player = std::make_unique<PlayerRecorder>();
+        // one history for the sound and the player: a recording, an edge move, a BOUNCE... is an undo step too
+        player->onNewStep = [this] { notePlayerStep(); };
 
     prepareToPlay(48000.0, 512); // valid state before the host calls prepareToPlay
     startTimerHz(30);

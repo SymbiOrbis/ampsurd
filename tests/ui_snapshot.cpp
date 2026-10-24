@@ -592,12 +592,44 @@ int main(int argc, char** argv)
                 if (auto* yes = findButton("DELETE")) yes->onClick();
                 pl->renderNow();
                 ok = ok && !pl->hasTake() && pl->hasBacking();
-                pl->undo();
+                proc->undo(); // Ctrl+Z: the one history
                 pl->renderNow();
                 ok = ok && pl->hasTake();
             }
+            ok = ok && findButton("UNDO") == nullptr; // the player has no own UNDO any more
             std::cout << (ok ? "[PASS]" : "[FAIL]") << " DELETE BOXES: X before each track, no CLEAR TAKE; X GUITAR asks (CANCEL keeps it, "
                       << "DELETE removes it, UNDO brings it back) (boxes " << boxes.size() << ", take " << hadTake << ")\n";
+        }
+        // ONE history: sound changes and player steps undone / redone in the order they were made
+        {
+            auto out0 = [&] { return proc->params.getRawParameterValue("output")->load(); };
+            auto settle = [&] { proc->runHousekeeping(); pump(450); proc->runHousekeeping(); };
+            settle();
+            const float o0 = out0();
+            setP(*proc, "output", -4.0f);
+            settle();                               // step 1: sound
+            pl->clearTake();
+            pl->renderNow();                        // step 2: player (the take is gone)
+            setP(*proc, "output", -8.0f);
+            settle();                               // step 3: sound
+            proc->undo();
+            pl->renderNow();
+            const bool u1 = out0() == -4.0f && !pl->hasTake();
+            proc->undo();
+            pl->renderNow();
+            const bool u2 = out0() == -4.0f && pl->hasTake();
+            proc->undo();
+            pl->renderNow();
+            const bool u3 = out0() == o0 && pl->hasTake();
+            proc->redo();
+            proc->redo();
+            pl->renderNow();
+            const bool r2 = out0() == -4.0f && !pl->hasTake();
+            proc->redo();
+            const bool r3 = out0() == -8.0f;
+            std::cout << (u1 && u2 && u3 && r2 && r3 ? "[PASS]" : "[FAIL]") << " ONE HISTORY: sound, take deleted, sound -> Ctrl+Z x3 in reverse order, "
+                      << "Ctrl+Y x3 forward (" << u1 << u2 << u3 << r2 << r3 << ")\n";
+            setP(*proc, "output", o0);
         }
         proc->setNonRealtime(false);
         wavFile.deleteFile();
