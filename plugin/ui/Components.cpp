@@ -2076,7 +2076,14 @@ PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), pla
                      &zoomInButton, &fitButton, &loadButton, &removeButton, &saveButton, &bounceButton, &closeButton })
         addAndMakeVisible(*b);
     startButton.onClick = [this] { player.toStart(); };
-    playButton.onClick = [this] { player.play(); };
+    playButton.onClick = [this] {
+        if (player.isBusy())
+        {
+            setStatus("Still saving / bouncing (" + juce::String(juce::roundToInt(player.getProgress() * 100.0f)) + " %) - PLAY works again when it is done.");
+            return;
+        }
+        player.play();
+    };
     pauseButton.onClick = [this] { player.pause(); };
     stopButton.onClick = [this] { player.stop(); };
     recButton.onClick = [this] { recordPressed(); };
@@ -2512,7 +2519,9 @@ void PlayerPanel::setStatus(const juce::String& s)
 void PlayerPanel::startVideoTake()
 {
     using S = PlayerRecorder::State;
+    if (player.isBusy() || videoSaving) { setStatus("Still saving - REC works again in a moment."); return; }
     if (player.getState() != S::stopped) player.stop();
+    player.renderNow(); // a take that was just cleared must really be gone, or REC would punch into it
     player.toStart(); // a video take is one continuous take from the start of the song
     const auto err = camera.startRecording(player.getRecordingsFolder().getChildFile("Takes"));
     if (err.isNotEmpty()) { setStatus(err); return; }
@@ -2524,6 +2533,11 @@ void PlayerPanel::startVideoTake()
 
 void PlayerPanel::recordPressed(bool fromCameraWindow)
 {
+    if (player.isBusy())
+    {
+        setStatus("Still saving / bouncing (" + juce::String(juce::roundToInt(player.getProgress() * 100.0f)) + " %) - REC works again when it is done.");
+        return;
+    }
     using S = PlayerRecorder::State;
     const auto st = player.getState();
     if (videoButton.getToggleState())
@@ -2593,17 +2607,16 @@ void PlayerPanel::saveVideo()
     folder.createDirectory();
     const auto stamp = juce::Time::getCurrentTime().formatted("%Y-%m-%d %H-%M-%S");
     const auto f = folder.getNonexistentChildFile((withBacking ? "AMPSURD video " : "AMPSURD video guitar ") + stamp, ".mp4");
-    juce::AudioBuffer<float> mix;
-    int start = 0;
-    const auto err = player.renderMix(withBacking, mix, start);
-    if (err.isNotEmpty()) { setStatus(err); return; }
-    const double lead = player.videoAudioLeadSeconds(start);
     const double sr = player.getSampleRate();
     const auto video = player.getTakeVideo();
     videoSaving = true;
     setStatus("Saving the video " + f.getFileName() + "... (about as long as the video itself)");
-    juce::Thread::launch([sp = juce::Component::SafePointer<PlayerPanel>(this), video, mix = std::move(mix), sr, lead, f] {
-        const auto e = muxVideoToMp4(video, mix, sr, lead, f, {});
+    // the sound is rendered here too, in the background: a long song must not freeze the window
+    juce::Thread::launch([sp = juce::Component::SafePointer<PlayerPanel>(this), pl = &player, withBacking, video, sr, f] {
+        juce::AudioBuffer<float> mix;
+        int start = 0;
+        auto e = pl->renderMix(withBacking, mix, start);
+        if (e.isEmpty()) e = muxVideoToMp4(video, mix, sr, pl->videoAudioLeadSeconds(start), f, {});
         juce::MessageManager::callAsync([sp, e, f] {
             if (sp == nullptr) return;
             sp->videoSaving = false;

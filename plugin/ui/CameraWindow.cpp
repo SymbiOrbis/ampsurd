@@ -193,7 +193,10 @@ void CameraView::refresh()
     recButton.setEnabled(camera.isOpen() || recording);
     // playback ends with the video, or when the player was stopped elsewhere
    #if JUCE_WINDOWS || JUCE_MAC
-    if (playingBack && (playback == nullptr || !playback->isPlaying() || st != S::playing)) stopPlayback();
+    // (the video's own isPlaying() can lag behind on Windows: it ends at its last frame or when the player stops)
+    if (playingBack && (playback == nullptr || st != S::playing
+                        || (playback->getVideoDuration() > 0.0 && playback->getPlayPosition() >= playback->getVideoDuration() - 0.05)))
+        stopPlayback();
    #endif
     const juce::String playText = playingBack ? juce::String::charToString((juce::juce_wchar) 0x25A0) + " STOP"
                                               : juce::String::charToString((juce::juce_wchar) 0x25B6) + " PLAY";
@@ -216,6 +219,7 @@ void CameraView::startPlayback()
    #if JUCE_WINDOWS || JUCE_MAC
     const auto file = player.getTakeVideo();
     if (!player.takeHasVideo()) { setStatus("No video take yet."); return; }
+    if (player.isBusy()) { setStatus("Still saving - PLAY works again in a moment."); return; }
     if (playback == nullptr || loadedVideo != file)
     {
         playback = std::make_unique<juce::VideoComponent>(false);

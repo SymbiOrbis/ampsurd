@@ -297,6 +297,23 @@ int main()
     const float layered = mix.getSample(0, 24000);
     check(std::abs(layered - 0.85f) < 0.02f, "LAYERS: click + first take + second take all at 0.5 s (" + juce::String(layered, 3) + " = 0.5 + 0.2 + 0.15)");
 
+    // a cleared take is really gone once rendered: the next REC is a new take, not a punch-in into the old one
+    {
+        pl->clearTake();
+        pl->renderNow();
+        pl->toStart();
+        pl->record();
+        const bool newTake = pl->getState() == PlayerRecorder::State::recording && pl->getPunchIn() < 0;
+        run(0.3, nullptr);
+        pl->stop();
+        pl->renderNow();
+        pl->undo(); // the new take
+        pl->renderNow();
+        pl->undo(); // the clear
+        pl->renderNow();
+        check(newTake && pl->hasTake(), "CLEAR + REC: a new take (no punch-in into the cleared one); UNDO twice brings the old take back");
+    }
+
     // UNDO takes back the second take, then the BOUNCE: the original backing and the first take are back
     {
         pl->undo();

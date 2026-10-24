@@ -6,6 +6,23 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-24 — Session 3t: player / video fixes after the owner's test — Claude (Opus 5.5)
+
+- Owner: the recorder's mix does not play, the video does not start recording. His Recordings (folder
+  access): the MP4 mux works (two 26 MB MP4s from last night); today's video attempts stopped after 0.15 s
+  (5 KB / 77 KB camera files), and a 504 MB mix export (a 10-minute take) ran just before.
+- Causes found and fixed:
+  1. PLAY and REC were silently ignored while a SAVE AS / BOUNCE runs (busy). Now the status says so with the
+     progress ("Still saving ... %").
+  2. The automatic MP4 rendered the whole song's sound on the message thread (a long song froze the window);
+     now rendered in the background thread together with the mux.
+  3. Replacing a video take cleared the old take in the background; REC could then start as a PUNCH-IN into
+     the old take. startVideoTake now waits for the cleared take (renderNow) and refuses while saving.
+  4. Camera-window PLAY stopped when the video's isPlaying() lagged (Windows): now it ends at the video's last
+     frame or when the player stops.
+- recorder_test: CLEAR + REC = a new take (no punch-in); UNDO twice restores the old take.
+- Open (asked the owner): one undo history for everything (Ctrl+Z also undoes takes).
+
 ## 2026-10-23 — Session 3s: SAVE AS can write a pack — Claude (Opus 5.5)
 
 - Owner: SAVE AS should also offer .ampsurdpack (first asked for a small menu, then: just extend the file
