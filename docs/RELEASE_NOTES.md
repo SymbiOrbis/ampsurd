@@ -14,14 +14,14 @@ If you like AMPSURD, a star on GitHub helps a lot: it's how a small
 open-source project qualifies for free code signing, so Windows stops
 blocking it.
 
-macOS: AMPSURD-<version>-macOS.pkg (macOS 10.15 Catalina or newer, Apple Silicon and Intel) is signed and
+macOS: AMPSURD-macOS.pkg (macOS 10.15 Catalina or newer, Apple Silicon and Intel) is signed and
 notarized (Developer ID: Radovan Glovna): double-click it and install. The first start of the app asks for
 access to the audio input: allow it, or AMPSURD hears no guitar (the camera is asked for only when you use
 VIDEO in the player).
 
 ## AMPSURD 0.9.1 (beta)
 
-Second public beta for Windows 10 / 11 (64-bit): **AMPSURD-Setup-0.9.1.exe** installs the VST3
+Second public beta for Windows 10 / 11 (64-bit): **AMPSURD-Windows-Setup.exe** installs the VST3
 plugin and the standalone app (with player / recorder). Installing it over 0.9.0 is fine: your presets
 and recordings (Documents\AMPSURD) stay untouched when you update or uninstall.
 
@@ -73,4 +73,5 @@ the default like in TONE3000), MIDI footswitches (program change, MIDI learn), p
 (.ampsurdpack), undo / redo, A/B compare, safety limiter (never above -1 dBFS), standalone player /
 recorder with punch-in corrections and crossfaded edits, presets.
 
-Portable zips (no installer) are attached as well.
+Downloads (the same names in every release): AMPSURD-Windows-Setup.exe, AMPSURD-Windows.zip (VST3 + app, no
+installer), AMPSURD-macOS.pkg, AMPSURD-macOS.zip (app, VST3, Audio Unit).

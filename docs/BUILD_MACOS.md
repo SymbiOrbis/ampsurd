@@ -8,14 +8,15 @@ has no Catalina machines): first Catalina testers, please report how it goes.
 
 ## Download (testers)
 
-- Public betas: [Releases](https://github.com/SymbiOrbis/ampsurd/releases) - `AMPSURD-<version>-macOS.pkg`
+- Public betas: [Releases](https://github.com/SymbiOrbis/ampsurd/releases) - `AMPSURD-macOS.pkg` (the newest always at
+  https://github.com/SymbiOrbis/ampsurd/releases/latest/download/AMPSURD-macOS.pkg; `AMPSURD-macOS.zip` = the three bundles)
   (from the first beta after 0.9.1).
 - Latest build of `main`: GitHub -> Actions -> "Build Windows + macOS" -> the newest green run ->
   Artifacts -> **AMPSURD-Setup-macOS** (GitHub login needed). Unzip it to get the .pkg.
 
 ## Install
 
-1. Double-click `AMPSURD-<version>-macOS.pkg`. Builds from the project's workflow are **signed and
+1. Double-click `AMPSURD-macOS.pkg`. Builds from the project's workflow are **signed and
    notarized** (Developer ID: Radovan Glovna): macOS installs them like any app.
 2. (Only an unsigned build - e.g. from a fork, the build log says "macOS build: unsigned" - is blocked
    first: System Settings -> Privacy & Security -> "Open Anyway"; macOS 14 and older: right-click -> Open.)

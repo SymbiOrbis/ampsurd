@@ -2,7 +2,9 @@
 
 ## Easiest: the installer
 
-1. Open https://github.com/SymbiOrbis/ampsurd/releases and download **AMPSURD-Setup-<version>.exe**
+1. Open https://github.com/SymbiOrbis/ampsurd/releases and download **AMPSURD-Windows-Setup.exe**
+   (the newest always at https://github.com/SymbiOrbis/ampsurd/releases/latest/download/AMPSURD-Windows-Setup.exe;
+   `AMPSURD-Windows.zip` = the VST3 plugin and the standalone app without an installer)
    (before the first release: Actions -> newest green run -> artifact **AMPSURD-Setup-windows-x64**).
 2. Run it. It installs the VST3 plugin (C:\Program Files\Common Files\VST3) and the standalone app
    (Start menu: AMPSURD). Updating = running the newer installer; your presets and recordings stay.

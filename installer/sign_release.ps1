@@ -3,13 +3,15 @@
 #   powershell -ExecutionPolicy Bypass -File sign_release.ps1 -Version 0.9.1
 #
 # What it does (stops at the first error, nothing is uploaded before every check passed):
-#   1. downloads the unsigned Windows files of release v<Version> (VST3 zip, standalone zip) and the
+#   1. downloads the unsigned Windows files of release v<Version> (AMPSURD-Windows.zip: VST3 + standalone;
+#      releases before 2026-10-24 had two zips with the version in the name - also understood) and the
 #      source code of that tag (for the installer script) from GitHub,
 #   2. signs AMPSURD.exe and the plugin DLL inside AMPSURD.vst3,
-#   3. builds AMPSURD-Setup-<Version>.exe with the local Inno Setup 6, which signs Setup, Setup's
+#   3. builds AMPSURD-Windows-Setup.exe with the local Inno Setup 6, which signs Setup, Setup's
 #      temporary copy and the uninstaller through its SignTool setting,
 #   4. checks every signature (signtool verify /pa /all, Certum signer, timestamp),
-#   5. zips the signed files,
+#   5. zips the signed files (AMPSURD-Windows.zip; fixed names: the website links to
+#      .../releases/latest/download/AMPSURD-Windows-Setup.exe and .../AMPSURD-Windows.zip),
 #   6. replaces the Windows files of the GitHub release with the signed ones and changes the
 #      "NOT code-signed" warning in the release notes to "Signed by ... (Certum)".
 #      macOS files of the release are left alone.
@@ -104,23 +106,38 @@ if (Test-Path $work) { Remove-Item $work -Recurse -Force }
 $dl = Join-Path $work "download"
 New-Item -ItemType Directory -Force -Path $dl | Out-Null
 
-$vstZipName = "AMPSURD-$Version-VST3-windows-x64.zip"
-$appZipName = "AMPSURD-$Version-Standalone-windows-x64.zip"
-$setupName = "AMPSURD-Setup-$Version.exe"
-Run $gh @("release", "download", $Tag, "--repo", $Repo, "--dir", $dl, "--pattern", $vstZipName, "--pattern", $appZipName) "downloading the Windows zips of $Tag"
+$winZipName = "AMPSURD-Windows.zip"                  # since 2026-10-24: VST3 + standalone in one zip
+$oldVstZip = "AMPSURD-$Version-VST3-windows-x64.zip"   # older releases
+$oldAppZip = "AMPSURD-$Version-Standalone-windows-x64.zip"
+$oldSetup = "AMPSURD-Setup-$Version.exe"
+$setupName = "AMPSURD-Windows-Setup.exe"
+$ErrorActionPreference = "Continue"                   # "not found" here is not an error (an older release)
+& $gh release download $Tag --repo $Repo --dir $dl --pattern $winZipName 2>&1 | Out-Null
+$ErrorActionPreference = "Stop"
+$oldNames = -not (Test-Path (Join-Path $dl $winZipName))
+if ($oldNames) {
+    Run $gh @("release", "download", $Tag, "--repo", $Repo, "--dir", $dl, "--pattern", $oldVstZip, "--pattern", $oldAppZip) "downloading the Windows zips of $Tag"
+}
 Run $gh @("release", "download", $Tag, "--repo", $Repo, "--dir", $dl, "--archive", "zip") "downloading the source code of $Tag"
 
 $bin = Join-Path $work "bin"                           # same layout as the CI build output
 New-Item -ItemType Directory -Force -Path (Join-Path $bin "VST3"), (Join-Path $bin "Standalone") | Out-Null
-Expand-Archive (Join-Path $dl $vstZipName) -DestinationPath (Join-Path $bin "VST3")
-Expand-Archive (Join-Path $dl $appZipName) -DestinationPath (Join-Path $bin "Standalone")
-$srcZip = Get-ChildItem $dl -Filter "*.zip" | Where-Object { $_.Name -ne $vstZipName -and $_.Name -ne $appZipName } | Select-Object -First 1
+if ($oldNames) {
+    Expand-Archive (Join-Path $dl $oldVstZip) -DestinationPath (Join-Path $bin "VST3")
+    Expand-Archive (Join-Path $dl $oldAppZip) -DestinationPath (Join-Path $bin "Standalone")
+} else {
+    $unz = Join-Path $work "unzipped"
+    Expand-Archive (Join-Path $dl $winZipName) -DestinationPath $unz
+    Move-Item (Join-Path $unz "AMPSURD.vst3") (Join-Path $bin "VST3")
+    Move-Item (Join-Path $unz "AMPSURD.exe") (Join-Path $bin "Standalone")
+}
+$srcZip = Get-ChildItem $dl -Filter "*.zip" | Where-Object { $_.Name -ne $winZipName -and $_.Name -ne $oldVstZip -and $_.Name -ne $oldAppZip } | Select-Object -First 1
 Expand-Archive $srcZip.FullName -DestinationPath (Join-Path $work "src")
 $src = Get-ChildItem (Join-Path $work "src") -Directory | Select-Object -First 1 -ExpandProperty FullName
 
 $appExe = Join-Path $bin "Standalone\AMPSURD.exe"
 $vstDir = Join-Path $bin "VST3\AMPSURD.vst3"
-if (-not (Test-Path $appExe)) { Fail "AMPSURD.exe missing in $appZipName" }
+if (-not (Test-Path $appExe)) { Fail "AMPSURD.exe missing in the downloaded zip" }
 $vstDlls = @(Get-ChildItem (Join-Path $vstDir "Contents") -Recurse -File -Include "*.vst3", "*.dll", "*.exe")
 if ($vstDlls.Count -eq 0) { Fail "no plugin DLL found inside AMPSURD.vst3" }
 
@@ -142,7 +159,11 @@ $issText = [regex]::Replace($issText, $setupHead, "[Setup]`r`nSignTool=ampsurdsi
 $innoSign = 'ampsurdsign=$q' + $signtool + '$q ' + ($signArgs -join " ") + ' $f'
 Run $iscc @("/Qp", "/DAppVersion=$Version", "/DSourceDir=$bin", "/S$innoSign", $iss) "Inno Setup"
 $setupExe = Join-Path $src "installer\output\$setupName"
-if (-not (Test-Path $setupExe)) { Fail "$setupName was not built" }
+if (-not (Test-Path $setupExe)) {
+    # an older tag's installer script still puts the version into the name: rename it
+    $built = Join-Path $src "installer\output\$oldSetup"
+    if (Test-Path $built) { Move-Item $built $setupExe } else { Fail "$setupName was not built" }
+}
 
 # ---------------------------------------------------------------- verify everything
 Step "Verifying every signature"
@@ -155,8 +176,7 @@ Step "Making the zips from the signed files"
 $out = Join-Path $work "signed"
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 Copy-Item $setupExe $out
-Compress-Archive -Path $vstDir -DestinationPath (Join-Path $out $vstZipName)
-Compress-Archive -Path $appExe -DestinationPath (Join-Path $out $appZipName)
+Compress-Archive -Path $vstDir, $appExe -DestinationPath (Join-Path $out $winZipName)
 Get-ChildItem $out | Format-Table Name, Length -AutoSize | Out-String | Write-Host
 
 if ($NoUpload) {
@@ -168,6 +188,12 @@ if ($NoUpload) {
 Step "Replacing the Windows files of release $Tag with the signed ones"
 $files = @(Get-ChildItem $out | ForEach-Object { $_.FullName })
 Run $gh (@("release", "upload", $Tag, "--repo", $Repo, "--clobber") + $files) "uploading to release $Tag"
+if ($oldNames) {
+    # the release had the old, versioned names: the unsigned old files go, the signed ones have the fixed names
+    $ErrorActionPreference = "Continue"
+    foreach ($n in @($oldVstZip, $oldAppZip, $oldSetup)) { & $gh release delete-asset $Tag $n --repo $Repo --yes 2>&1 | Out-Null }
+    $ErrorActionPreference = "Stop"
+}
 
 Step "Release notes: 'NOT code-signed' warning -> 'Signed by ... (Certum)'"
 $body = (& $gh api "repos/$Repo/releases/tags/$Tag" --jq ".body") -join "`n"

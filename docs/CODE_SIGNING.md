@@ -8,7 +8,7 @@
 > **not** signed. **macOS** builds are signed and notarized (Developer ID: Radovan Glovna) since 2026-10-24
 > (see below).
 
-AMPSURD's Windows releases (installer `AMPSURD-Setup-<version>.exe`, the VST3 plugin and the
+AMPSURD's Windows releases (installer `AMPSURD-Windows-Setup.exe`, the VST3 plugin and the
 standalone app inside it, the portable zips) are built from this repository by GitHub Actions only
 (`.github/workflows/build-windows.yml`); the workflow publishes them unsigned. Signing then happens
 on the maintainer's own PC, because the certificate's key lives in Certum's cloud and is unlocked by an
@@ -18,7 +18,7 @@ Setup signs Setup, its temporary copy and the uninstaller), verifies every signa
 (Certum TSA) and replaces the release's Windows files and its unsigned warning.
 Steps: [docs/RELEASE_SIGNING.md](RELEASE_SIGNING.md).
 
-**macOS** builds (`AMPSURD-<version>-macOS.pkg` and the zips, made by the same workflow) are signed and
+**macOS** builds (`AMPSURD-macOS.pkg` and `AMPSURD-macOS.zip`, made by the same workflow) are signed and
 notarized in CI since 2026-10-24 (Apple Developer Program, Individual, Team ID 93DWMMFZ87, valid until
 2027-10-24): the app, VST3 and Audio Unit with "Developer ID Application: Radovan Glovna" (hardened
 runtime, secure timestamp; the app's entitlements: audio input and camera - `installer/macos/

@@ -49,6 +49,21 @@ int main(int argc, char** argv)
                         && !isNewerVersion("v0.9.0", "0.9.0") && !isNewerVersion("0.8.9", "0.9.0") && isNewerVersion("0.9.0.1", "0.9.0");
         std::cout << (ok ? "[PASS]" : "[FAIL]") << " UPDATES: version comparison (0.9.1 > 0.9.0, 0.10.0 > 0.9.9, equal is not newer)\n";
     }
+    {
+        // GitHub's answer with the new kind of releases: a normal (not pre-release) release with fixed file names,
+        // an older pre-release, a newer draft (ignored)
+        const auto json = juce::JSON::parse(R"([
+          {"tag_name":"v0.9.3","draft":true,"prerelease":false,"html_url":"https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.3"},
+          {"tag_name":"v0.9.2","draft":false,"prerelease":false,"html_url":"https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.2",
+           "assets":[{"name":"AMPSURD-Windows-Setup.exe"},{"name":"AMPSURD-Windows.zip"},{"name":"AMPSURD-macOS.pkg"},{"name":"AMPSURD-macOS.zip"}]},
+          {"tag_name":"v0.9.1","draft":false,"prerelease":true,"html_url":"https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.1",
+           "assets":[{"name":"AMPSURD-Setup-0.9.1.exe"}]}
+        ])");
+        const auto info = ampsurd::latestFromReleases(json);
+        const bool ok = info.ok && info.latest == "0.9.2" && info.pageUrl.endsWith("/v0.9.2") && ampsurd::isNewerVersion(info.latest, "0.9.1");
+        std::cout << (ok ? "[PASS]" : "[FAIL]") << " UPDATES: newest release found by its version (normal release with fixed file names "
+                  << "and an older pre-release; draft ignored): " << info.latest << "\n";
+    }
     auto proc = std::make_unique<AmpsurdProcessor>();
     proc->prepareToPlay(48000.0, 256);
 

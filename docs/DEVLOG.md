@@ -6,6 +6,23 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-24 — Session 3w: fixed download names, normal releases, website material — Claude (Opus 5.5)
+
+- Owner: ampsurd.com downloads straight from GitHub. Release files now have the same names in every release:
+  AMPSURD-Windows-Setup.exe (Inno OutputBaseFilename), AMPSURD-Windows.zip (VST3 + AMPSURD.exe),
+  AMPSURD-macOS.pkg, AMPSURD-macOS.zip (app + VST3 + AU, signed and stapled). The release job creates normal
+  releases (--latest, no --prerelease; "beta" stays in the title / notes), so
+  https://github.com/SymbiOrbis/ampsurd/releases/latest/download/<name> always gives the newest.
+- sign_release.ps1: downloads AMPSURD-Windows.zip (older releases: the two versioned zips), signs, builds
+  AMPSURD-Windows-Setup.exe (an older tag's versioned installer name is renamed), uploads the fixed names and,
+  for an old-style release, deletes its unsigned versioned files.
+- Check for updates: unchanged logic (newest by version tag from /releases; asset names and the
+  pre-release flag do not matter) - parsing moved to latestFromReleases(), ui_snapshot test with a normal
+  release with fixed names, an older pre-release and a draft -> 0.9.2.
+- Docs: README, BUILD_WINDOWS / BUILD_MACOS, CODE_SIGNING, RELEASE_SIGNING, RELEASE_NOTES.
+- Note: v0.9.1 (published as a pre-release with versioned names) does not answer the /latest/download links;
+  they work from the next release on (or if v0.9.1 is changed - asked the owner).
+
 ## 2026-10-24 — Session 3v: macOS signing + notarization in CI — Claude (Opus 5.5)
 
 - Owner: Apple Developer account (Individual, Team 93DWMMFZ87, valid until 2027-10-24) and the repository

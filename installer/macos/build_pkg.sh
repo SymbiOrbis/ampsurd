@@ -1,6 +1,6 @@
 #!/bin/bash
-# Builds the macOS installer AMPSURD-<version>-macOS.pkg (standalone app + VST3 + Audio Unit) and
-# zips of the single bundles. Run on a Mac after the Release build (the CI does this):
+# Builds the macOS installer AMPSURD-macOS.pkg (standalone app + VST3 + Audio Unit) and AMPSURD-macOS.zip
+# (the three bundles). Fixed names without the version: the website links to .../releases/latest/download/<name>. Run on a Mac after the Release build (the CI does this):
 #   installer/macos/build_pkg.sh <version> <artefacts dir> <output dir>
 # e.g. installer/macos/build_pkg.sh 0.9.1 build/plugin/Ampsurd_artefacts/Release installer/output
 #
@@ -84,7 +84,7 @@ fi
 sed -e "s/@VERSION@/$VERSION/g" -e "s|@SIGNING_NOTE@|$NOTE|" "$HERE/welcome.html" > "$WORK/resources/welcome.html"
 sed "s/@VERSION@/$VERSION/g" "$HERE/distribution.xml" > "$WORK/distribution.xml"
 
-PKG="$OUT/AMPSURD-$VERSION-macOS.pkg"
+PKG="$OUT/AMPSURD-macOS.pkg"
 pkgsign=()
 [ -n "$SIGN_PKG" ] && pkgsign=(--sign "$SIGN_PKG" --timestamp ${kcargs[@]+"${kcargs[@]}"})
 productbuild --distribution "$WORK/distribution.xml" --resources "$WORK/resources" --package-path "$WORK" \
@@ -135,7 +135,10 @@ elif [ -n "$SIGN_APP" ]; then
 fi
 echo "$SIGNING_STATE" > "$OUT/macos-signing.txt"
 
-ditto -c -k --keepParent "$APP"  "$OUT/AMPSURD-$VERSION-Standalone-macOS.zip"
-ditto -c -k --keepParent "$VST3" "$OUT/AMPSURD-$VERSION-VST3-macOS.zip"
-ditto -c -k --keepParent "$AU"   "$OUT/AMPSURD-$VERSION-AU-macOS.zip"
+# one zip with the three (signed, stapled) bundles
+mkdir -p "$WORK/zip"
+ditto "$APP" "$WORK/zip/$(basename "$APP")"
+ditto "$VST3" "$WORK/zip/$(basename "$VST3")"
+ditto "$AU" "$WORK/zip/$(basename "$AU")"
+ditto -c -k "$WORK/zip" "$OUT/AMPSURD-macOS.zip"
 ls -l "$OUT"

@@ -34,6 +34,32 @@ inline bool isNewerVersion(juce::String latest, juce::String current)
     return false;
 }
 
+// The newest release in GitHub's answer to /releases: by its version tag, drafts skipped, normal releases and
+// pre-releases alike (so it works the same since releases are no longer marked pre-release, 2026-10-24) -
+// the file names of the downloads do not matter.
+inline UpdateInfo latestFromReleases(const juce::var& json)
+{
+    UpdateInfo info;
+    if (auto* list = json.getArray())
+    {
+        for (const auto& r : *list)
+        {
+            if ((bool) r.getProperty("draft", false)) continue;
+            const auto tag = r.getProperty("tag_name", {}).toString();
+            if (tag.isEmpty()) continue;
+            if (info.latest.isEmpty() || isNewerVersion(tag, info.latest))
+            {
+                info.latest = tag.trimCharactersAtStart("vV");
+                info.pageUrl = r.getProperty("html_url", {}).toString();
+            }
+        }
+        info.ok = true;
+    }
+    else
+        info.error = "Unexpected answer from GitHub.";
+    return info;
+}
+
 // runs the request on a background thread, calls `done` on the message thread
 inline void checkForUpdates(std::function<void(const UpdateInfo&)> done)
 {
@@ -47,24 +73,7 @@ inline void checkForUpdates(std::function<void(const UpdateInfo&)> done)
                         .withStatusCode(&status);
         if (auto in = url.createInputStream(opts); in != nullptr && status == 200)
         {
-            const auto json = juce::JSON::parse(in->readEntireStreamAsString());
-            if (auto* list = json.getArray())
-            {
-                // the highest version among the published releases (pre-releases included: AMPSURD is in beta)
-                for (const auto& r : *list)
-                {
-                    if ((bool) r.getProperty("draft", false)) continue;
-                    const auto tag = r.getProperty("tag_name", {}).toString();
-                    if (info.latest.isEmpty() || isNewerVersion(tag, info.latest))
-                    {
-                        info.latest = tag.trimCharactersAtStart("vV");
-                        info.pageUrl = r.getProperty("html_url", {}).toString();
-                    }
-                }
-                info.ok = true;
-            }
-            else
-                info.error = "Unexpected answer from GitHub.";
+            info = latestFromReleases(juce::JSON::parse(in->readEntireStreamAsString()));
         }
         else
             info.error = status != 0 ? "GitHub answered with status " + juce::String(status) + "." : "Could not reach GitHub (no internet?).";

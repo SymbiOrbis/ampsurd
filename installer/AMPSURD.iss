@@ -36,7 +36,8 @@ WizardStyle=modern
 Compression=lzma2/max
 SolidCompression=yes
 OutputDir=output
-OutputBaseFilename=AMPSURD-Setup-{#AppVersion}
+; the same name for every version: the website links to .../releases/latest/download/AMPSURD-Windows-Setup.exe
+OutputBaseFilename=AMPSURD-Windows-Setup
 CloseApplications=yes
 
 [Languages]

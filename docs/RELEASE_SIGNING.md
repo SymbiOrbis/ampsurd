@@ -31,7 +31,7 @@ Windows SDK signtool is already installed. In PowerShell:
      Most common cause: SimplySign is not logged in (log in, run step 3 again).
 5. Check:
    - the release page starts with "Windows: Signed by Open Source Developer Radovan Glovňa (Certum) ...";
-   - download `AMPSURD-Setup-<version>.exe` from the release page -> right-click -> Properties ->
+   - download `AMPSURD-Windows-Setup.exe` from the release page -> right-click -> Properties ->
      **Digital Signatures**: "Open Source Developer Radovan Glovňa", with a timestamp -> Details ->
      "This digital signature is OK";
    - optional: install it on a PC with Smart App Control turned on.

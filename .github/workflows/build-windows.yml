@@ -94,8 +94,8 @@ jobs:
           & $iscc /Qp "/DAppVersion=$ver" installer\AMPSURD.iss
           if ($LASTEXITCODE -ne 0) { Write-Output "::error title=installer::Inno Setup failed"; exit 1 }
           $rel = "build/plugin/Ampsurd_artefacts/Release"
-          Compress-Archive -Path "$rel/VST3/AMPSURD.vst3" -DestinationPath "installer/output/AMPSURD-$ver-VST3-windows-x64.zip"
-          Compress-Archive -Path "$rel/Standalone/AMPSURD.exe" -DestinationPath "installer/output/AMPSURD-$ver-Standalone-windows-x64.zip"
+          # fixed names (no version): the website links to .../releases/latest/download/<name>
+          Compress-Archive -Path "$rel/VST3/AMPSURD.vst3", "$rel/Standalone/AMPSURD.exe" -DestinationPath "installer/output/AMPSURD-Windows.zip"
           Get-ChildItem installer/output
 
       - name: Upload installer
@@ -286,5 +286,7 @@ jobs:
             else echo "::error title=release::release $TAG already exists"; exit 1; fi
           fi
           # creates the tag on this commit when it does not exist yet
-          gh release create "$TAG" dist/* --repo "$REPO" --target "${{ github.sha }}" --title "AMPSURD $VER (beta)" --notes-file docs/RELEASE_NOTES.md --prerelease \
+          # a normal release (not a pre-release), so .../releases/latest/download/<name> always finds the newest one;
+          # "beta" stays in the title and the notes
+          gh release create "$TAG" dist/* --repo "$REPO" --target "${{ github.sha }}" --title "AMPSURD $VER (beta)" --notes-file docs/RELEASE_NOTES.md --latest \
             || { echo "::error title=release::gh release create failed"; exit 1; }
