@@ -654,6 +654,7 @@ private:
     bool videoRecording = false, videoSaving = false;
     double replaceArmedAt = -1.0;
     juce::File lastSavedVideo;
+    juce::File savedTakeVideo; // the take's camera file whose MP4 has been saved: a new video take needs no REPLACE?
 };
 
 // ---------------------------------------------------------------------------------------------

@@ -2,6 +2,9 @@
 
 #include "Theme.h"
 
+#include <algorithm>
+#include <utility>
+
 namespace ampsurd::ui
 {
 using namespace colours;
@@ -51,18 +54,23 @@ CameraView::CameraView(VideoCapture& c, PlayerRecorder& p) : camera(c), player(p
     addAndMakeVisible(playButton);
     playButton.setTooltip("Plays the video take with AMPSURD's sound (the same as the saved video will have). Again: stop");
     playButton.onClick = [this] { if (playingBack) stopPlayback(); else startPlayback(); };
-    addAndMakeVisible(saveButton);
-    saveButton.setTooltip("Saves the video take as an .mp4 into Documents / AMPSURD / Recordings: picture from the camera, sound from AMPSURD");
-    saveButton.onClick = [this] { stopPlayback(); if (onSave) onSave(); };
     addAndMakeVisible(showButton);
-    showButton.setTooltip("Shows the last saved video in Explorer / Finder");
-    showButton.onClick = [this] { if (onShowFile) onShowFile(); };
+    showButton.setTooltip("Shows the saved video chosen in WATCH (or the last saved one) in Explorer / Finder");
+    showButton.onClick = [this] {
+        const auto f = selectedSavedVideo();
+        if (f.existsAsFile()) f.revealToUser();
+        else if (onShowFile) onShowFile();
+    };
     addAndMakeVisible(soundBox);
     soundBox.addItem("GUITAR + BACKING", 1);
     soundBox.addItem("GUITAR ONLY", 2);
     soundBox.setSelectedId(1, juce::dontSendNotification);
-    soundBox.setTooltip("The sound of the saved video (the same choice as SAVE AS in the player)");
+    soundBox.setTooltip("The sound of the saved videos: guitar with the backing track, or guitar only (every take is saved automatically)");
     soundBox.onChange = [this] { if (onSoundChoice) onSoundChoice(soundBox.getSelectedId()); };
+    addAndMakeVisible(watchBox);
+    watchBox.setTooltip("What PLAY shows here: the last take (with AMPSURD's sound, before or after saving) or one of your saved videos");
+    watchBox.onChange = [this] { stopPlayback(); };
+    refreshVideoList();
 
     listCameras();
     if (!VideoCapture::isSupported()) message = "Video recording is not available on this system.";
@@ -114,12 +122,14 @@ void CameraView::resized()
     offsetSlider.setBounds(bottom.removeFromLeft(juce::jmin(300, bottom.getWidth())));
     r.removeFromBottom(24); // the note above the offset
     auto controls = r.removeFromBottom(34);
+    auto watch = r.removeFromBottom(32);
+    watch.removeFromLeft(70);
+    const int ww = juce::jmin(420, watch.getWidth());
+    watchBox.setBounds(watch.removeFromLeft(ww).withSizeKeepingCentre(ww, 26));
     recButton.setBounds(controls.removeFromLeft(96).withSizeKeepingCentre(96, 30));
     controls.removeFromLeft(8);
     playButton.setBounds(controls.removeFromLeft(86).withSizeKeepingCentre(86, 30));
     controls.removeFromLeft(16);
-    saveButton.setBounds(controls.removeFromLeft(96).withSizeKeepingCentre(96, 30));
-    controls.removeFromLeft(8);
     const int sw = juce::jmin(170, juce::jmax(0, controls.getWidth() - 104));
     soundBox.setBounds(controls.removeFromLeft(sw).withSizeKeepingCentre(sw, 26));
     controls.removeFromLeft(8);
@@ -155,6 +165,9 @@ void CameraView::paint(juce::Graphics& g)
     g.drawText("The sound of the video is AMPSURD's own (as when you save audio), not the camera's microphone.", note,
                juce::Justification::centredLeft, true);
     r.removeFromBottom(34); // REC / SAVE row
+    g.setFont(Fonts::get().label(11.0f));
+    g.setColour(textDim);
+    g.drawText("WATCH", r.removeFromBottom(32).removeFromLeft(66), juce::Justification::centredLeft, false);
     r.reduce(0, 8);
     g.setColour(line);
     g.drawRect(r);
@@ -177,6 +190,25 @@ void CameraView::paint(juce::Graphics& g)
                        + juce::String(secs % 60).paddedLeft('0', 2),
                    tag, juce::Justification::centred, false);
     }
+    if (notice.isNotEmpty())
+    {
+        // over the picture, at the bottom: shown as text, not only by colour
+        g.setFont(Fonts::get().semibold(13.0f));
+        const int w = juce::jmin(r.getWidth() - 20, juce::GlyphArrangement::getStringWidthInt(g.getCurrentFont(), notice) + 40);
+        const auto box = juce::Rectangle<int>(r.getCentreX() - w / 2, r.getBottom() - 46, w, 34);
+        g.setColour(noticeOk ? juce::Colour(0xee1f6f43) : accent.withAlpha(0.93f));
+        g.fillRoundedRectangle(box.toFloat(), 4.0f);
+        g.setColour(juce::Colours::white);
+        g.drawFittedText(notice, box.reduced(12, 0), juce::Justification::centred, 1, 0.8f);
+    }
+}
+
+void CameraView::showNotice(const juce::String& text, double seconds, bool ok)
+{
+    notice = text;
+    noticeOk = ok;
+    noticeUntil = juce::Time::getMillisecondCounterHiRes() + seconds * 1000.0;
+    repaint();
 }
 
 void CameraView::refresh()
@@ -194,7 +226,7 @@ void CameraView::refresh()
     // playback ends with the video, or when the player was stopped elsewhere
    #if JUCE_WINDOWS || JUCE_MAC
     // (the video's own isPlaying() can lag behind on Windows: it ends at its last frame or when the player stops)
-    if (playingBack && (playback == nullptr || st != S::playing
+    if (playingBack && (playback == nullptr || (!playingFile && st != S::playing)
                         || (playback->getVideoDuration() > 0.0 && playback->getPlayPosition() >= playback->getVideoDuration() - 0.05)))
         stopPlayback();
    #endif
@@ -202,9 +234,12 @@ void CameraView::refresh()
                                               : juce::String::charToString((juce::juce_wchar) 0x25B6) + " PLAY";
     if (playButton.getButtonText() != playText) playButton.setButtonText(playText);
     playButton.setToggleState(playingBack, juce::dontSendNotification);
-    playButton.setEnabled(!recording && player.takeHasVideo());
-    saveButton.setEnabled(!recording && player.takeHasVideo());
-    showButton.setEnabled(hasSavedFile && hasSavedFile());
+    if (++listCheck >= 60) { listCheck = 0; if (!recording) refreshVideoList(); } // ~every 2 s: new / deleted videos
+    const auto chosen = selectedSavedVideo();
+    playButton.setEnabled(!recording && (chosen != juce::File() ? chosen.existsAsFile() : player.takeHasVideo()));
+    watchBox.setEnabled(!recording);
+    if (noticeUntil > 0.0 && juce::Time::getMillisecondCounterHiRes() > noticeUntil) { noticeUntil = 0.0; notice.clear(); repaint(); }
+    showButton.setEnabled(chosen.existsAsFile() || (hasSavedFile && hasSavedFile()));
     soundBox.setEnabled(!recording);
     if (camera.isRecording() != recordingShown)
     {
@@ -217,6 +252,28 @@ void CameraView::refresh()
 void CameraView::startPlayback()
 {
    #if JUCE_WINDOWS || JUCE_MAC
+    const auto saved = selectedSavedVideo();
+    if (saved != juce::File())
+    {
+        // a saved video: it has its sound inside (AMPSURD's, as saved) - played as it is, the player stays out
+        if (!saved.existsAsFile()) { setStatus("This video is no longer there."); refreshVideoList(); return; }
+        playback = std::make_unique<juce::VideoComponent>(false);
+        const auto r = playback->load(saved);
+        if (r.failed()) { playback.reset(); loadedVideo = juce::File(); setStatus("The video cannot be played: " + r.getErrorMessage()); return; }
+        loadedVideo = saved;
+        addChildComponent(*playback);
+        resized();
+        player.stop();
+        playback->setAudioVolume(1.0f);
+        playback->setPlayPosition(0.0);
+        if (preview != nullptr) preview->setVisible(false);
+        playback->setVisible(true);
+        playback->play();
+        playingBack = playingFile = true;
+        setStatus("Playing " + saved.getFileName() + ". STOP: the same button.");
+        repaint();
+        return;
+    }
     const auto file = player.getTakeVideo();
     if (!player.takeHasVideo()) { setStatus("No video take yet."); return; }
     if (player.isBusy()) { setStatus("Still saving - PLAY works again in a moment."); return; }
@@ -252,6 +309,7 @@ void CameraView::stopPlayback()
 {
     if (!playingBack) return;
     playingBack = false;
+    const bool wasFile = std::exchange(playingFile, false);
    #if JUCE_WINDOWS || JUCE_MAC
     if (playback != nullptr)
     {
@@ -259,9 +317,35 @@ void CameraView::stopPlayback()
         playback->setVisible(false);
     }
    #endif
-    if (player.getState() == PlayerRecorder::State::playing) player.stop();
+    if (!wasFile && player.getState() == PlayerRecorder::State::playing) player.stop();
     if (preview != nullptr) preview->setVisible(true);
     repaint();
+}
+
+void CameraView::refreshVideoList()
+{
+    auto files = player.getRecordingsFolder().findChildFiles(juce::File::findFiles, false, "*.mp4");
+    std::sort(files.begin(), files.end(), [](const juce::File& a, const juce::File& b) {
+        return a.getLastModificationTime() > b.getLastModificationTime();
+    });
+    juce::String key;
+    for (auto& f : files) key << f.getFileName() << '|' << f.getLastModificationTime().toMilliseconds() << '\n';
+    if (key == videoListKey && watchBox.getNumItems() > 0) return;
+    videoListKey = key;
+    const auto keep = selectedSavedVideo(); // stays chosen if it is still there
+    savedVideos = files;
+    watchBox.clear(juce::dontSendNotification);
+    watchBox.addItem("Last take (with AMPSURD's sound)", 1);
+    if (!savedVideos.isEmpty()) watchBox.addSectionHeading("Saved videos (Documents / AMPSURD / Recordings)");
+    for (int i = 0; i < savedVideos.size(); ++i) watchBox.addItem(savedVideos[i].getFileNameWithoutExtension(), i + 2);
+    const int idx = savedVideos.indexOf(keep);
+    watchBox.setSelectedId(idx >= 0 ? idx + 2 : 1, juce::dontSendNotification);
+}
+
+juce::File CameraView::selectedSavedVideo() const
+{
+    const int id = watchBox.getSelectedId();
+    return id >= 2 && id - 2 < savedVideos.size() ? savedVideos[id - 2] : juce::File();
 }
 
 void CameraView::setStatus(const juce::String& s)
@@ -283,11 +367,11 @@ CameraWindow::CameraWindow(VideoCapture& c, PlayerRecorder& p, std::function<voi
     setLookAndFeel(&lnf);
     auto v = std::make_unique<CameraView>(c, p);
     contentView = v.get();
-    v->setSize(600, 560);
+    v->setSize(600, 590);
     setContentOwned(v.release(), true);
     setUsingNativeTitleBar(true);
     setResizable(true, false);
-    setResizeLimits(480, 420, 1920, 1400);
+    setResizeLimits(480, 450, 1920, 1400);
     centreWithSize(getWidth(), getHeight());
     setAlwaysOnTop(true); // stays in front of AMPSURD's window while you play / save (owner, 2026-10-22)
     setVisible(true);

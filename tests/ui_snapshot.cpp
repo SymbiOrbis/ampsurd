@@ -967,8 +967,22 @@ int main(int argc, char** argv)
         ampsurd::ui::CameraView view(cam, dummy);
         ampsurd::ui::LookAndFeel lf;
         view.setLookAndFeel(&lf);
-        view.setSize(600, 560); // as the real window
+        view.setSize(600, 590); // as the real window
+        view.showNotice(juce::String::charToString((juce::juce_wchar) 0x2713) + "  VIDEO SAVED: AMPSURD video 2026-10-24 15-20-11", 6.0);
         save(view, out.getChildFile("20_camera_window.png"));
+        // owner 2026-10-24: no SAVE MP4 button (every take is saved automatically); WATCH lists the last take + saved videos
+        bool saveBtn = false;
+        juce::ComboBox* watch = nullptr;
+        for (auto* c : view.getChildren())
+        {
+            if (auto* b = dynamic_cast<juce::TextButton*>(c)) saveBtn = saveBtn || b->getButtonText().containsIgnoreCase("SAVE");
+            if (auto* cb = dynamic_cast<juce::ComboBox*>(c)) if (cb->getNumItems() > 0 && cb->getItemText(0).startsWith("Last take")) watch = cb;
+        }
+        const int mp4s = dummy.getRecordingsFolder().findChildFiles(juce::File::findFiles, false, "*.mp4").size();
+        const bool watchOk = watch != nullptr && watch->getNumItems() == 1 + mp4s && watch->getSelectedId() == 1
+                             && view.selectedSavedVideo() == juce::File();
+        std::cout << ((!saveBtn && watchOk) ? "[PASS] " : "[FAIL] ") << "CAMERA WINDOW: no SAVE button, WATCH = last take + "
+                  << mp4s << " saved video(s)\n";
         view.setLookAndFeel(nullptr);
         std::cout << "[INFO] camera supported here: " << (VideoCapture::isSupported() ? "yes" : "no") << ", cameras: "
                   << VideoCapture::cameras().size() << "\n";

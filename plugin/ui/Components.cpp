@@ -2480,7 +2480,6 @@ void PlayerPanel::setVideo(bool on)
             });
         auto& v = cameraWindow->view();
         v.onRec = [this] { recordPressed(true); };
-        v.onSave = [this] { saveVideo(); };
         v.onSoundChoice = [this](int id) { contentBox.setSelectedId(id, juce::sendNotificationSync); };
         v.onShowFile = [this] { if (lastSavedVideo.existsAsFile()) lastSavedVideo.revealToUser(); };
         v.hasSavedFile = [this] { return lastSavedVideo.existsAsFile(); };
@@ -2535,13 +2534,26 @@ void PlayerPanel::recordPressed(bool fromCameraWindow)
         if (st == S::recording || st == S::pausedRec) { player.stop(); return; } // a video take ends with REC or STOP
         if (player.getState() != S::stopped && !fromCameraWindow) { setStatus("VIDEO: a video take starts from STOP (one continuous take)."); return; }
         if (!camera.isOpen()) { setStatus("VIDEO: no camera is open - see the camera window."); return; }
+        const bool saved = player.takeHasVideo() && player.getTakeVideo() == savedTakeVideo;
+        if (saved)
+        {
+            // this take is saved as an MP4 already: nothing is lost, so a new take starts right away (owner 2026-10-24)
+            replaceArmedAt = -1.0;
+            player.clearTake();
+            startVideoTake();
+            if (videoRecording)
+                setStatus("Recording a new video take - the previous one is saved"
+                          + (lastSavedVideo.existsAsFile() ? " as " + lastSavedVideo.getFileName() : juce::String()) + ". STOP (or REC) ends it.");
+            return;
+        }
         if (player.hasTake() || !player.getClips().empty())
         {
+            // an audio take, or a video take whose MP4 could not be saved: it would be lost (UNDO only)
             const double now = juce::Time::getMillisecondCounterHiRes();
             if (!(replaceArmedAt > 0.0 && now - replaceArmedAt < 3000.0))
             {
                 replaceArmedAt = now;
-                setStatus("There is already a take: press REC again within 3 s to replace it with a new video take (UNDO brings the old one back).");
+                setStatus("The take is not saved yet: press REC again within 3 s to replace it with a new video take (UNDO brings the old one back).");
                 return;
             }
             replaceArmedAt = -1.0;
@@ -2577,7 +2589,7 @@ void PlayerPanel::finishVideoTake()
             sp->setStatus("VIDEO: the camera did not write a video file (" + f.getFileName()
                           + "). Is the camera used by another app? Please report it with your camera's name.");
         else
-            sp->saveVideo(); // the video WITH its sound, right away (owner 2026-10-23); SAVE MP4 saves it again
+            sp->saveVideo(); // the video WITH its sound, right away (owner 2026-10-23; no SAVE button since 2026-10-24)
     });
 }
 
@@ -2600,22 +2612,32 @@ void PlayerPanel::saveVideo()
     const auto video = player.getTakeVideo();
     videoSaving = true;
     setStatus("Saving the video " + f.getFileName() + "... (about as long as the video itself)");
+    if (cameraWindow != nullptr) cameraWindow->view().showNotice("SAVING THE VIDEO...", 600.0);
     // the sound is rendered here too, in the background: a long song must not freeze the window
     juce::Thread::launch([sp = juce::Component::SafePointer<PlayerPanel>(this), pl = &player, withBacking, video, sr, f] {
         juce::AudioBuffer<float> mix;
         int start = 0;
         auto e = pl->renderMix(withBacking, mix, start);
         if (e.isEmpty()) e = muxVideoToMp4(video, mix, sr, pl->videoAudioLeadSeconds(start), f, {});
-        juce::MessageManager::callAsync([sp, e, f] {
+        juce::MessageManager::callAsync([sp, e, f, video] {
             if (sp == nullptr) return;
             sp->videoSaving = false;
             if (e.isEmpty() && f.existsAsFile())
             {
                 sp->lastSavedVideo = f;
+                sp->savedTakeVideo = video;
+                if (sp->cameraWindow != nullptr)
+                {
+                    sp->cameraWindow->view().refreshVideoList();
+                    sp->cameraWindow->view().showNotice(juce::String::charToString((juce::juce_wchar) 0x2713) + "  VIDEO SAVED: " + f.getFileNameWithoutExtension(), 6.0);
+                }
                 sp->setStatus("Saved: " + f.getFileName() + " (Documents / AMPSURD / Recordings). SHOW FILE opens the folder.");
             }
             else
+            {
                 sp->setStatus("The video could not be saved: " + (e.isNotEmpty() ? e : juce::String("no file was written")) + ". Please report this text.");
+                if (sp->cameraWindow != nullptr) sp->cameraWindow->view().showNotice("THE VIDEO COULD NOT BE SAVED - see the line below", 10.0, false);
+            }
         });
     });
 }

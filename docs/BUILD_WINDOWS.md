@@ -265,13 +265,15 @@ REAPER picks up the new version.
 42. VIDEO takes (standalone, needs a camera): PLAYER / REC -> VIDEO: the camera window opens (choose the
     camera, you see yourself; the window stays in front of AMPSURD). In the camera window: REC - the song goes
     to the start, count-in / recording starts, the window shows REC VIDEO and the time; play, then STOP (same
-    button). Right after STOP the MP4 WITH the sound is made automatically (status: the file name). PLAY -
-    the take's video with AMPSURD's sound (STOP: same button). SAVE MP4 - another MP4 straight into
-    Documents / AMPSURD / Recordings (no dialog), sound GUITAR + BACKING or GUITAR ONLY (next to it); the
-    status line at the bottom says the file name or why it failed; SHOW FILE opens the folder. REC with a
-    take already there shows REPLACE? - press REC again within 3 s (UNDO brings the old take back). Check:
-    are picture and sound together (clap or a hard pick stroke)? If not, move SOUND OFFSET, PLAY / save again;
-    note the value. Close the camera window = VIDEO off.
+    button). Right after STOP the MP4 WITH the sound is saved automatically into Documents / AMPSURD /
+    Recordings (sound GUITAR + BACKING or GUITAR ONLY, next to PLAY): a notice over the picture says SAVING
+    THE VIDEO..., then "VIDEO SAVED: <name>" (or, in red, that it failed - the status line says why). There
+    is no SAVE button any more. REC again right away: a new take starts WITHOUT REPLACE? (the previous one is
+    saved). WATCH: "Last take" or any saved video (newest first; new files appear within ~2 s) - PLAY plays
+    it here (a saved video with its own sound); SHOW FILE opens the chosen video's folder. REPLACE? only
+    appears if the take is not saved (an audio take, or a failed save). Check: are picture and sound together
+    (clap or a hard pick stroke)? If not, move SOUND OFFSET (applies to the next takes); note the value.
+    Close the camera window = VIDEO off.
 
 43. Blend tone: load two different amps, 100:0 vs. 50:50 vs. 0:100 at matched loudness: the 50:50 blend
     should sound like "half of each", not darker than both. The automatic EQ learns while you play: give

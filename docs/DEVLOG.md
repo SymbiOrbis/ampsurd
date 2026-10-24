@@ -6,6 +6,23 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-24 — Session 3x: video takes for spontaneous ideas - Claude (Opus 5.5)
+
+- Owner: after a saved video take, REC asked REPLACE? (it only meant the take in the player - the MP4 is never
+  overwritten) and it was unclear whether saved videos can be watched in the window; the feature is for
+  spontaneous ideas only, so SAVE MP4 can go, but a notice after recording that the video is saved is wanted.
+- PlayerPanel: remembers which take's camera file was saved (savedTakeVideo); REC on a saved video take starts a
+  new take at once (status: where the previous one is). REPLACE? only for a take that would be lost (audio
+  take, failed save).
+- Camera window: SAVE MP4 removed (SAVE AS -> MP4 VIDEO in the player still exists); notice over the picture:
+  "SAVING THE VIDEO..." -> green "VIDEO SAVED: <name>" for 6 s (red if it failed); WATCH box: "Last take (with
+  AMPSURD's sound)" + the saved videos in Recordings, newest first (re-read after a save and every ~2 s); PLAY
+  plays the chosen saved video with its own sound (the player stays stopped); SHOW FILE reveals the chosen
+  video. Window 600 x 590.
+- Tested (Linux, no camera): ui_snapshot with and without AMPSURD_FORCE_PLAYER - all PASS, new check CAMERA
+  WINDOW (no SAVE button, WATCH = last take + the .mp4 files in Recordings: 0 and 1 file); 20_camera_window.png
+  with the notice. recorder_test ALL PASS. Not testable here: recording and playing real videos (owner, Windows).
+
 ## 2026-10-24 — Session 3w: fixed download names, normal releases, website material — Claude (Opus 5.5)
 
 - Owner: ampsurd.com downloads straight from GitHub. Release files now have the same names in every release:
