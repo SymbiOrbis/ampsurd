@@ -6,6 +6,27 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-24 — Session 3v: macOS signing + notarization in CI — Claude (Opus 5.5)
+
+- Owner: Apple Developer account (Individual, Team 93DWMMFZ87, valid until 2027-10-24) and the repository
+  secrets exist; sign and notarize the macOS build.
+- CI (macos job): new step imports both .p12 (secrets trimmed of whitespace / CR LF, base64-decoded) into a
+  temporary keychain (random password, partition list for codesign / productbuild), finds the identities
+  "Developer ID Application/Installer ... (93DWMMFZ87)", writes the notary key (.p8) to the runner's temp
+  folder; without the secrets (forks / PRs) a notice and the old unsigned build. A last step (always) deletes
+  the keychain and the key files.
+- installer/macos/build_pkg.sh: with AMPSURD_SIGN_APP the bundles are signed (inner code first, then the
+  bundle; --options runtime --timestamp; the app with entitlements-app.plist: audio input + camera - the
+  camera because VIDEO takes need it under the hardened runtime; Info.plist already has the microphone and
+  camera texts), the .pkg with Developer ID Installer (--timestamp, pkgutil --check-signature); with the notary
+  key: notarytool submit --wait (log printed on failure), staple the .pkg and the three bundles (fallback:
+  notarize the bundles separately if a ticket is not found), verify codesign --verify --deep --strict,
+  stapler validate (all), spctl -a -vv (app), spctl -a -t install -vv (.pkg) - any problem fails the job;
+  only then the zips. The installer's welcome page says "Signed and notarized by Apple (Developer ID:
+  Radovan Glovna)" or the old unsigned note. "macOS build: notarized / unsigned" in the log (notice).
+- Docs: RELEASE_NOTES (macOS: signed and notarized, no "Open Anyway"), README, CODE_SIGNING, BUILD_MACOS.
+- Still needed: a real-Mac test (audio interface, Logic / GarageBand).
+
 ## 2026-10-24 — Session 3u: ONE undo history (Ctrl+Z also undoes takes) — Claude (Opus 5.5)
 
 - Owner (approved): Ctrl+Z must undo any step, also a take - no categories of actions; the player's own UNDO

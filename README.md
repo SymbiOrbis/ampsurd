@@ -19,9 +19,10 @@ editing. Play.
 [Privacy](PRIVACY.md)
 
 **macOS 10.15 Catalina or newer (Apple Silicon and Intel):** from the next beta on, `AMPSURD-<version>-macOS.pkg`
-installs the standalone app, the VST3 plugin and the Audio Unit (Logic Pro, GarageBand, MainStage). It is
-not signed or notarized by Apple: macOS first refuses to open it, then System Settings → Privacy &
-Security → "Open Anyway" (on macOS 14 and older: right-click the .pkg → Open).
+installs the standalone app, the VST3 plugin and the Audio Unit (Logic Pro, GarageBand, MainStage). Builds
+made by the project's GitHub workflow are signed and notarized (Developer ID: Radovan Glovna) - they install
+with a double-click. (A build without the project's Apple key, e.g. from a fork, is unsigned: then System
+Settings → Privacy & Security → "Open Anyway".)
 
 > **Public beta. Code signing (Windows):** a signed release says "Signed by Open Source Developer
 > Radovan Glovňa (Certum)" at the top of its release page ([how to check](docs/CODE_SIGNING.md)). A

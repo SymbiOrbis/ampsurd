@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- hardened runtime: the standalone app hears the guitar through the audio interface -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+    <!-- VIDEO takes in the player film with the camera (only while recording a video take) -->
+    <key>com.apple.security.device.camera</key>
+    <true/>
+</dict>
+</plist>

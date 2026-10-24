@@ -5,7 +5,8 @@
 > A signed release says "Signed by Open Source Developer Radovan Glovňa (Certum)" at the top of its
 > release page (first: 0.9.1, signed 2026-10-19). A release without that line (0.9.0, and every
 > release before its signing step) is
-> **not** signed. macOS files are not signed by Apple (see below).
+> **not** signed. **macOS** builds are signed and notarized (Developer ID: Radovan Glovna) since 2026-10-24
+> (see below).
 
 AMPSURD's Windows releases (installer `AMPSURD-Setup-<version>.exe`, the VST3 plugin and the
 standalone app inside it, the portable zips) are built from this repository by GitHub Actions only
@@ -17,10 +18,18 @@ Setup signs Setup, its temporary copy and the uninstaller), verifies every signa
 (Certum TSA) and replaces the release's Windows files and its unsigned warning.
 Steps: [docs/RELEASE_SIGNING.md](RELEASE_SIGNING.md).
 
-**macOS** builds (`AMPSURD-<version>-macOS.pkg`, made by the same workflow) are not signed or
-notarized by Apple: the app and plugins carry only an ad-hoc signature (needed to run on Apple
-Silicon, it identifies no one). Apple signing needs an Apple Developer Program membership (99 USD per
-year); the Certum certificate cannot be used for it.
+**macOS** builds (`AMPSURD-<version>-macOS.pkg` and the zips, made by the same workflow) are signed and
+notarized in CI since 2026-10-24 (Apple Developer Program, Individual, Team ID 93DWMMFZ87, valid until
+2027-10-24): the app, VST3 and Audio Unit with "Developer ID Application: Radovan Glovna" (hardened
+runtime, secure timestamp; the app's entitlements: audio input and camera - `installer/macos/
+entitlements-app.plist`), the .pkg with "Developer ID Installer: Radovan Glovna"; notarized with
+`xcrun notarytool` (App Store Connect API key), then the .pkg and the bundles are stapled and checked
+(`codesign --verify --deep --strict`, `spctl`, `stapler validate`) - any problem fails the build. The
+identities live in a temporary keychain on the runner that is deleted at the end of the job; the keys are
+GitHub repository secrets (MACOS_DEVID_APP_P12, MACOS_DEVID_INSTALLER_P12, MACOS_P12_PASSWORD,
+APPLE_NOTARY_KEY_P8, APPLE_NOTARY_KEY_ID, APPLE_NOTARY_ISSUER_ID, APPLE_TEAM_ID). Without them (forks, pull
+requests) the workflow builds the old unsigned .pkg (ad-hoc signatures only). The build log says which one
+was made ("macOS build: notarized" / "unsigned").
 
 **Later option:** free signing in CI through the [SignPath Foundation](https://signpath.org/)
 ([SignPath.io](https://about.signpath.io/)) - applied for, not granted. It would sign inside the GitHub

@@ -15,10 +15,10 @@ has no Catalina machines): first Catalina testers, please report how it goes.
 
 ## Install
 
-1. Double-click `AMPSURD-<version>-macOS.pkg`. AMPSURD is **not signed or notarized by Apple** yet, so
-   macOS says it cannot verify it - click Done.
-2. System Settings -> Privacy & Security -> scroll down -> "AMPSURD-...pkg was blocked" -> **Open Anyway**,
-   then your password. (macOS 14 Sonoma and older: right-click the .pkg -> Open -> Open.)
+1. Double-click `AMPSURD-<version>-macOS.pkg`. Builds from the project's workflow are **signed and
+   notarized** (Developer ID: Radovan Glovna): macOS installs them like any app.
+2. (Only an unsigned build - e.g. from a fork, the build log says "macOS build: unsigned" - is blocked
+   first: System Settings -> Privacy & Security -> "Open Anyway"; macOS 14 and older: right-click -> Open.)
 3. The installer lets you pick the parts (Customize): app -> /Applications, VST3 ->
    /Library/Audio/Plug-Ins/VST3, AU -> /Library/Audio/Plug-Ins/Components.
 4. First start of the app: allow the **microphone** (= audio input) access, otherwise AMPSURD hears no
@@ -41,7 +41,10 @@ extra helper threads on its slower efficiency cores; one performance core runs f
   NAM bit-exactness `tone_test`, engine, CPU stress, render) on Apple Silicon, and `tone_test` once
   more as Intel code under Rosetta 2.
 - Apple's Audio Unit validator: `auval -strict -v aumf Amp5 Amps` must say AU VALIDATION SUCCEEDED.
-- The .pkg installer is built (the bundles get an ad-hoc signature only).
+- With the Apple secrets: the bundles are signed (Developer ID Application, hardened runtime, timestamp), the
+  .pkg too (Developer ID Installer), the .pkg is notarized, the .pkg and the bundles are stapled, and
+  `codesign --verify --deep --strict`, `spctl -a` (app, .pkg) and `stapler validate` must all pass.
+  Without the secrets: the unsigned .pkg (ad-hoc signatures only).
 
 Not checked by a machine: real audio interfaces, DAWs, the look on a Retina screen. That is the
 checklist below.
@@ -74,9 +77,6 @@ Xcode (or the Command Line Tools) and CMake 3.25+:
     cmake --build build --target Ampsurd_Standalone Ampsurd_VST3 Ampsurd_AU --parallel
     installer/macos/build_pkg.sh 0.9.1 build/plugin/Ampsurd_artefacts/Release installer/output
 
-## Signing (later)
+## Signing
 
-A signed and notarized Mac release needs an Apple Developer Program membership (99 USD per year,
-paid by a person or company; no free open-source route like SignPath exists for Apple). With it the
-CI would sign with a Developer ID certificate, notarize with `notarytool` and staple the .pkg -
-then macOS installs it without the "Open Anyway" step. Not done; see docs/CODE_SIGNING.md.
+Done in CI since 2026-10-24 - see docs/CODE_SIGNING.md (secrets, identities, what is checked).
