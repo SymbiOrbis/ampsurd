@@ -2,7 +2,7 @@
 # Builds the macOS installer AMPSURD-macOS.pkg (standalone app + VST3 + Audio Unit) and AMPSURD-macOS.zip
 # (the three bundles). Fixed names without the version: the website links to .../releases/latest/download/<name>. Run on a Mac after the Release build (the CI does this):
 #   installer/macos/build_pkg.sh <version> <artefacts dir> <output dir>
-# e.g. installer/macos/build_pkg.sh 0.9.1 build/plugin/Ampsurd_artefacts/Release installer/output
+# e.g. installer/macos/build_pkg.sh 0.9.2 build/plugin/Ampsurd_artefacts/Release installer/output
 #
 # Code signing (2026-10-24): when AMPSURD_SIGN_APP is set (the CI does this when the repository has the
 # Apple secrets), the bundles are signed with that Developer ID Application identity (hardened runtime,

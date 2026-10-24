@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.25)
 # Universal app (Apple Silicon + Intel): -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" (the CI does this).
 set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum macOS version")
 
-project(AMPSURD VERSION 0.9.1 LANGUAGES C CXX) # the version of releases (tag v0.9.1 = this number)
+project(AMPSURD VERSION 0.9.2 LANGUAGES C CXX) # the version of releases (tag v0.9.2 = this number)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

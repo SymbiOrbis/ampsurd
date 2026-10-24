@@ -18,7 +18,7 @@ editing. Play.
 `AMPSURD-Windows-Setup.exe` (VST3 plugin + standalone app; always the newest: https://github.com/SymbiOrbis/ampsurd/releases/latest/download/AMPSURD-Windows-Setup.exe). [Code signing policy](docs/CODE_SIGNING.md) ·
 [Privacy](PRIVACY.md)
 
-**macOS 10.15 Catalina or newer (Apple Silicon and Intel):** from the next beta on, `AMPSURD-macOS.pkg` (https://github.com/SymbiOrbis/ampsurd/releases/latest/download/AMPSURD-macOS.pkg)
+**macOS 10.15 Catalina or newer (Apple Silicon and Intel):** `AMPSURD-macOS.pkg` (https://github.com/SymbiOrbis/ampsurd/releases/latest/download/AMPSURD-macOS.pkg)
 installs the standalone app, the VST3 plugin and the Audio Unit (Logic Pro, GarageBand, MainStage). Builds
 made by the project's GitHub workflow are signed and notarized (Developer ID: Radovan Glovna) - they install
 with a double-click. (A build without the project's Apple key, e.g. from a fork, is unsigned: then System

@@ -19,21 +19,14 @@ notarized (Developer ID: Radovan Glovna): double-click it and install. The first
 access to the audio input: allow it, or AMPSURD hears no guitar (the camera is asked for only when you use
 VIDEO in the player).
 
-## AMPSURD 0.9.1 (beta)
+## AMPSURD 0.9.2 (beta)
 
-Second public beta for Windows 10 / 11 (64-bit): **AMPSURD-Windows-Setup.exe** installs the VST3
-plugin and the standalone app (with player / recorder). Installing it over 0.9.0 is fine: your presets
-and recordings (Documents\AMPSURD) stay untouched when you update or uninstall.
+Third public beta. **Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the
+standalone app (with player / recorder). **macOS 10.15 or newer:** AMPSURD-macOS.pkg installs the app, the
+VST3 plugin and the Audio Unit. Installing over an older version is fine: your presets and recordings
+(Documents/AMPSURD) stay untouched when you update or uninstall.
 
-New in 0.9.1:
-- Metronome in the standalone player / recorder: tempo (type it or TAP), time signature (2/4 ... 7/8) or
-  EVEN (every click the same), volume, count-in of 1 or 2 bars before recording. The click is heard,
-  never recorded.
-- Move an amp to another slot by dragging it by its name (everything moves with it; Ctrl+Z undoes it).
-- PAN can be typed (click the value: L30, R20, C).
-- OUTPUT meter with separate left / right bars.
-- UNDO / REDO as arrow buttons (no longer overlapping PLAYER / REC); Ctrl+Z / Ctrl+Y.
-- Author shown in About.
+New in 0.9.2:
 - EQ COPY / PASTE between any EQs (amp, IR, Global).
 - Guitar input: choose the input of your interface the guitar is plugged into (e.g. the guitar jack of a
   Focusrite Scarlett Solo is input 2) - in the settings menu, or in the app's new Audio / MIDI Settings
@@ -51,7 +44,8 @@ New in 0.9.1:
 - VIDEO takes (standalone app), for spontaneous ideas: film yourself with the computer's camera while you
   play - every take is saved automatically as an MP4 with AMPSURD's sound (GUITAR + BACKING or GUITAR ONLY)
   in Documents / AMPSURD / Recordings, and a notice says so. Record as many as you like, one after another;
-  WATCH + PLAY shows the last take or any saved video right in the camera window. Please report whether picture and sound are together (SOUND OFFSET fixes it).
+  WATCH + PLAY shows the last take or any saved video right in the camera window. VIDEO is new and still has
+  known problems with recording - it is being fixed; please report what happens on your computer.
 - Blending amps keeps their tone: a 50:50 blend used to sound slightly darker than either amp alone (the
   highs of different amps partly cancel). AMPSURD now measures this per frequency band - also while you play,
   including your amp EQs - and corrects it with a slowly adapting, automatic EQ on the blend (one amp alone:
@@ -61,11 +55,13 @@ New in 0.9.1:
   default. Feedback welcome.
 - SAVE AS can also save a pack (.ampsurdpack: the preset with its NAM captures and IRs) - choose it under
   "Save as type" (Windows) or "Format" (macOS).
+- Fixed download names, so a link to the newest version always works.
 - MUTE next to BYPASS: the whole output to silence (red while on). Player: delete a track with the X before
   its name (asks first); CLEAR TAKE removed.
 - Metronome: sharper HI-HAT click (or BEEP) and VOL up to +12 dB.
 - Fix: a burst of invalid audio from a driver could silence AMPSURD until it was restarted.
-- macOS: app, VST3 and Audio Unit (macOS 10.15 Catalina or newer, Apple Silicon and Intel).
+- macOS: app, VST3 and Audio Unit (macOS 10.15 Catalina or newer, Apple Silicon and Intel), signed and
+  notarized by Apple. First macOS release: please report how it works on your Mac.
 
 Highlights: up to five NAM captures blended (any NAM architecture), Create Frankenstein (TONE / NOTES),
 per-amp EQ / PAN / cabinet IR with IR EQ, per-amp INPUT (loudness kept automatically) and OUTPUT,
@@ -76,3 +72,6 @@ recorder with punch-in corrections and crossfaded edits, presets.
 
 Downloads (the same names in every release): AMPSURD-Windows-Setup.exe, AMPSURD-Windows.zip (VST3 + app, no
 installer), AMPSURD-macOS.pkg, AMPSURD-macOS.zip (app, VST3, Audio Unit).
+
+Earlier: 0.9.1 (2026-10-17) - metronome, moving amps by drag and drop, typed PAN, left / right OUTPUT meter,
+UNDO / REDO arrows.
