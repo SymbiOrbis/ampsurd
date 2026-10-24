@@ -44,9 +44,10 @@ jobs:
             $out | Write-Output
             if ($LASTEXITCODE -ne 0) {
               $name = Split-Path $exe -Leaf
+              Write-Output "::error title=$name::exit code $LASTEXITCODE"
               $fails = $out | Select-String -SimpleMatch "FAIL"
-              if (-not $fails) { $fails = $out | Select-Object -Last 5 }
-              $fails | ForEach-Object { Write-Output "::error title=$name::$_" }
+              if (-not $fails) { $fails = $out | Select-Object -Last 8 }
+              $fails | ForEach-Object { Write-Output "::error title=$name::$(($_ -replace '::', ': '))" }
               exit 1
             }
           }
@@ -64,8 +65,8 @@ jobs:
           Run-Test ./build/Release/tone_test.exe @("build/_deps/namcore-src/example_models/A2.nam", "48000", "128", "12")
           Run-Test ./build/tools/Release/engine_test.exe @("build/_deps/namcore-src/example_models/A2.nam", "build/_deps/namcore-src/example_models/wavenet_a1_standard.nam")
           $m = "build/_deps/namcore-src/example_models/A2.nam"
-          ./build/tools/Release/ampsurd_bench.exe $m --stress --seconds 5 build/_deps/namcore-src/example_models/lstm.nam
-          ./build/tools/Release/ampsurd_render.exe $m build/_deps/namcore-src/example_audio/input.wav render.wav
+          Run-Test ./build/tools/Release/ampsurd_bench.exe @($m, "--stress", "--seconds", "5", "build/_deps/namcore-src/example_models/lstm.nam")
+          Run-Test ./build/tools/Release/ampsurd_render.exe @($m, "build/_deps/namcore-src/example_audio/input.wav", "render.wav")
 
       - name: Upload VST3
         uses: actions/upload-artifact@v4
@@ -143,7 +144,7 @@ jobs:
       - name: Tests (same as on Windows)
         run: |
           set -o pipefail
-          run() { local name; name=$(basename "$1"); if ! "$@" 2>&1 | tee out.txt; then grep -F FAIL out.txt | sed "s/^/::error title=$name::/" || tail -5 out.txt | sed "s/^/::error title=$name::/"; exit 1; fi; }
+          run() { local name rc; name=$(basename "$1"); rc=0; "$@" > out.txt 2>&1 || rc=$?; cat out.txt; if [ $rc -ne 0 ]; then echo "::error title=$name::exit code $rc"; { grep -F FAIL out.txt || tail -8 out.txt; } | sed 's/::/: /g' | sed "s/^/::error title=$name::/"; exit 1; fi; }
           M=build/_deps/namcore-src/example_models
           run build/tools/limiter_test
           run build/tools/gate_tuner_test
@@ -156,8 +157,8 @@ jobs:
           AMPSURD_FORCE_PLAYER=1 run build/recorder_test
           run build/tone_test $M/A2.nam 48000 128 12
           run build/tools/engine_test $M/A2.nam $M/wavenet_a1_standard.nam
-          build/tools/ampsurd_bench $M/A2.nam --stress --seconds 5 $M/lstm.nam
-          build/tools/ampsurd_render $M/A2.nam build/_deps/namcore-src/example_audio/input.wav render.wav
+          run build/tools/ampsurd_bench $M/A2.nam --stress --seconds 5 $M/lstm.nam
+          run build/tools/ampsurd_render $M/A2.nam build/_deps/namcore-src/example_audio/input.wav render.wav
           # the Intel half too (Rosetta 2 on the Apple Silicon runner)
           if arch -x86_64 /usr/bin/true 2>/dev/null; then run arch -x86_64 build/tone_test $M/A2.nam 48000 128 4; fi
 

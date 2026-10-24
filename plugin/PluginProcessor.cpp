@@ -541,6 +541,7 @@ AmpsurdProcessor::AmpsurdProcessor()
 
 AmpsurdProcessor::~AmpsurdProcessor()
 {
+    if (player) player->onNewStep = nullptr; // no steps reported into a processor that is going away
     stopTimer();
     alive->store(false);
     curvePool.removeAllJobs(true, 20000);
