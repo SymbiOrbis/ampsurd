@@ -13,7 +13,7 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
   everything since 0.9.1 (VIDEO marked as having known recording problems; first macOS release); README:
   macOS .pkg available now. Release made by the workflow (workflow_dispatch publish_release on main): normal
   release "AMPSURD 0.9.2 (beta)" with AMPSURD-Windows-Setup.exe, AMPSURD-Windows.zip, AMPSURD-macOS.pkg,
-  AMPSURD-macOS.zip. Next: owner signs the Windows files (installer/sign_release.ps1 -Tag v0.9.2).
+  AMPSURD-macOS.zip. Next: owner signs the Windows files (installer/sign_release.ps1 -Version 0.9.2).
 
 ## 2026-10-24 — Session 3x: video takes for spontaneous ideas - Claude (Opus 5.5)
 
