@@ -427,6 +427,28 @@ int main(int argc, char** argv)
                   << juce::String(worst, 3) << " ms)\n";
     }
 
+    // LATENCY (owner 2026-10-28: "no significant latency on any modern PC / Mac"): what AMPSURD itself adds (the
+    // audio interface's buffers come on top) - two Full A2 amps, everything at default, PITCH off
+    if (argc >= 4)
+    {
+        juce::String detail;
+        double worstMs = 0.0;
+        for (double rate : { 44100.0, 48000.0, 96000.0 })
+        {
+            auto p = std::make_unique<AmpsurdProcessor>();
+            p->prepareToPlay(rate, 128);
+            p->loadCapture(0, juce::File(argv[2]));
+            p->loadCapture(1, juce::File(argv[3]));
+            juce::MidiBuffer m;
+            juce::AudioBuffer<float> b(2, 128);
+            for (int t = 0; t < 300; ++t) { b.clear(); p->processBlock(b, m); p->runHousekeeping(); pump(5); }
+            const double ms = p->getLatencySamples() * 1000.0 / rate;
+            worstMs = juce::jmax(worstMs, ms);
+            detail << juce::String(rate / 1000.0, 1) << " kHz " << juce::String(ms, 2) << " ms (" << p->getLatencySamples() << " samples)  ";
+        }
+        std::cout << (worstMs < 3.5 ? "[PASS]" : "[FAIL]") << " LATENCY added by AMPSURD: " << detail << "\n";
+    }
+
     auto proc = std::make_unique<AmpsurdProcessor>();
     proc->prepareToPlay(48000.0, 256);
 
