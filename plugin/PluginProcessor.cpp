@@ -258,6 +258,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout AmpsurdProcessor::createLayo
                                                               NormalisableRange<float>(-24.0f, 24.0f, 0.1f), 0.0f, unitAttr("dB", 1)));
         group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { slotParamId(s, "level"), 1 }, n + "Output",
                                                               NormalisableRange<float>(-24.0f, 12.0f, 0.1f), 0.0f, unitAttr("dB", 1)));
+        // pedal captures before the amp (serial chain, owner 2026-10-28): on / bypass and output level each
+        for (int k = 0; k < kNumPedals; ++k)
+        {
+            const String pk = "ped" + String(k + 1);
+            group->addChild(std::make_unique<AudioParameterBool>(ParameterID { slotParamId(s, (pk + "On").toRawUTF8()), 1 },
+                                                                 n + "Pedal " + String(k + 1) + " On", true));
+            group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { slotParamId(s, (pk + "Level").toRawUTF8()), 1 },
+                                                                  n + "Pedal " + String(k + 1) + " Level",
+                                                                  NormalisableRange<float>(-24.0f, 12.0f, 0.1f), 0.0f, unitAttr("dB", 1)));
+        }
         addEqBandParams(*group, s, n);
         // cabinet IR of this slot and its own EQ (same ten bands)
         group->addChild(std::make_unique<AudioParameterBool>(ParameterID { slotParamId(s, "irOn"), 1 }, n + "IR On", true));
@@ -408,6 +418,8 @@ AmpsurdProcessor::AmpsurdProcessor()
     bypassParam = params.getRawParameterValue("bypass");
     levelMatchParam = params.getRawParameterValue("levelMatch");
     for (auto& d : captureDbu) d.store(std::numeric_limits<double>::quiet_NaN());
+    for (auto& a : pedalDbu)
+        for (auto& d : a) d.store(std::numeric_limits<double>::quiet_NaN());
     {
         juce::PropertiesFile::Options o;
         o.applicationName = "AMPSURD"; o.filenameSuffix = ".settings"; o.osxLibrarySubFolder = "Application Support";
@@ -454,6 +466,11 @@ AmpsurdProcessor::AmpsurdProcessor()
         sp.eco = params.getRawParameterValue(slotParamId(s, "eco"));
         sp.drive = params.getRawParameterValue(slotParamId(s, "drive"));
         sp.level = params.getRawParameterValue(slotParamId(s, "level"));
+        for (int k = 0; k < kNumPedals; ++k)
+        {
+            sp.pedalOn[(size_t) k] = params.getRawParameterValue(slotParamId(s, ("ped" + juce::String(k + 1) + "On").toRawUTF8()));
+            sp.pedalLevel[(size_t) k] = params.getRawParameterValue(slotParamId(s, ("ped" + juce::String(k + 1) + "Level").toRawUTF8()));
+        }
         auto& ie = irEqParams[(size_t) s];
         ie.eqOn = params.getRawParameterValue(slotParamId(irEqTarget(s), "eqOn"));
         for (int b = 0; b < kNumBands; ++b)
@@ -551,7 +568,10 @@ AmpsurdProcessor::~AmpsurdProcessor()
     curvePool.removeAllJobs(true, 20000);
     loaderPool.removeAllJobs(true, 20000);
     for (int s = 0; s < kNumSlots; ++s)
+    {
         engine.getSlot(s).collectGarbage();
+        for (int k = 0; k < kNumPedals; ++k) engine.getPedal(s, k).collectGarbage();
+    }
 }
 
 bool AmpsurdProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
@@ -690,6 +710,11 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         ss.phaseRadians = a.phaseRadians;
         ss.levelGain = slotOutputGain(s, levelMatch);
         ss.inputTrim = std::pow(10.0, (getCalibrationTrimDb(s) + (double) sp.drive->load()) / 20.0);
+        for (int k = 0; k < kNumPedals; ++k)
+        {
+            ss.pedalOn[(size_t) k] = sp.pedalOn[(size_t) k]->load() > 0.5f;
+            ss.pedalLevel[(size_t) k] = std::pow(10.0, (double) sp.pedalLevel[(size_t) k]->load() / 20.0);
+        }
         rotation = rotation || (engine.isSlotLoaded(s) && std::abs(a.phaseRadians) > 1e-4);
     }
     settings.rotationActive = rotation;
@@ -917,8 +942,9 @@ void AmpsurdProcessor::loadJob(int slot, juce::File file, int gen, bool /*adjust
     const double newDbu = mi.hasInputLevel ? mi.inputLevelDbu : std::numeric_limits<double>::quiet_NaN();
     auto test = CaptureAnalyzer::makeTestSignal(sr);
     const double driveDb = slotParams[(size_t) slot].drive->load();
-    const double g = std::pow(10.0, (gainDb + trimDbFor(calibrateOn.load(), interfaceDbu.load(), newDbu) + driveDb) / 20.0);
+    const double g = std::pow(10.0, (gainDb + trimDbFor(calibrateOn.load(), interfaceDbu.load(), effectiveDbu(slot, newDbu)) + driveDb) / 20.0);
     for (double& v : test) v *= g;
+    test = renderPedals(slot, std::move(test), sr, currentMaxBlock); // pedal captures before the amp, if any
     auto raw = std::make_shared<const std::vector<double>>(CaptureAnalyzer::render(*result.model, test, false));
     const auto meas = measureWithIr(slot, *raw, sr); // with the slot's cabinet IR, if any
     result.model->prepare(sr, currentMaxBlock); // clear the state left by the measurement
@@ -956,7 +982,9 @@ void AmpsurdProcessor::loadJob(int slot, juce::File file, int gen, bool /*adjust
 void AmpsurdProcessor::unloadCapture(int slot)
 {
     if (getIrStatus(slot).state != IrState::none)
-        removeIr(slot); // REMOVE empties the whole slot: capture and cabinet IR
+        removeIr(slot); // REMOVE empties the whole slot: capture, cabinet IR and pedals
+    for (int k = 0; k < kNumPedals; ++k)
+        if (getPedalStatus(slot, k).state != SlotState::empty) removePedal(slot, k);
     const auto previous = getSlotStatus(slot).state;
     const int gen = ++slotGeneration[(size_t) slot];
     setSlotStatus(slot, {});
@@ -1007,9 +1035,10 @@ void AmpsurdProcessor::remeasureJob(int gen)
         if (!r.model) continue;
         const auto& mi = r.model->getInfo();
         const double g = std::pow(10.0, (gainDb + drives[(size_t) s] + trimDbFor(calibrateOn.load(), interfaceDbu.load(),
-                                                            mi.hasInputLevel ? mi.inputLevelDbu : std::numeric_limits<double>::quiet_NaN())) / 20.0);
+                                                            effectiveDbu(s, mi.hasInputLevel ? mi.inputLevelDbu : std::numeric_limits<double>::quiet_NaN()))) / 20.0);
         auto driven = test;
         for (double& v : driven) v *= g;
+        driven = renderPedals(s, std::move(driven), sr, currentMaxBlock);
         renders[(size_t) s] = std::make_shared<const std::vector<double>>(CaptureAnalyzer::render(*r.model, driven, false));
         fresh[(size_t) s] = measureWithIr(s, *renders[(size_t) s], sr);
     }
@@ -1068,10 +1097,11 @@ void AmpsurdProcessor::driveCurveJob(int slot, int gen)
     int block = 0;
     std::shared_ptr<const std::vector<double>> ir;
     bool eco = false;
-    juce::String path;
+    juce::String path, pedals;
     {
         std::lock_guard<std::mutex> lock(configMutex);
         if (gen != curveGeneration[(size_t) slot].load()) return;
+        pedals = pedalSignature(slot);
         const auto st = getSlotStatus(slot);
         if (st.state != SlotState::loaded) return;
         path = st.path;
@@ -1084,7 +1114,7 @@ void AmpsurdProcessor::driveCurveJob(int slot, int gen)
     {
         std::lock_guard<std::mutex> al(analysisMutex);
         const auto& c = driveCurves[(size_t) slot];
-        if (c.valid && std::abs(c.baseDb - baseDb) < 0.25 && c.eco == eco && c.irData == (const void*) ir.get())
+        if (c.valid && std::abs(c.baseDb - baseDb) < 0.25 && c.eco == eco && c.irData == (const void*) ir.get() && c.pedals == pedals)
             return; // nothing changed
     }
     auto r = CaptureModel::load(toStdPath(juce::File(path)), sr, block, eco);
@@ -1093,8 +1123,13 @@ void AmpsurdProcessor::driveCurveJob(int slot, int gen)
     const double g = std::pow(10.0, baseDb / 20.0);
     for (double& v : test) v *= g;
     CaptureAnalyzer::DriveCurve curve;
+    const bool hasPedals = pedals.containsChar('1');
     const bool done = CaptureAnalyzer::driveCurve(*r.model, test, ir.get(), curve, [this, slot, gen] {
         return gen != curveGeneration[(size_t) slot].load() || !alive->load();
+    }, [this, slot, sr, block, hasPedals](std::vector<double>& x) {
+        if (!hasPedals) return;
+        std::lock_guard<std::mutex> lock(configMutex);
+        x = renderPedals(slot, std::move(x), sr, block); // INPUT drives the first pedal
     });
     if (!done) return;
     std::lock_guard<std::mutex> al(analysisMutex);
@@ -1105,6 +1140,7 @@ void AmpsurdProcessor::driveCurveJob(int slot, int gen)
     c.baseDb = baseDb;
     c.eco = eco;
     c.irData = ir.get();
+    c.pedals = pedals;
     c.ir = ir != nullptr;
     c.path = path;
 }
@@ -1184,7 +1220,7 @@ double AmpsurdProcessor::trimDbFor(bool on, double interfaceLevel, double captur
 double AmpsurdProcessor::getCalibrationTrimDb(int slot) const
 {
     return trimDbFor(calibrateOn.load(std::memory_order_relaxed), interfaceDbu.load(std::memory_order_relaxed),
-                     captureDbu[(size_t) slot].load(std::memory_order_relaxed));
+                     effectiveDbu(slot, captureDbu[(size_t) slot].load(std::memory_order_relaxed)));
 }
 
 void AmpsurdProcessor::setInputCalibration(bool on, double interfaceLevelDbu)
@@ -1329,6 +1365,147 @@ void AmpsurdProcessor::adoptIr(int slot, std::shared_ptr<IrSource> src, std::vec
         storeMeasurement(slot, measureWithIr(slot, *raw, sr), gainDb);
         requestDriveCurve(slot);
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Pedal captures before the amps
+// ---------------------------------------------------------------------------------------------
+AmpsurdProcessor::PedalStatus AmpsurdProcessor::getPedalStatus(int slot, int k) const
+{
+    const juce::ScopedLock sl(statusLock);
+    return pedalStatus[(size_t) slot][(size_t) k];
+}
+
+void AmpsurdProcessor::setPedalStatus(int slot, int k, const PedalStatus& st)
+{
+    const juce::ScopedLock sl(statusLock);
+    pedalStatus[(size_t) slot][(size_t) k] = st;
+}
+
+juce::String AmpsurdProcessor::pedalSignature(int slot) const
+{
+    juce::String sig;
+    for (int k = 0; k < kNumPedals; ++k)
+    {
+        const auto st = getPedalStatus(slot, k);
+        const bool on = st.state == SlotState::loaded && slotParams[(size_t) slot].pedalOn[(size_t) k]->load() > 0.5f;
+        sig << (on ? "1" : "0") << "|" << (on ? st.path : juce::String()) << "|"
+            << (on ? juce::String(slotParams[(size_t) slot].pedalLevel[(size_t) k]->load(), 1) : juce::String()) << ";";
+    }
+    return sig;
+}
+
+double AmpsurdProcessor::effectiveDbu(int slot, double ampDbu) const
+{
+    for (int k = 0; k < kNumPedals; ++k)
+        if (getPedalStatus(slot, k).state == SlotState::loaded && slotParams[(size_t) slot].pedalOn[(size_t) k]->load() > 0.5f)
+            return pedalDbu[(size_t) slot][(size_t) k].load(); // the guitar goes into this pedal first
+    return ampDbu;
+}
+
+std::vector<double> AmpsurdProcessor::renderPedals(int slot, std::vector<double> x, double sr, int block) const
+{
+    for (int k = 0; k < kNumPedals; ++k)
+    {
+        const auto st = getPedalStatus(slot, k);
+        if (st.state != SlotState::loaded || slotParams[(size_t) slot].pedalOn[(size_t) k]->load() <= 0.5f) continue;
+        auto r = CaptureModel::load(toStdPath(juce::File(st.path)), sr, block, false);
+        if (!r.model) continue;
+        auto y = CaptureAnalyzer::render(*r.model, x, false);
+        const double lv = std::pow(10.0, (double) slotParams[(size_t) slot].pedalLevel[(size_t) k]->load() / 20.0);
+        for (auto& v : y) v *= lv;
+        x.swap(y);
+    }
+    return x;
+}
+
+void AmpsurdProcessor::loadPedal(int slot, int k, const juce::File& file)
+{
+    const int gen = ++pedalGeneration[(size_t) slot][(size_t) k];
+    setPedalStatus(slot, k, { SlotState::loading, file.getFullPathName(), file.getFileNameWithoutExtension(), "Loading..." });
+    auto aliveFlag = alive;
+    loaderPool.addJob([this, slot, k, file, gen, aliveFlag] {
+        if (!aliveFlag->load()) return;
+        {
+            std::lock_guard<std::mutex> lock(configMutex);
+            if (gen != pedalGeneration[(size_t) slot][(size_t) k].load()) return;
+            auto r = CaptureModel::load(toStdPath(file), currentSampleRate.load(), currentMaxBlock, false);
+            if (!r.model)
+            {
+                setPedalStatus(slot, k, { SlotState::error, file.getFullPathName(), file.getFileNameWithoutExtension(),
+                                          "Could not load this file:\n" + juce::String(r.error) });
+                return;
+            }
+            const auto& mi = r.model->getInfo();
+            pedalDbu[(size_t) slot][(size_t) k].store(mi.hasInputLevel ? mi.inputLevelDbu : std::numeric_limits<double>::quiet_NaN());
+            const auto info = describe(*r.model, file);
+            engine.getPedal(slot, k).submit(std::move(r.model));
+            setPedalStatus(slot, k, { SlotState::loaded, file.getFullPathName(), file.getFileNameWithoutExtension(), info });
+        }
+        juce::MessageManager::callAsync([this, slot, aliveFlag] {
+            if (!aliveFlag->load()) return;
+            lastPedalSig[(size_t) slot] = pedalSignature(slot);
+            requestSlotRemeasure(slot);
+            updateLatency();
+        });
+    });
+}
+
+void AmpsurdProcessor::removePedal(int slot, int k)
+{
+    ++pedalGeneration[(size_t) slot][(size_t) k];
+    const bool had = getPedalStatus(slot, k).state == SlotState::loaded;
+    setPedalStatus(slot, k, {});
+    pedalDbu[(size_t) slot][(size_t) k].store(std::numeric_limits<double>::quiet_NaN());
+    auto aliveFlag = alive;
+    loaderPool.addJob([this, slot, k, aliveFlag] {
+        if (!aliveFlag->load()) return;
+        std::lock_guard<std::mutex> lock(configMutex);
+        engine.getPedal(slot, k).submit(CaptureModel::makeEmpty(currentSampleRate.load(), currentMaxBlock));
+    });
+    lastPedalSig[(size_t) slot] = pedalSignature(slot);
+    if (had) requestSlotRemeasure(slot);
+    updateLatency();
+}
+
+void AmpsurdProcessor::requestSlotRemeasure(int slot)
+{
+    if (getSlotStatus(slot).state != SlotState::loaded) return; // a capture being loaded is measured with the pedals anyway
+    const int gen = ++slotRemeasureGeneration[(size_t) slot];
+    auto aliveFlag = alive;
+    loaderPool.addJob([this, slot, gen, aliveFlag] {
+        if (aliveFlag->load()) slotRemeasureJob(slot, gen);
+    });
+}
+
+void AmpsurdProcessor::slotRemeasureJob(int slot, int gen)
+{
+    std::lock_guard<std::mutex> lock(configMutex);
+    if (gen != slotRemeasureGeneration[(size_t) slot].load()) return;
+    const auto st = getSlotStatus(slot);
+    if (st.state != SlotState::loaded) return;
+    const int slotGen = slotGeneration[(size_t) slot].load();
+    const double sr = currentSampleRate.load();
+    auto r = CaptureModel::load(toStdPath(juce::File(st.path)), sr, currentMaxBlock, slotParams[(size_t) slot].eco->load() > 0.5f);
+    if (!r.model) return;
+    const auto& mi = r.model->getInfo();
+    const double gainDb = inputParam->load();
+    const double driveDb = slotParams[(size_t) slot].drive->load();
+    const double g = std::pow(10.0, (gainDb + driveDb + trimDbFor(calibrateOn.load(), interfaceDbu.load(),
+                                     effectiveDbu(slot, mi.hasInputLevel ? mi.inputLevelDbu : std::numeric_limits<double>::quiet_NaN()))) / 20.0);
+    auto test = CaptureAnalyzer::makeTestSignal(sr);
+    for (double& v : test) v *= g;
+    test = renderPedals(slot, std::move(test), sr, currentMaxBlock);
+    auto raw = std::make_shared<const std::vector<double>>(CaptureAnalyzer::render(*r.model, test, false));
+    const auto meas = measureWithIr(slot, *raw, sr);
+    if (gen != slotRemeasureGeneration[(size_t) slot].load() || slotGen != slotGeneration[(size_t) slot].load()) return;
+    {
+        std::lock_guard<std::mutex> al(analysisMutex);
+        rawRenders[(size_t) slot] = raw;
+    }
+    storeMeasurement(slot, meas, gainDb);
+    derived[(size_t) slot].measuredDriveDb.store(driveDb);
+    requestDriveCurve(slot);
 }
 
 void AmpsurdProcessor::loadCabIr(int slot, ampsurd::CabPoint p)
@@ -1770,7 +1947,13 @@ void AmpsurdProcessor::updateLatency()
 {
     int resampler = 0;
     for (int s = 0; s < kNumSlots; ++s)
-        resampler = std::max(resampler, engine.getSlot(s).getLatencySamples());
+    {
+        int path = engine.getSlot(s).getLatencySamples();
+        for (int k = 0; k < kNumPedals; ++k)
+            if (getPedalStatus(s, k).state == SlotState::loaded && slotParams[(size_t) s].pedalOn[(size_t) k]->load() > 0.5f)
+                path += engine.getPedal(s, k).getLatencySamples(); // a pedal at another sample rate is resampled too
+        resampler = std::max(resampler, path);
+    }
     const double sr = currentSampleRate.load();
     const int total = resampler + ampsurd::PathAligner::kBaseLatency + (int) std::lround(kReserveMs * 0.001 * sr)
                       + limiter.getLatencySamples()
@@ -1790,7 +1973,10 @@ void AmpsurdProcessor::timerCallback()
         recoveries.fetch_add(1);
     }
     for (int s = 0; s < kNumSlots; ++s)
+    {
         engine.getSlot(s).collectGarbage();
+        for (int k = 0; k < kNumPedals; ++k) engine.getPedal(s, k).collectGarbage();
+    }
 
     updateCovariance(false);
     updateLatency();
@@ -1878,6 +2064,25 @@ void AmpsurdProcessor::timerCallback()
         needsRemeasure.store(true);
     }
 
+    // a pedal switched on / off or its level moved: measure that amp again once it has settled (0.3 s)
+    for (int sl = 0; sl < kNumSlots; ++sl)
+    {
+        const auto sig = pedalSignature(sl);
+        if (lastPedalSig[(size_t) sl].isEmpty()) lastPedalSig[(size_t) sl] = sig; // first look
+        if (sig != lastPedalSig[(size_t) sl])
+        {
+            if (pedalSigChangedAt[(size_t) sl] <= 0.0) pedalSigChangedAt[(size_t) sl] = now;
+            else if (now - pedalSigChangedAt[(size_t) sl] > 300.0)
+            {
+                lastPedalSig[(size_t) sl] = sig;
+                pedalSigChangedAt[(size_t) sl] = 0.0;
+                requestSlotRemeasure(sl);
+                updateLatency();
+            }
+        }
+        else pedalSigChangedAt[(size_t) sl] = 0.0;
+    }
+
     if (needsRemeasure.exchange(false))
     {
         const int gen = ++remeasureGeneration;
@@ -1909,6 +2114,9 @@ juce::ValueTree AmpsurdProcessor::createStateTree() const
         // Only a REFERENCE to the capture is stored, never the capture data itself.
         t.setProperty(kPathId, getSlotStatus(s).path, nullptr);
         t.setProperty("irPath", getIrStatus(s).path, nullptr); // reference to the cabinet IR file (or empty)
+        for (int k = 0; k < kNumPedals; ++k)
+            if (getPedalStatus(s, k).path.isNotEmpty())
+                t.setProperty("pedal" + juce::String(k + 1) + "Path", getPedalStatus(s, k).path, nullptr);
         if (mutedShare[(size_t) s] > 0.01f)
             t.setProperty("mutedShare", mutedShare[(size_t) s], nullptr); // fader position to return to on un-mute
         slots.appendChild(t, nullptr);
@@ -1970,6 +2178,7 @@ void AmpsurdProcessor::restoreState(const juce::ValueTree& tree, const juce::Fil
     for (int s = 0; s < kNumSlots; ++s)
     {
         juce::String path, irPath;
+        std::array<juce::String, kNumPedals> pedalPaths;
         float share = 0.0f;
         for (const auto& t : slots)
             if ((int) t.getProperty(kIndexId) == s + 1)
@@ -1977,8 +2186,25 @@ void AmpsurdProcessor::restoreState(const juce::ValueTree& tree, const juce::Fil
                 path = t.getProperty(kPathId).toString();
                 irPath = t.getProperty("irPath").toString();
                 share = (float) (double) t.getProperty("mutedShare", 0.0);
+                for (int k = 0; k < kNumPedals; ++k) pedalPaths[(size_t) k] = t.getProperty("pedal" + juce::String(k + 1) + "Path").toString();
             }
         mutedShare[(size_t) s] = share;
+
+        // pedal captures first (queued before the amp on the same loader thread, so it is measured with them)
+        for (int k = 0; k < kNumPedals; ++k)
+        {
+            const auto& pp = pedalPaths[(size_t) k];
+            const auto cur = getPedalStatus(s, k);
+            if (pp.isEmpty()) { if (cur.state != SlotState::empty) removePedal(s, k); continue; }
+            const juce::File f = resolveFileRef(pp, presetFile);
+            if (f.existsAsFile() && (cur.state == SlotState::loaded || cur.state == SlotState::loading) && juce::File(cur.path) == f) continue;
+            if (f.existsAsFile()) loadPedal(s, k, f);
+            else
+            {
+                removePedal(s, k);
+                setPedalStatus(s, k, { SlotState::missing, pp, fileNameOfRef(pp).upToLastOccurrenceOf(".", false, false), "Pedal file not found:\n" + pp });
+            }
+        }
 
         // cabinet IR (queued after the capture on the same loader thread)
         auto restoreIr = [this, s, irPath, presetFile] {

@@ -45,6 +45,7 @@ namespace ampsurd
 {
 
 constexpr int kNumSlots = 5;
+constexpr int kNumPedals = 2; // capture blocks BEFORE each amp (serial chain, owner 2026-10-28): e.g. boost -> amp
 static_assert(BlendToneTracker::kSlots == kNumSlots, "tracker size");
 
 struct SlotSettings
@@ -63,6 +64,8 @@ struct SlotSettings
     bool irEnabled = true;      // IR ON / BYPASS (only matters when an IR is loaded)
     bool irEqEnabled = true;    // the IR's own EQ (bypassed together with the IR)
     std::array<EqBand, ParametricEq::kNumBands> irEq = ParametricEq::defaultBands();
+    std::array<bool, kNumPedals> pedalOn {};          // a pedal capture before the amp (only if one is loaded)
+    std::array<double, kNumPedals> pedalLevel { 1.0, 1.0 }; // its output level into the next block (linear)
 };
 
 struct EngineSettings
@@ -86,6 +89,9 @@ public:
     void prepare(double sampleRate, int maxBlockSize, double maxDelayMs);
 
     CaptureSlot& getSlot(int i) noexcept { return slots[(size_t) i]; }
+    // pedal k of amp i: a capture played BEFORE the amp (its own sample rate / resampling like any capture).
+    // Bypassed or empty = the amp gets the guitar straight (20 ms crossfade); a bypassed pedal does not run.
+    CaptureSlot& getPedal(int i, int k) noexcept { return pedals[(size_t) i][(size_t) k]; }
     IrSlot& getIrSlot(int i) noexcept { return irSlots[(size_t) i]; }
 
     // Any thread. C[i][j] = covariance of aligned capture outputs; valid[i] = slot i measured.
@@ -151,6 +157,9 @@ public:
 
 private:
     std::array<CaptureSlot, kNumSlots> slots;
+    std::array<std::array<CaptureSlot, kNumPedals>, kNumSlots> pedals;
+    std::array<std::array<double, kNumPedals>, kNumSlots> pedalMix {}, pedalGain {}; // smoothed in / out, level
+    std::vector<double> pedalBuf;                // one per slot
     std::array<IrSlot, kNumSlots> irSlots;
     std::array<ParametricEq, kNumSlots> irEqs;
     std::array<PathAligner, kNumSlots> aligners;

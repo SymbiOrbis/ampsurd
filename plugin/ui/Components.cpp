@@ -400,6 +400,14 @@ void SlotComponent::paint(juce::Graphics& g)
         FilenameLayout::draw(g, status.fileName, area, dim ? textFaint : text);
     }
 
+    // pedal captures before the amp: one quiet line above the IR line
+    if (pedalLine.isNotEmpty())
+    {
+        g.setColour(textDim);
+        g.setFont(Fonts::get().regular(12.0f));
+        g.drawFittedText(pedalLine, irLineArea().translated(0, -17), juce::Justification::centred, 1, 0.9f);
+    }
+
     // the cabinet IR, if any, in one quiet line under the capture name
     if (irStatus.state != AmpsurdProcessor::IrState::none)
     {
@@ -425,6 +433,15 @@ void SlotComponent::refresh(bool isSelected, bool irEditorOpen)
     const bool irChanged = ir.state != irStatus.state || ir.path != irStatus.path || on != irOn;
     irStatus = ir;
     irOn = on;
+    juce::String pl;
+    for (int k = 0; k < AmpsurdProcessor::kNumPedals; ++k)
+    {
+        const auto ps = proc.getPedalStatus(slot, k);
+        if (ps.state == AmpsurdProcessor::SlotState::empty) continue;
+        const bool pOn = proc.params.getRawParameterValue(AmpsurdProcessor::slotParamId(slot, ("ped" + juce::String(k + 1) + "On").toRawUTF8()))->load() > 0.5f;
+        pl << (pl.isEmpty() ? "" : "  ") << (pOn ? "" : "(off) ") << ps.fileName << "  " << juce::String::charToString((juce::juce_wchar) 0x2192);
+    }
+    if (pl != pedalLine) { pedalLine = pl; repaint(); }
     const float eff = proc.getEffectivePercent(slot);
     const bool aud = proc.isSlotAudible(slot);
     const bool changed = st.state != status.state || st.path != status.path || std::abs(eff - effective) > 0.05f
@@ -1227,9 +1244,10 @@ void LevelPanel::refresh()
 // =============================================================================================
 // EditPanel
 // =============================================================================================
-EditPanel::EditPanel(AmpsurdProcessor& p) : proc(p), graph(p), align(p), level(p), copyButton(p)
+EditPanel::EditPanel(AmpsurdProcessor& p) : proc(p), graph(p), align(p), level(p), pedals(p), copyButton(p)
 {
     addAndMakeVisible(graph);
+    addAndMakeVisible(pedals);
     addAndMakeVisible(align);
     addAndMakeVisible(level);
     for (auto* b : { &eqOnButton, &flatButton, &removeButton, &closeButton })
@@ -1260,11 +1278,12 @@ void EditPanel::setSlot(int s)
     graph.setSlot(s);
     align.setSlot(s);
     level.setSlot(s);
+    pedals.setSlot(s);
     copyButton.setTarget(s);
     eqOnAtt.reset();
     if (s >= 0)
         eqOnAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(proc.params, AmpsurdProcessor::slotParamId(s, "eqOn"), eqOnButton);
-    for (juce::Component* c : { (juce::Component*) &graph, (juce::Component*) &align, (juce::Component*) &level, (juce::Component*) &eqOnButton,
+    for (juce::Component* c : { (juce::Component*) &graph, (juce::Component*) &align, (juce::Component*) &level, (juce::Component*) &pedals, (juce::Component*) &eqOnButton,
                                 (juce::Component*) &flatButton, (juce::Component*) &removeButton, (juce::Component*) &copyButton,
                                 (juce::Component*) &closeButton })
         c->setVisible(s >= 0);
@@ -1288,6 +1307,8 @@ void EditPanel::resized()
     r.removeFromTop(10);
     auto right = r.removeFromRight(300);
     r.removeFromRight(24);
+    pedals.setBounds(r.removeFromBottom(28));
+    r.removeFromBottom(8);
     graph.setBounds(r);
     align.setBounds(right.removeFromTop(134));
     right.removeFromTop(6);
@@ -1327,7 +1348,166 @@ void EditPanel::refresh()
         graph.refreshIfChanged();
         align.refresh();
         level.refresh();
+        pedals.refresh();
     }
+}
+
+// =============================================================================================
+// PedalChain
+// =============================================================================================
+PedalChain::PedalChain(AmpsurdProcessor& p) : proc(p)
+{
+    for (int k = 0; k < AmpsurdProcessor::kNumPedals; ++k)
+    {
+        auto& b = blocks[(size_t) k];
+        for (auto* c : { (juce::Component*) &b.name, (juce::Component*) &b.on, (juce::Component*) &b.level }) addAndMakeVisible(*c);
+        b.name.setWantsKeyboardFocus(false);
+        b.on.setWantsKeyboardFocus(false);
+        b.on.setClickingTogglesState(true);
+        b.level.setSliderStyle(juce::Slider::LinearHorizontal);
+        b.level.setTextBoxStyle(juce::Slider::TextBoxRight, false, 62, 20);
+        b.level.setTextBoxIsEditable(true);
+        b.level.setDoubleClickReturnValue(true, 0.0);
+        b.level.setWantsKeyboardFocus(false);
+        b.name.onClick = [this, k] {
+            if (slot < 0) return;
+            const auto st = proc.getPedalStatus(slot, k);
+            if (st.state == AmpsurdProcessor::SlotState::empty) { chooseFile(k); return; }
+            juce::PopupMenu m;
+            m.addItem(1, "Load another pedal capture...");
+            m.addItem(2, "Remove this pedal");
+            m.addItem(3, "Show file location", juce::File(st.path).exists());
+            m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&blocks[(size_t) k].name), [this, k](int r) {
+                if (slot < 0) return;
+                if (r == 1) juce::Timer::callAfterDelay(150, [sp = juce::Component::SafePointer<PedalChain>(this), k] { if (sp != nullptr) sp->chooseFile(k); });
+                if (r == 2) proc.removePedal(slot, k);
+                if (r == 3) juce::File(proc.getPedalStatus(slot, k).path).revealToUser();
+            });
+        };
+        b.on.setTooltip("Pedal on / bypassed (a bypassed pedal uses no CPU)");
+        b.level.setTooltip("How loud this pedal drives the next block (like a pedal's LEVEL knob). Double-click: 0 dB");
+    }
+}
+
+void PedalChain::setSlot(int s)
+{
+    slot = s;
+    for (int k = 0; k < AmpsurdProcessor::kNumPedals; ++k)
+    {
+        auto& b = blocks[(size_t) k];
+        b.onAtt.reset();
+        b.levelAtt.reset();
+        if (s < 0) continue;
+        const juce::String pk = "ped" + juce::String(k + 1);
+        b.onAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
+            proc.params, AmpsurdProcessor::slotParamId(s, (pk + "On").toRawUTF8()), b.on);
+        b.levelAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+            proc.params, AmpsurdProcessor::slotParamId(s, (pk + "Level").toRawUTF8()), b.level);
+        b.level.textFromValueFunction = [](double v) { return (v > 0.04 ? "+" : "") + juce::String(v, 1) + " dB"; };
+        b.level.valueFromTextFunction = [](const juce::String& t) { return t.retainCharacters("+-.0123456789").getDoubleValue(); };
+        b.level.updateText();
+    }
+    shown = "?";
+    refresh();
+}
+
+void PedalChain::refresh()
+{
+    if (slot < 0) return;
+    juce::String sig;
+    for (int k = 0; k < AmpsurdProcessor::kNumPedals; ++k)
+    {
+        const auto st = proc.getPedalStatus(slot, k);
+        sig << (int) st.state << st.fileName << ";";
+    }
+    if (sig == shown) return;
+    shown = sig;
+    using S = AmpsurdProcessor::SlotState;
+    for (int k = 0; k < AmpsurdProcessor::kNumPedals; ++k)
+    {
+        auto& b = blocks[(size_t) k];
+        const auto st = proc.getPedalStatus(slot, k);
+        const bool has = st.state == S::loaded;
+        b.name.setButtonText(st.state == S::empty ? juce::String("+ PEDAL " + juce::String(k + 1))
+                             : st.state == S::loading ? juce::String("Loading...")
+                             : st.state == S::missing ? st.fileName + " ?"
+                             : st.state == S::error ? juce::String("ERROR - click") : st.fileName);
+        b.name.setTooltip(st.state == S::empty ? "Add a pedal capture (.nam: boost, overdrive, preamp...) BEFORE this amp - or drop the file here. "
+                                                 "It drives the amp like a real pedal. Uses as much CPU as an amp."
+                          : st.info.isNotEmpty() ? st.info : st.path);
+        b.on.setEnabled(has);
+        b.level.setEnabled(has);
+        b.on.setVisible(st.state != S::empty);
+        b.level.setVisible(st.state != S::empty);
+    }
+    resized();
+    repaint();
+}
+
+void PedalChain::resized()
+{
+    auto r = getLocalBounds();
+    r.removeFromLeft(118); // "BEFORE THE AMP"
+    const int arrow = 26;
+    const int bw = (r.getWidth() - arrow * 2 - 60) / AmpsurdProcessor::kNumPedals; // "AMP" at the end
+    for (int k = 0; k < AmpsurdProcessor::kNumPedals; ++k)
+    {
+        auto& b = blocks[(size_t) k];
+        b.area = r.removeFromLeft(bw);
+        auto a = b.area;
+        const bool used = b.on.isVisible();
+        if (used)
+        {
+            b.level.setBounds(a.removeFromRight(juce::jmin(150, a.getWidth() / 2)));
+            a.removeFromRight(4);
+            b.on.setBounds(a.removeFromRight(40));
+            a.removeFromRight(4);
+        }
+        b.name.setBounds(a);
+        r.removeFromLeft(arrow);
+    }
+}
+
+void PedalChain::paint(juce::Graphics& g)
+{
+    if (slot < 0) return;
+    drawLabel(g, "BEFORE THE AMP", getLocalBounds().withWidth(114), textDim, juce::Justification::centredLeft, 10.5f);
+    g.setColour(textDim);
+    g.setFont(Fonts::get().regular(14.0f));
+    for (int k = 0; k < AmpsurdProcessor::kNumPedals; ++k)
+    {
+        const auto& a = blocks[(size_t) k].area;
+        g.drawText(juce::String::charToString((juce::juce_wchar) 0x2192), juce::Rectangle<int>(a.getRight(), 0, 26, getHeight()),
+                   juce::Justification::centred, false);
+    }
+    drawLabel(g, "AMP", juce::Rectangle<int>(blocks.back().area.getRight() + 26, 0, 60, getHeight()), text, juce::Justification::centredLeft, 11.0f);
+}
+
+bool PedalChain::isInterestedInFileDrag(const juce::StringArray& files)
+{
+    return slot >= 0 && files.size() == 1 && juce::File(files[0]).hasFileExtension(".nam");
+}
+
+void PedalChain::filesDropped(const juce::StringArray& files, int x, int)
+{
+    if (slot < 0 || files.isEmpty()) return;
+    int k = 0;
+    for (int i = 0; i < AmpsurdProcessor::kNumPedals; ++i)
+        if (x >= blocks[(size_t) i].area.getX()) k = i;
+    proc.loadPedal(slot, k, juce::File(files[0]));
+}
+
+void PedalChain::chooseFile(int k)
+{
+    if (slot < 0) return;
+    auto start = juce::File(proc.getPedalStatus(slot, k).path).getParentDirectory();
+    if (!start.isDirectory()) start = juce::File(proc.getSlotStatus(slot).path).getParentDirectory();
+    chooser = std::make_unique<juce::FileChooser>("Pedal capture " + juce::String(k + 1) + " before amp " + juce::String(slot + 1), start, "*.nam");
+    chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                         [this, k](const juce::FileChooser& fc) {
+                             const auto f = fc.getResult();
+                             if (f.existsAsFile() && slot >= 0) proc.loadPedal(slot, k, f);
+                         });
 }
 
 // =============================================================================================

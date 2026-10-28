@@ -59,6 +59,12 @@ juce::uint64 AmpsurdProcessor::stateHash() const
         mix("|", 1);
         mix(b.data(), b.size());
         mix("|", 1);
+        for (int k = 0; k < kNumPedals; ++k)
+        {
+            const auto c = getPedalStatus(s, k).path.toStdString();
+            mix(c.data(), c.size());
+            mix("|", 1);
+        }
     }
     return h;
 }
@@ -577,7 +583,7 @@ bool AmpsurdProcessor::exportPack(const juce::File& packFileIn, juce::String& er
     if (auto slots = state.getChildWithName(kSlots); slots.isValid())
         for (auto slot : slots)
         {
-            for (const auto& id : { kPath, kIrPath })
+            for (const auto& id : { kPath, kIrPath, juce::Identifier("pedal1Path"), juce::Identifier("pedal2Path") })
             {
                 const auto path = slot.getProperty(id).toString();
                 if (path.isEmpty() || path.startsWith("ampsurd-ir:")) continue; // AMPSURD IRs are calculated, not files

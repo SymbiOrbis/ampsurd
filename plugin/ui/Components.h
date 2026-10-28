@@ -93,6 +93,7 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> ecoAtt;
     double removeArmedAt = -1.0; // REMOVE needs a second click within 3 s
     AmpsurdProcessor::IrStatus irStatus;
+    juce::String pedalLine; // "lstm  >" when pedal captures play before this amp
     bool irOn = true;
     MixFader fader;
     juce::Slider panSlider;   // per-amp PAN (stereo width)
@@ -225,6 +226,37 @@ private:
 };
 
 // ---------------------------------------------------------------------------------------------
+// Pedal captures BEFORE the amp (serial chain, owner 2026-10-28), in EDIT: PEDAL 1 -> PEDAL 2 -> AMP.
+// Each block: its capture (click: load / remove; or drop a .nam on it), ON, LEVEL into the next block.
+class PedalChain final : public juce::Component, public juce::FileDragAndDropTarget
+{
+public:
+    explicit PedalChain(AmpsurdProcessor&);
+    void setSlot(int s);
+    void refresh();
+    void paint(juce::Graphics&) override;
+    void resized() override;
+    bool isInterestedInFileDrag(const juce::StringArray&) override;
+    void filesDropped(const juce::StringArray&, int x, int y) override;
+    void chooseFile(int k);
+
+private:
+    struct Block
+    {
+        juce::TextButton name, on { "ON" };
+        juce::Slider level;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> onAtt;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> levelAtt;
+        juce::Rectangle<int> area;
+    };
+    AmpsurdProcessor& proc;
+    int slot = -1;
+    std::array<Block, AmpsurdProcessor::kNumPedals> blocks;
+    std::unique_ptr<juce::FileChooser> chooser;
+    juce::String shown;
+};
+
+// ---------------------------------------------------------------------------------------------
 class EditPanel final : public juce::Component
 {
 public:
@@ -242,6 +274,7 @@ private:
     EqGraph graph;
     AlignPanel align;
     LevelPanel level;
+    PedalChain pedals;
     juce::TextButton eqOnButton { "EQ ON" }, flatButton { "FLAT" }, removeButton { "REMOVE" }, closeButton { "CLOSE" };
     EqCopyButton copyButton;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> eqOnAtt;

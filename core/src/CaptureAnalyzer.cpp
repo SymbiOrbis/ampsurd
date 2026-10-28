@@ -316,7 +316,8 @@ double CaptureAnalyzer::loudnessDb(const Measurement& m)
 }
 
 bool CaptureAnalyzer::driveCurve(CaptureModel& model, const std::vector<double>& signal, const std::vector<double>* ir,
-                                 DriveCurve& result, const std::function<bool()>& shouldStop)
+                                 DriveCurve& result, const std::function<bool()>& shouldStop,
+                                 const std::function<void(std::vector<double>&)>& pre)
 {
     const double sr = model.getPreparedSampleRate();
     const int block = model.getPreparedBlockSize();
@@ -325,7 +326,9 @@ bool CaptureAnalyzer::driveCurve(CaptureModel& model, const std::vector<double>&
     {
         if (shouldStop && shouldStop()) return false;
         const double g = std::pow(10.0, (kDriveCurveMinDb + kDriveCurveStepDb * k) / 20.0);
+        x.resize(signal.size());
         for (size_t i = 0; i < signal.size(); ++i) x[i] = signal[i] * g;
+        if (pre) pre(x);
         model.prepare(sr, block); // fresh internal state, like a newly loaded capture
         y = render(model, x, false);
         if (ir != nullptr && !ir->empty())

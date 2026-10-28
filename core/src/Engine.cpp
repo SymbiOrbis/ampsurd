@@ -27,6 +27,9 @@ void Engine::prepare(double sr, int maxBlockSize, double maxDelayMs)
     for (int i = 0; i < kNumSlots; ++i)
     {
         slots[(size_t) i].prepare(sr, maxBlock);
+        for (auto& pd : pedals[(size_t) i]) pd.prepare(sr, maxBlock);
+        pedalMix[(size_t) i].fill(0.0);
+        pedalGain[(size_t) i].fill(1.0);
         irSlots[(size_t) i].prepare(sr, maxBlock);
         irEqs[(size_t) i].prepare(sr);
         aligners[(size_t) i].prepare(sr, maxDelay);
@@ -49,6 +52,7 @@ void Engine::prepare(double sr, int maxBlockSize, double maxDelayMs)
     splitter.prepare(sr, maxBlock);
     splitIn.assign((size_t) maxBlock * kNumSlots, 0.0);
     trimBuf.assign((size_t) maxBlock * kNumSlots, 0.0);
+    pedalBuf.assign((size_t) maxBlock * kNumSlots, 0.0);
     asleep.fill(false);
     holdLeft.fill(0);
     warmLeft.fill(0);
@@ -244,6 +248,34 @@ void Engine::processPath(int i, const EngineSettings& s, const double* in, int n
             t[k] = slotIn[k] * tg;
         }
         if (std::abs(tg - trimTarget) < 1e-7 * trimTarget) tg = trimTarget;
+        slotIn = t;
+    }
+    // pedal captures before the amp (serial): out = in + mix * (level * pedal(in) - in), 20 ms crossfades
+    for (int k = 0; k < kNumPedals; ++k)
+    {
+        auto& pd = pedals[(size_t) i][(size_t) k];
+        const double target = ss.pedalOn[(size_t) k] && pd.hasActiveCapture() ? 1.0 : 0.0;
+        double& m = pedalMix[(size_t) i][(size_t) k];
+        double& lg = pedalGain[(size_t) i][(size_t) k];
+        if (m == 0.0 && target == 0.0)
+        {
+            lg = std::clamp(ss.pedalLevel[(size_t) k], 0.0, 16.0);
+            if (pd.hasPending()) pd.process(slotIn, pedalBuf.data() + (size_t) i * (size_t) stride, n, false); // adopt it
+            continue; // bypassed: the pedal does not run
+        }
+        double* pb = pedalBuf.data() + (size_t) i * (size_t) stride;
+        pd.process(slotIn, pb, n, false);
+        const double levelTarget = std::clamp(ss.pedalLevel[(size_t) k], 0.0, 16.0);
+        for (int s2 = 0; s2 < n; ++s2)
+        {
+            m += (target - m) * trimCoef;
+            lg += (levelTarget - lg) * trimCoef;
+            pb[s2] = slotIn[s2] + m * (lg * pb[s2] - slotIn[s2]);
+        }
+        if (std::abs(target - m) < 1e-6) m = target;
+        // the next block reads this pedal's output (the trim buffer is free again: copy there)
+        double* t = trimBuf.data() + (size_t) i * (size_t) stride;
+        std::copy(pb, pb + n, t);
         slotIn = t;
     }
     slots[(size_t) i].process(slotIn, buf, n, false); // level match is applied as levelGain

@@ -840,6 +840,89 @@ int main(int argc, char** argv)
         settleIr(300);
     }
 
+    // PEDALS (serial chain, owner 2026-10-28): a capture BEFORE amp 1; measured with it; bypass; presets; packs
+    if (argc >= 4)
+    {
+        std::unique_ptr<juce::AudioProcessorEditor> ed(proc->createEditor());
+        auto* e = dynamic_cast<AmpsurdEditor*>(ed.get());
+        auto run = [&](int ms) {
+            for (int t = 0; t < ms / 20; ++t) { buf.clear(); proc->processBlock(buf, midi); proc->runHousekeeping(); e->refreshAll(); pump(20); }
+        };
+        // a steady A note through the rig; RMS of the left output
+        auto rms = [&] {
+            double sum = 0.0;
+            int cnt = 0;
+            for (int k = 0; k < 120; ++k)
+            {
+                juce::AudioBuffer<float> b(2, 256);
+                for (int i = 0; i < 256; ++i)
+                {
+                    const double t = (k * 256 + i) / 48000.0;
+                    b.setSample(0, i, (float) (0.15 * std::sin(2 * juce::MathConstants<double>::pi * 110.0 * t) + 0.05 * std::sin(2 * juce::MathConstants<double>::pi * 330.0 * t)));
+                    b.setSample(1, i, 0.0f);
+                }
+                proc->processBlock(b, midi);
+                if (k >= 40) for (int i = 0; i < 256; ++i) { sum += b.getSample(0, i) * b.getSample(0, i); ++cnt; }
+            }
+            return std::sqrt(sum / juce::jmax(1, cnt));
+        };
+        setP(*proc, "gateOn", 0.0f);
+        run(300);
+        const int latBefore = proc->getLatencySamples();
+        const double noPedal = rms();
+        const auto alignBefore = proc->getAlignInfo(0);
+        proc->loadPedal(0, 0, juce::File(argv[3]));
+        for (int t = 0; t < 300 && proc->getPedalStatus(0, 0).state != AmpsurdProcessor::SlotState::loaded; ++t) run(20);
+        run(2500); // re-measured with the pedal
+        const bool loaded = proc->getPedalStatus(0, 0).state == AmpsurdProcessor::SlotState::loaded;
+        const auto alignAfter = proc->getAlignInfo(0);
+        const double withPedal = rms();
+        e->selectSlot(0);
+        run(200);
+        save(*ed, out.getChildFile("23_pedal_chain.png"));
+        // bypass -> the amp alone again
+        setP(*proc, AmpsurdProcessor::slotParamId(0, "ped1On"), 0.0f);
+        run(2500);
+        const double bypassed = rms();
+        setP(*proc, AmpsurdProcessor::slotParamId(0, "ped1On"), 1.0f);
+        run(2500);
+        // preset keeps the pedal; pack carries its file
+        const auto pf = out.getChildFile("pedal_test.ampsurd");
+        proc->savePreset(pf);
+        proc->removePedal(0, 0);
+        run(300);
+        const bool removed = proc->getPedalStatus(0, 0).state == AmpsurdProcessor::SlotState::empty;
+        proc->loadPreset(pf);
+        for (int t = 0; t < 300 && proc->getPedalStatus(0, 0).state != AmpsurdProcessor::SlotState::loaded; ++t) run(20);
+        const bool presetOk = proc->getPedalStatus(0, 0).state == AmpsurdProcessor::SlotState::loaded
+                              && juce::File(proc->getPedalStatus(0, 0).path) == juce::File(argv[3]);
+        juce::String err;
+        const auto pack = out.getChildFile("pedal_test.ampsurdpack");
+        bool packHasPedal = false;
+        if (proc->exportPack(pack, err))
+        {
+            juce::ZipFile z(pack);
+            for (int i = 0; i < z.getNumEntries(); ++i) packHasPedal = packHasPedal || z.getEntry(i)->filename == juce::File(argv[3]).getFileName();
+        }
+        pack.deleteFile();
+        pf.deleteFile();
+        // REMOVE (the whole slot) removes its pedals too
+        proc->removePedal(0, 0);
+        run(2500);
+        const double afterRemove = rms();
+        const int latAfter = proc->getLatencySamples();
+        e->selectSlot(-1);
+        const bool soundOk = withPedal > 0.0 && std::abs(20.0 * std::log10(withPedal / noPedal)) > 0.05
+                             && std::abs(20.0 * std::log10(bypassed / noPedal)) < 0.3 && std::abs(20.0 * std::log10(afterRemove / noPedal)) < 0.3;
+        const bool ok = loaded && alignAfter.measured && soundOk && removed && presetOk && packHasPedal && latAfter == latBefore;
+        std::cout << (ok ? "[PASS]" : "[FAIL]") << " PEDALS: a capture before amp 1 loads (" << loaded << "), the amp is measured with it ("
+                  << alignAfter.measured << ", loudness " << juce::String(alignBefore.loudnessDb, 1) << " -> " << juce::String(alignAfter.loudnessDb, 1)
+                  << " dB), sound " << juce::String(20.0 * std::log10(noPedal), 1) << " / with pedal " << juce::String(20.0 * std::log10(withPedal), 1)
+                  << " / bypassed " << juce::String(20.0 * std::log10(bypassed), 1) << " / removed " << juce::String(20.0 * std::log10(afterRemove), 1)
+                  << " dBFS, preset " << presetOk << ", pack carries it " << packHasPedal << ", latency " << latBefore << " -> " << latAfter << "\n";
+        setP(*proc, "gateOn", 1.0f);
+    }
+
     // Cabinet IR (file given in AMPSURD_TEST_IR)
     const juce::File irFile(juce::SystemStats::getEnvironmentVariable("AMPSURD_TEST_IR", ""));
     if (irFile.existsAsFile())

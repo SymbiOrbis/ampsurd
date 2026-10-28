@@ -112,8 +112,10 @@ public:
     // `signal`: the test signal as the capture receives it at drive 0 (INPUT + calibration applied).
     // `ir`: the slot's cabinet IR (or nullptr). The model's state is reset before every render.
     // Returns false when `shouldStop` returned true (the result is then incomplete).
+    // `pre`: what comes before the capture (pedal captures), applied to the driven signal before it is rendered.
     static bool driveCurve(CaptureModel& model, const std::vector<double>& signal, const std::vector<double>* ir,
-                           DriveCurve& result, const std::function<bool()>& shouldStop = {});
+                           DriveCurve& result, const std::function<bool()>& shouldStop = {},
+                           const std::function<void(std::vector<double>&)>& pre = {});
     static double loudnessAtDrive(const DriveCurve& c, double driveDb); // clamped to the curve's range
 
     // ---- Whole-rig analysis (everything the plugin needs, computed off the audio thread) ----

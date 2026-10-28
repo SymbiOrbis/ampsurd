@@ -39,6 +39,7 @@ class AmpsurdProcessor final : public juce::AudioProcessor, private juce::Timer
 {
 public:
     static constexpr int kNumSlots = ampsurd::kNumSlots;
+    static constexpr int kNumPedals = ampsurd::kNumPedals;
     static constexpr int kNumBands = ampsurd::ParametricEq::kNumBands;
     static constexpr double kReserveMs = 1.0;     // headroom for FREE time offsets of -1 ms
     static constexpr double kMaxManualMs = 1.0;   // FREE time range: +/- 1 ms
@@ -145,6 +146,18 @@ public:
         bool canEco = false;    // the file contains an A2 Lite model (ECO button available)
         bool ecoActive = false; // the Lite model is running
     };
+    // --- pedal captures BEFORE an amp (serial chain, owner 2026-10-28; message thread): e.g. a boost or overdrive
+    //     capture driving the amp capture. Measured with the amp (alignment, level match and INPUT curve include
+    //     them); input calibration drives the first active pedal. Each pedal costs as much CPU as an amp. ---
+    struct PedalStatus
+    {
+        SlotState state = SlotState::empty;
+        juce::String path, fileName, info;
+    };
+    PedalStatus getPedalStatus(int slot, int k) const;
+    void loadPedal(int slot, int k, const juce::File& file);
+    void removePedal(int slot, int k);
+
     SlotStatus getSlotStatus(int slot) const;
     void loadCapture(int slot, const juce::File& file);
     void unloadCapture(int slot);
@@ -363,6 +376,7 @@ private:
         std::atomic<float>* irOn = nullptr;     // IR ON / BYPASS
         std::atomic<float>* drive = nullptr;    // per-amp INPUT (dB): drives this capture harder / softer
         std::atomic<float>* level = nullptr;    // per-amp OUTPUT (dB): deliberate level change in the mix
+        std::array<std::atomic<float>*, ampsurd::kNumPedals> pedalOn {}, pedalLevel {}; // pedal captures before the amp
         std::array<std::atomic<float>*, kNumBands> freq {}, gain {}, q {};
     };
     std::array<SlotParams, kNumSlots> slotParams;
@@ -486,7 +500,7 @@ private:
         double baseDb = 0.0;    // INPUT + calibration it was measured at
         bool eco = false, ir = false;
         const void* irData = nullptr;
-        juce::String path;
+        juce::String path, pedals; // pedals: pedalSignature() it was measured with
     };
     std::array<DriveCurveState, kNumSlots> driveCurves {};
     std::array<std::atomic<int>, kNumSlots> curveGeneration {};
@@ -501,6 +515,19 @@ private:
     std::atomic<bool> irPreview { false };
     std::array<std::shared_ptr<const IrSource>, kNumSlots> irSources {};
     bool applyEqPreset(int target, const juce::XmlElement& xml);
+    std::array<std::array<PedalStatus, kNumPedals>, kNumSlots> pedalStatus;
+    std::array<std::array<std::atomic<double>, kNumPedals>, kNumSlots> pedalDbu;
+    std::array<std::array<std::atomic<int>, kNumPedals>, kNumSlots> pedalGeneration {};
+    std::array<std::atomic<int>, kNumSlots> slotRemeasureGeneration {};
+    std::array<juce::String, kNumSlots> lastPedalSig;            // pedal on / level seen by the timer
+    std::array<double, kNumSlots> pedalSigChangedAt {};
+    void setPedalStatus(int slot, int k, const PedalStatus& st);
+    juce::String pedalSignature(int slot) const;                 // paths + on + levels: what the measurement depends on
+    double effectiveDbu(int slot, double ampDbu) const;          // the first active pedal's, else the amp's
+    // the guitar (already driven) through the slot's active pedals, as the engine plays it (configMutex held)
+    std::vector<double> renderPedals(int slot, std::vector<double> x, double sr, int block) const;
+    void requestSlotRemeasure(int slot);                         // a pedal changed: measure the amp again
+    void slotRemeasureJob(int slot, int gen);
     void adoptIr(int slot, std::shared_ptr<IrSource> src, std::vector<double> prepared, const IrStatus& status); // configMutex held
     std::array<std::shared_ptr<const std::vector<double>>, kNumSlots> irPrepared {};
     std::array<std::shared_ptr<const std::vector<double>>, kNumSlots> rawRenders {};

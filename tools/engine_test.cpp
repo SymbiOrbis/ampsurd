@@ -822,6 +822,48 @@ int main(int argc, char** argv)
                            "(two captures, two guitar levels; uncompensated the loudness changes by up to %.1f dB)", worst, worstUncomp);
     }
 
+    // ---------------- PEDALS: a capture before the amp (serial chain, 2026-10-28) ----------------
+    {
+        const auto test = CaptureAnalyzer::makeTestSignal(sr);
+        auto render = [&](bool withPedal, bool pedalOn, int switchAt) {
+            Engine eng;
+            eng.getSlot(0).submit(loadAt(argv[1]));
+            if (withPedal) eng.getPedal(0, 0).submit(loadAt(argv[2]));
+            eng.prepare(sr, 256, 10.0);
+            EngineSettings s;
+            s.slots[0].mix = 100.0f;
+            s.slots[0].pedalOn[0] = pedalOn;
+            std::vector<double> out(test.size());
+            for (size_t pos = 0; pos < test.size(); pos += 256)
+            {
+                const int n = (int) std::min<size_t>(256, test.size() - pos);
+                if (switchAt >= 0 && (int) pos >= switchAt) s.slots[0].pedalOn[0] = true;
+                eng.process(test.data() + pos, out.data() + pos, n, s);
+            }
+            return out;
+        };
+        const auto alone = render(false, false, -1), bypassed = render(true, false, -1), on = render(true, true, -1);
+        double diffBypass = 0.0, diffOn = 0.0;
+        for (size_t i = 0; i < alone.size(); ++i)
+        {
+            diffBypass = std::max(diffBypass, std::abs(alone[i] - bypassed[i]));
+            diffOn = std::max(diffOn, std::abs(alone[i] - on[i]));
+        }
+        check(diffBypass == 0.0, "PEDALS: a bypassed pedal = the amp alone, bit-identical");
+        check(diffOn > 1e-3, "PEDALS: a pedal that is on changes the sound (max difference %.3f)", diffOn);
+        // switched on while playing: no click (the largest sample step stays like the steady signal's)
+        const int at = (int) (0.75 * sr) / 256 * 256;
+        const auto sw = render(true, false, at);
+        double stepNear = 0.0, stepSteady = 0.0;
+        for (size_t i = 1; i < sw.size(); ++i)
+        {
+            const double d = std::abs(sw[i] - sw[i - 1]);
+            if ((int) i >= at - 64 && (int) i < at + (int) (0.03 * sr)) stepNear = std::max(stepNear, d);
+            else stepSteady = std::max(stepSteady, std::abs(on[i] - on[i - 1]));
+        }
+        check(stepNear <= 1.5 * stepSteady, "PEDALS: switched on while playing without a click (step %.3f vs %.3f)", stepNear, stepSteady);
+    }
+
     std::printf(failures == 0 ? "\nALL PASS\n" : "\n%d FAILURE(S)\n", failures);
     return failures == 0 ? 0 : 1;
 }
