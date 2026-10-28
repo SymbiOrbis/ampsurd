@@ -28,3 +28,6 @@ Thumbs.db
 # Secrets
 .env
 *.key
+
+# reference files of the owner's AMPSURD IR set (cab_ir_test, ui_snapshot)
+!tests/data/ampsurd_irs/**/*.wav
