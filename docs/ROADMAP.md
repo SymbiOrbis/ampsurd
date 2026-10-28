@@ -111,6 +111,12 @@ EQ, IR, effects; opened from EDIT. Feasible; the alignment / level match must me
 gain staging between captures, presets / packs / undo / UI. Suggested first step: one or two capture
 blocks BEFORE the amp in each slot (boost / overdrive pedal captures), with a CPU meter warning.
 
+## 3p. EQ COPY easier to get rid of - PROPOSED 2026-10-28 (owner), waiting for decision
+Owner: after an accidental COPY the EQ buttons keep showing COPIED / PASTE, even after a paste - "sticky".
+Today: clicking COPIED on the copied EQ cancels (only said in the tooltip); the copy stays after a paste.
+Proposed: the copy ends after one paste; Ctrl+Z / the undo arrow and Esc cancel a copy; an unused copy
+ends by itself after ~20 s; the button reads "COPIED - CANCEL" so cancelling is visible.
+
 ## 3j. Bundled cabinet IRs — ON HOLD (owner decision 2026-10-14)
 No IRs ship with AMPSURD until an author gives explicit written consent to redistribution (Jester
 Dyne's packs: pages say "free even for commercial use", no redistribution wording; the site was
