@@ -117,6 +117,12 @@ Today: clicking COPIED on the copied EQ cancels (only said in the tooltip); the 
 Proposed: the copy ends after one paste; Ctrl+Z / the undo arrow and Esc cancel a copy; an unused copy
 ends by itself after ~20 s; the button reads "COPIED - CANCEL" so cancelling is visible.
 
+## 3q. EQ presets - PROPOSED 2026-10-28 (owner), for later
+A list of factory EQ curves chosen by the owner (e.g. "tighten lows", "less fizz") plus user EQ presets saved
+under any name; usable on every EQ (amp, IR, Global). Small files in Documents/AMPSURD/EQ (shareable);
+loading = one undo step; factory set shipped with the app. Feasible, small to medium job; ties in with 3p
+(the EQ buttons row: COPY / PASTE / a preset menu).
+
 ## 3j. Bundled cabinet IRs — ON HOLD (owner decision 2026-10-14)
 No IRs ship with AMPSURD until an author gives explicit written consent to redistribution (Jester
 Dyne's packs: pages say "free even for commercial use", no redistribution wording; the site was
