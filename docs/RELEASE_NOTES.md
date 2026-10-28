@@ -19,6 +19,21 @@ notarized (Developer ID: Radovan Glovna): double-click it and install. The first
 access to the audio input: allow it, or AMPSURD hears no guitar (the camera is asked for only when you use
 VIDEO in the player).
 
+## Next beta (in preparation - not released yet)
+
+- AMPSURD IRs: AMPSURD's own 4x12 cabinet IRs - 3 speakers (V30, DV77, SWAMP) x 3 microphones (SM57, MD421,
+  R121) x mic positions from 25 to 100 mm - on one map (IR -> AMPSURD IRs). Click, drag or just hover to
+  hear them; between the dots AMPSURD calculates the sound in between, like moving the mic. Save any point
+  as a WAV, or export all 144. Synthetic (calculated) IRs, no recordings; presets remember the point.
+- Pedals before an amp: up to two captures (boost, overdrive, preamp...) in front of each amp (EDIT ->
+  BEFORE THE AMP), each with ON and LEVEL. The amp's alignment and level match include them.
+- EQ PRESETS on every EQ: save a curve under any name and load it into any EQ (factory curves to follow).
+- EQ COPY is easy to get rid of: CANCEL COPY, Ctrl+Z, Esc, or it ends by itself after 20 s; a copy ends with
+  its paste.
+- New A2 captures load in their full version by default (ECO = Lite is one click away).
+- Fixes: FRANKENSTEIN shows itself with one press (it could switch on and off unseen behind another view);
+  on macOS the pack import / export dialog could not be clicked.
+
 ## AMPSURD 0.9.2 (beta)
 
 Third public beta. **Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the

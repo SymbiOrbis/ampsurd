@@ -284,7 +284,34 @@ REAPER picks up the new version.
     and once in mono (e.g. a mono button on the interface): does it sound like real second takes, no
     phasing / chorus, no clicks between phrases, as loud as without it? Note what works and what does not.
 
-Expected latency shown by REAPER: 104 samples at 48 kHz, 123 at 44.1 kHz.
+45. Tester fixes (2026-10-28): (a) EDIT open on an amp, press FRANKENSTEIN once: Frankenstein is shown at
+    once (and on); press it again while shown: off. Same from GLOBAL, ROOT, DOUBLER, the player. (b) Preset
+    menu -> Import pack... / Export pack...: the file dialog opens and can be clicked / browsed (macOS!).
+    (c) A new A2 capture loads FULL (ECO not lit); settings menu "Load A2 captures as Lite (ECO)" is off
+    unless you switched it on before.
+46. EQ COPY: COPY an amp's EQ -> its button reads CANCEL COPY; PASTE into another EQ -> every button reads
+    COPY again (one paste per copy). COPY again and get rid of it each way: click CANCEL COPY / Ctrl+Z (takes
+    back only the copy, not the paste before) / Esc / wait 20 s.
+47. EQ PRESETS (top of every EQ graph: amp, IR, Global): "Save this EQ as..." -> a name -> it is listed under
+    YOUR EQ PRESETS in every EQ; load it into another EQ (exactly the same curve); Ctrl+Z undoes the load;
+    "Open EQ preset folder" shows Documents\AMPSURD\EQ. (Factory curves appear under AMPSURD once the owner
+    has chosen them.)
+48. AMPSURD IRs: on an amp without its cabinet, IR -> AMPSURD IRs: the map opens over the window (speakers /
+    mics down, mic position 25-100 mm across). Click a dot: you hear that IR; drag across the map: the sound
+    moves smoothly (also between the dots, no clicks); HOVER TO LISTEN on: just moving the mouse lets you hear
+    points, leaving the map returns to the clicked one (and is no undo step); SNAP TO GRID: only the dots.
+    SAVE IR -> a WAV in Documents\AMPSURD\IRs (load it with LOAD IR: same sound); EXPORT ALL 144 -> the
+    set in Documents\AMPSURD\IRs\AMPSURD IRs\48k. Save a preset, load another, load it back: the same
+    point comes back (no file needed). Esc / CLOSE closes the map.
+49. PEDALS before an amp (EDIT, row "BEFORE THE AMP"): + PEDAL 1 -> a boost / overdrive / preamp capture
+    (or drop a .nam there): the slot shows "name ->"; ON bypasses it (no click), LEVEL drives the amp
+    harder / softer. After ~1 s the amp is re-measured (alignment, level match). PEDAL 2 likewise. Save a
+    preset / export a pack: the pedals come back / are inside. CPU meter: each pedal costs like an amp.
+    REMOVE on the amp removes its pedals too.
+
+Expected latency shown by REAPER: 104 samples at 48 kHz (2.2 ms), 123 at 44.1 kHz (2.8 ms), 242 at 96 kHz
+(2.5 ms); +5 ms while PITCH is on. Pedals add nothing (unless a pedal capture has another sample rate than
+the session). The audio interface's own buffers come on top - AMPSURD itself adds about 2 ms.
 
 Optional measurements (in Developer PowerShell):
 ```

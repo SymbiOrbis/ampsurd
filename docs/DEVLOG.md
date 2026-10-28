@@ -6,6 +6,47 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-28 — Session 3z: tester fixes, AMPSURD IRs, pedals before the amps, EQ presets - Claude (Opus 5.5)
+
+- Owner's list of the day (ROADMAP 3m-3q) + a Mac tester (M4 Pro, macOS Tahoe, Audient EVO8): pack import dialog
+  could not be clicked; FRANKENSTEIN needed ~5 presses; "phasey" blend with several amps; latency "the same
+  as my plugin". Owner: implement everything, no significant latency on any modern PC / Mac.
+- FRANKENSTEIN: the button switched Frankenstein on / off while EDIT, IR, the player, ROOT, DOUBLER or GLOBAL
+  covered it (so nothing seemed to happen). Now: on + shown -> off, otherwise on AND shown
+  (AmpsurdEditor::frankensteinPressed). ui_snapshot FRANKENSTEIN button test.
+- macOS file dialogs: pack import / export and "Load NAM..." from a menu open 150 ms after the menu has closed
+  (a dialog opened inside the menu's callback can stay unclickable on macOS). Not reproducible here (Linux);
+  the tester should confirm.
+- Phasey blend: automatic alignment checked at 44.1 / 48 / 96 kHz (same offset and polarity within 0.014 ms,
+  ui_snapshot ALIGN AT ANY RATE). Nothing wrong found; different mics / cabinets cannot be aligned by a delay
+  (REVIEW 2.3). Asked for the tester's captures / an EDIT screenshot.
+- Full A2 by default: "Load A2 captures as Lite (ECO)" off unless the user switched it on before.
+- EQ COPY: one paste per copy (all buttons back to COPY); CANCEL COPY on the copied EQ (button 100 px), Ctrl+Z
+  (undo takes back the copy first), Esc, or 20 s. ui_snapshot EQ COPY test extended.
+- EQ PRESETS (button in every EQ graph): factory curves embedded from plugin/assets/eq/*.ampsurdeq (empty until
+  the owner chooses them), the user's own in Documents/AMPSURD/EQ, "Save this EQ as..." (name), load = one undo
+  step. ui_snapshot EQ PRESETS test.
+- AMPSURD IRs: the owner's synthetic set (AMPSURD_IRs v6, make_irs.py) ported exactly to core/CabIrModel
+  (cab_ir_test: all 288 files, largest difference 6e-8; 5 reference files in tests/data). Any point between the
+  grid (rows blended in dB, position continuous), any sample rate, ~7 ms per IR. CabIrMatrix overlay (IR ->
+  AMPSURD IRs): rows speaker x mic, columns 25-100 mm, click / drag / HOVER TO LISTEN (no undo steps: the
+  processor's irPreview flag) / SNAP TO GRID, SAVE IR (= the owner's file to 1 LSB), EXPORT ALL 144. Presets
+  store "ampsurd-ir:<row>,<mm>", packs need no file. loadCabIr() + adoptIr() (shared with file IRs).
+- Pedals before the amps (serial chain step 1): Engine pedals[slot][2] (CaptureSlots before the amp: crossfaded
+  ON / bypass, smoothed LEVEL, a bypassed pedal does not run = bit-identical), params sN_ped1On/Level,
+  sN_ped2On/Level, loadPedal / removePedal, the amp measured through its pedals (load, re-measure, INPUT curve via
+  a new `pre` hook in CaptureAnalyzer::driveCurve), input calibration into the first active pedal, latency incl.
+  pedal resampling, presets (pedal1Path / pedal2Path), packs, undo, REMOVE. UI: EDIT row "BEFORE THE AMP"
+  (PEDAL 1 -> PEDAL 2 -> AMP: name / load / drop, ON, LEVEL), slot line "name ->". engine_test (bypass
+  bit-identical, on changes the sound, no click when switched on), ui_snapshot PEDALS test.
+- Latency (ui_snapshot LATENCY): AMPSURD adds 2.2 ms at 48 kHz (8-sample aligner + 1 ms FREE headroom + 1 ms
+  limiter look-ahead), 2.8 ms at 44.1 kHz (resampling to the captures' 48 kHz), 2.5 ms at 96 kHz; +5 ms with
+  PITCH. CPU (ampsurd_bench here, a slow cloud core): one Full A2 ~9 % of a core, five ~50 %; AMPSURD spreads
+  the amps over several cores - 64-128 sample buffers are realistic on a modern PC / Mac.
+- Also: .gitignore let tests/data/ampsurd_irs/*.wav through (CI cab_ir_test had found 0 files).
+- Tests here: ui_snapshot with / without AMPSURD_FORCE_PLAYER (all PASS), recorder_test, tone_test, engine_test,
+  cab_ir_test. Not testable here: macOS dialogs, real listening (IR map, pedals).
+
 ## 2026-10-24 — Session 3y: release 0.9.2 (Windows + macOS) - Claude (Opus 5.5)
 
 - Owner: publish the installers for Mac and Windows (VIDEO recording still has problems - details pending).
