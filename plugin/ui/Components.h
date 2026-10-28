@@ -112,7 +112,7 @@ private:
 };
 
 // ---------------------------------------------------------------------------------------------
-// COPY / COPIED / PASTE / SURE? button of an EQ (amp EQ, IR EQ, Global EQ). The clipboard lives in the
+// COPY / CANCEL COPY / PASTE / SURE? button of an EQ (amp EQ, IR EQ, Global EQ). The clipboard lives in the
 // processor (session only), so every EQ's button knows what is copied. PASTE needs a second click
 // within 3 s (SURE?); a click anywhere else cancels SURE?.
 class EqCopyButton final : public juce::TextButton, private juce::Timer
@@ -122,10 +122,10 @@ public:
     ~EqCopyButton() override;
     void setTarget(int t) { target = t; armedAt = -1.0; update(); }
     void clicked() override;
+    void update(); // also from tests
 
 private:
     void timerCallback() override { update(); }
-    void update();
     struct ClickWatcher final : juce::MouseListener // a click anywhere else cancels SURE?
     {
         explicit ClickWatcher(EqCopyButton& b) : owner(b) {}
@@ -484,6 +484,8 @@ private:
 public:
     std::function<void()> onRootClick; // the editor opens / closes the ROOT panel
     std::function<void()> onDoublerClick; // ... the DOUBLER panel
+    std::function<void()> onFrankClick;   // the editor shows / switches FRANKENSTEIN (2026-10-28: a click while another view
+                                          // was open only toggled it invisibly - a tester pressed it ~5x)
 
 private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> gateAtt;

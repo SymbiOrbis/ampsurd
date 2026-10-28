@@ -115,6 +115,7 @@ AmpsurdEditor::AmpsurdEditor(AmpsurdProcessor& p) : AudioProcessorEditor(&p), pr
         content.playerPanel->onClose = [this] { showPlayer(false); };
         content.playerButton.onClick = [this] { showPlayer(!playerOpen); };
     }
+    content.master.onFrankClick = [this] { frankensteinPressed(); };
     content.globalEq.onClose = [this] { showGlobalEq(false); };
     content.globalEqButton.onClick = [this] { showGlobalEq(true); };
    #if AMPSURD_ROOT
@@ -159,6 +160,7 @@ bool AmpsurdEditor::keyPressed(const juce::KeyPress& key)
     const auto kc = juce::CharacterFunctions::toLowerCase((juce::juce_wchar) key.getKeyCode());
     if (mods.isCommandDown() && kc == 'z') { if (mods.isShiftDown()) proc.redo(); else proc.undo(); return true; }
     if (mods.isCommandDown() && kc == 'y') { proc.redo(); return true; }
+    if (key == juce::KeyPress::escapeKey && proc.getEqClipboardSource() >= 0) { proc.clearEqClipboard(); return true; } // cancel a COPY
 
     auto* pl = proc.getPlayer();
     if (pl == nullptr) return false;
@@ -237,6 +239,28 @@ void AmpsurdEditor::showRoot(bool show)
     timerCallback();
 }
 
+void AmpsurdEditor::frankensteinPressed()
+{
+    // on and in view -> off; otherwise -> on AND in view (it used to switch on / off behind EDIT, IR, the player,
+    // ROOT, DOUBLER or GLOBAL, so nothing seemed to happen - tester 2026-10-28)
+    if (proc.isFrankensteinOn() && content.frankenstein.isVisible())
+    {
+        proc.setFrankenstein(false);
+        timerCallback();
+        return;
+    }
+    proc.setFrankenstein(true);
+    rootOpen = false;
+    doublerOpen = false;
+    globalEqOpen = false;
+    playerOpen = false;
+    selected = -1;
+    content.edit.setSlot(-1);
+    content.ir.setSlot(-1);
+    lastFrankOn = true;
+    timerCallback();
+}
+
 void AmpsurdEditor::showGlobalEq(bool show)
 {
     globalEqOpen = show;
@@ -295,6 +319,7 @@ void AmpsurdEditor::showIr(int slot)
 
 void AmpsurdEditor::timerCallback()
 {
+    proc.expireEqClipboard(); // an unused EQ copy ends after 20 s
     if (content.ir.getSlot() >= 0 && proc.getSlotStatus(content.ir.getSlot()).state == AmpsurdProcessor::SlotState::empty)
         content.ir.setSlot(-1); // the slot was emptied
     if (selected >= 0 && content.edit.getSlot() < 0 && content.ir.getSlot() < 0)

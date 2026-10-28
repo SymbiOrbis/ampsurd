@@ -28,6 +28,7 @@ public:
 
     // for tests / screenshots
     void selectSlot(int slot);
+    void frankensteinPressed(); // FRANKENSTEIN button (also used by tests)
     void showGlobalEq(bool show);
     void showIr(int slot);   // -1 closes the IR editor
     void showPlayer(bool show);

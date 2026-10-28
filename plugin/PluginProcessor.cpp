@@ -420,7 +420,7 @@ AmpsurdProcessor::AmpsurdProcessor()
         multiCore.store(pf.getBoolValue("multiCore", true));
        #endif
         showDragon.store(pf.getBoolValue("showDragon", true));
-        ecoByDefault.store(pf.getBoolValue("ecoByDefault", true));
+        ecoByDefault.store(pf.getBoolValue("ecoByDefault", false)); // Full A2 by default (owner 2026-10-28; a saved choice is kept)
         guitarInput.store(juce::jlimit(0, 1, pf.getIntValue("guitarInput", 0)));
     }
     engine.setMultiCore(multiCore.load() ? -1 : 0);

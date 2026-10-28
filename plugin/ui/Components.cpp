@@ -526,7 +526,8 @@ void SlotComponent::mouseUp(const juce::MouseEvent& e)
     m.addItem(2, "Remove NAM", status.state != AmpsurdProcessor::SlotState::empty);
     m.addItem(3, "Show file location", juce::File(status.path).exists());
     m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this), [this](int r) {
-        if (r == 1) chooseFile();
+        if (r == 1) // after the menu has closed (macOS: see HeaderBar::showPresetMenu)
+            juce::Timer::callAfterDelay(150, [sp = juce::Component::SafePointer<SlotComponent>(this)] { if (sp != nullptr) sp->chooseFile(); });
         if (r == 2) proc.unloadCapture(slot);
         if (r == 3) juce::File(status.path).revealToUser();
     });
@@ -959,14 +960,15 @@ void EqCopyButton::update()
     const int src = proc.getEqClipboardSource();
     const bool pastedHere = proc.wasEqPastedInto(target);
     if (src < 0 || src == target || pastedHere) armedAt = -1.0;
-    const juce::String t = src < 0 || pastedHere ? "COPY" : src == target ? "COPIED" : armedAt > 0.0 ? "SURE?" : "PASTE";
+    const juce::String t = src < 0 || pastedHere ? "COPY" : src == target ? "CANCEL COPY" : armedAt > 0.0 ? "SURE?" : "PASTE";
     if (getButtonText() != t)
     {
         setButtonText(t);
         setColour(juce::TextButton::textColourOffId, t == "SURE?" ? colours::accent : colours::text);
-        setToggleState(t == "COPIED", juce::dontSendNotification);
-        setTooltip(t == "COPY" ? "Copy this EQ (on / off, bands, every band's settings)"
-                 : t == "COPIED" ? "This EQ is copied - click to cancel"
+        setToggleState(t == "CANCEL COPY", juce::dontSendNotification);
+        setTooltip(t == "COPY" ? "Copy this EQ (on / off, bands, every band's settings) - then PASTE it into another EQ"
+                 : t == "CANCEL COPY" ? "This EQ is copied: PASTE it into another EQ, or click here to cancel (also Esc or Ctrl+Z; "
+                                        "an unused copy ends by itself after 20 s)"
                  : t == "PASTE" ? "Paste the copied EQ here (click twice: PASTE, then SURE?)"
                                 : "Click again to replace this EQ with the copied one");
     }
@@ -3536,7 +3538,7 @@ MasterPanel::MasterPanel(AmpsurdProcessor& p) : proc(p), gate(p)
     gateAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.params, "gateOn", gateButton);
     gateButton.setTooltip("Noise gate on/off (its meter, THRESHOLD and DECAY are right above)");
     addAndMakeVisible(frankButton);
-    frankButton.onClick = [this] { proc.setFrankenstein(!proc.isFrankensteinOn()); };
+    frankButton.onClick = [this] { if (onFrankClick) onFrankClick(); else proc.setFrankenstein(!proc.isFrankensteinOn()); };
     frankButton.setTooltip("Split the spectrum between the amps: e.g. lows from one amp, mids from another, highs from a third");
     if (AmpsurdProcessor::hasRootModule())
     {
@@ -3824,8 +3826,12 @@ void HeaderBar::showPresetMenu()
                     [this, files](int r) {
                         if (r == 1) proc.loadInitPreset();
                         else if (r == 2) { proc.getPresetFolder().createDirectory(); proc.getPresetFolder().revealToUser(); }
-                        else if (r == 3) exportPack();
-                        else if (r == 4) importPack();
+                        // file dialogs open a moment after the menu has really closed: on macOS a dialog opened from
+                        // inside the menu's callback could stay unclickable (tester 2026-10-28, macOS Tahoe)
+                        else if (r == 3 || r == 4)
+                            juce::Timer::callAfterDelay(150, [sp = juce::Component::SafePointer<HeaderBar>(this), r] {
+                                if (sp != nullptr) { if (r == 3) sp->exportPack(); else sp->importPack(); }
+                            });
                         else if (r == 5) { proc.getPacksFolder().createDirectory(); proc.getPacksFolder().revealToUser(); }
                         else if (r >= 100 && r - 100 < files.size()) proc.loadPreset(files[r - 100]);
                         refresh();

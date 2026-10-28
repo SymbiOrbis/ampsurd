@@ -276,9 +276,15 @@ public:
     // --- EQ clipboard (session only): COPY one EQ, PASTE it into any other (amp, IR, Global EQ) ---
     void copyEq(int target);
     void clearEqClipboard() { eqClip.source = -1; eqClip.pasted = 0; }
+    // an unused copy ends by itself (owner 2026-10-28: an accidental COPY was "sticky"); message thread, ~30 Hz
+    void expireEqClipboard(double afterMs = 20000.0)
+    {
+        if (eqClip.source >= 0 && juce::Time::getMillisecondCounterHiRes() - eqClip.copiedAt > afterMs) clearEqClipboard();
+    }
     int getEqClipboardSource() const { return eqClip.source; } // -1 = nothing copied
     bool wasEqPastedInto(int target) const { return target >= 0 && target < 32 && ((eqClip.pasted >> target) & 1u) != 0; }
-    bool pasteEq(int target);                                   // EQ on/off, band count, all bands; one undo step
+    bool pasteEq(int target);                                   // EQ on/off, band count, all bands; one undo step;
+                                                                // the copy ends with it (one paste per copy, 2026-10-28)
 
     // --- move an amp to another slot by mouse (message thread): the two slots swap everything (capture, IR,
     //     mix share, mute / solo, EQs, alignment, pan, levels, ECO); Frankenstein sections follow the amps ---
@@ -290,7 +296,7 @@ public:
     // track, BOUNCE, loading a backing). undo() / redo() (Ctrl+Z / Ctrl+Y, the header arrows) take back / redo
     // whatever was done last. Captures / IRs that stay the same are not reloaded. A and B are two complete
     // rigs of this session (not saved in presets).
-    bool canUndo() const { return !undoOrder.empty(); }
+    bool canUndo() const { return !undoOrder.empty() || eqClip.source >= 0; } // a pending EQ copy is undone first
     bool canRedo() const { return !redoOrder.empty(); }
     void undo();
     void redo();
@@ -490,7 +496,7 @@ private:
     std::atomic<bool> calibrateOn { false };
     std::atomic<bool> multiCore { true };
     std::atomic<bool> showDragon { true };
-    std::atomic<bool> ecoByDefault { true };
+    std::atomic<bool> ecoByDefault { false }; // Full A2 by default since 2026-10-28
     std::atomic<int> guitarInput { 0 };
     std::atomic<bool> needsRecovery { false };
     std::atomic<int> recoveries { 0 };
@@ -516,6 +522,7 @@ private:
     {
         int source = -1;
         unsigned pasted = 0; // EQs this copy was pasted into (their button shows COPY again)
+        double copiedAt = 0.0;
         float eqOn = 1.0f, bands = 10.0f;
         std::array<float, kNumBands> freq {}, gain {}, q {};
     } eqClip;

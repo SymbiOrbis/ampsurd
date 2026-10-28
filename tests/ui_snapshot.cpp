@@ -373,6 +373,41 @@ int main(int argc, char** argv)
         std::cout << (ok ? "[PASS]" : "[FAIL]") << " UPDATES: newest release found by its version (normal release with fixed file names "
                   << "and an older pre-release; draft ignored): " << info.latest << "\n";
     }
+    // ALIGN AT ANY RATE (tester 2026-10-28, Mac: "with several amps it sounds phasey"): the automatic alignment
+    // must find the same time offset and polarity at 44.1, 48 and 96 kHz
+    if (argc >= 4)
+    {
+        double ref = 0.0, refPol = 1.0, worst = 0.0;
+        bool allMeasured = true, polSame = true;
+        juce::String detail;
+        for (double rate : { 48000.0, 44100.0, 96000.0 })
+        {
+            auto p = std::make_unique<AmpsurdProcessor>();
+            p->prepareToPlay(rate, 256);
+            p->setNonRealtime(true);
+            p->loadCapture(0, juce::File(argv[2]));
+            p->loadCapture(1, juce::File(argv[3]));
+            juce::MidiBuffer m;
+            juce::AudioBuffer<float> b(2, 256);
+            for (int t = 0; t < 900 && !(p->getAlignInfo(0).measured && p->getAlignInfo(1).measured); ++t)
+            {
+                b.clear();
+                p->processBlock(b, m);
+                p->runHousekeeping();
+                pump(10);
+            }
+            const auto a0 = p->getAlignInfo(0), a1 = p->getAlignInfo(1);
+            allMeasured = allMeasured && a0.measured && a1.measured;
+            const double off = a1.autoOffsetMs - a0.autoOffsetMs, pol = a1.polarity * a0.polarity;
+            if (rate == 48000.0) { ref = off; refPol = pol; }
+            else { worst = juce::jmax(worst, std::abs(off - ref)); polSame = polSame && pol == refPol; }
+            detail << juce::String(rate / 1000.0, 1) << " kHz: " << juce::String(off, 3) << " ms" << (pol < 0 ? " inv" : "") << "  ";
+        }
+        const bool ok = allMeasured && polSame && worst < 0.03;
+        std::cout << (ok ? "[PASS]" : "[FAIL]") << " ALIGN AT ANY RATE: offset amp 2 vs amp 1 " << detail << "(max diff "
+                  << juce::String(worst, 3) << " ms)\n";
+    }
+
     auto proc = std::make_unique<AmpsurdProcessor>();
     proc->prepareToPlay(48000.0, 256);
 
@@ -629,6 +664,25 @@ int main(int argc, char** argv)
         std::cout << "Frankenstein: spectrum shares total " << share << " %, amp 5 " << proc->getEffectivePercent(4)
                   << " %, amp 3 " << proc->getEffectivePercent(2) << " %\n";
         setP(*proc, AmpsurdProcessor::slotParamId(0, "mute"), 0.0f);
+        // FRANKENSTEIN button (tester 2026-10-28: "nothing happened, I pressed it ~5x"): while EDIT or GLOBAL is open,
+        // one press must show it (and keep it on); pressing it when it is shown switches it off
+        auto frankShown = [&] { e->refreshAll(); auto* f = findVisible<ampsurd::ui::FrankensteinPanel>(*ed); return f != nullptr; };
+        e->selectSlot(0);
+        const bool hiddenByEdit = proc->isFrankensteinOn() && !frankShown();
+        e->frankensteinPressed();
+        const bool shownFromEdit = proc->isFrankensteinOn() && frankShown();
+        e->showGlobalEq(true);
+        e->frankensteinPressed();
+        const bool shownFromGlobal = proc->isFrankensteinOn() && frankShown();
+        e->frankensteinPressed();
+        const bool offWhenShown = !proc->isFrankensteinOn() && !frankShown();
+        e->selectSlot(0);
+        e->frankensteinPressed();
+        const bool onFromEdit = proc->isFrankensteinOn() && frankShown();
+        const bool ok = hiddenByEdit && shownFromEdit && shownFromGlobal && offWhenShown && onFromEdit;
+        std::cout << (ok ? "[PASS]" : "[FAIL]") << " FRANKENSTEIN button: one press shows it from EDIT / GLOBAL (" << hiddenByEdit << shownFromEdit
+                  << shownFromGlobal << "), a press while shown switches it off (" << offWhenShown << "), off + EDIT -> on and shown ("
+                  << onFromEdit << ")\n";
     }
 
     // Cabinet IR (file given in AMPSURD_TEST_IR)
@@ -1160,13 +1214,15 @@ int main(int argc, char** argv)
             c3.setTarget(2);
             cg.setTarget(AP::kGlobalEq);
             c1.clicked();                                     // COPY
-            const bool copied = p2.getEqClipboardSource() == 0 && c1.getButtonText() == "COPIED";
+            const bool copied = p2.getEqClipboardSource() == 0 && c1.getButtonText() == "CANCEL COPY";
             c3.clicked();                                     // PASTE -> SURE?
             const bool sure = c3.getButtonText() == "SURE?" && !same(0, 2);
-            c3.clicked();                                     // paste
-            const bool amp3 = same(0, 2) && c3.getButtonText() == "COPY" && c1.getButtonText() == "COPIED";
+            c3.clicked();                                     // paste: the copy ends with it (one paste per copy)
+            c1.update();
+            const bool amp3 = same(0, 2) && c3.getButtonText() == "COPY" && c1.getButtonText() == "COPY" && p2.getEqClipboardSource() < 0;
             settle();
             const bool globalBefore = !same(0, AP::kGlobalEq);
+            c1.clicked();                                     // COPY again
             cg.clicked();                                     // SURE? ...
             pump(3200);                                       // ... expires
             cg.clicked();                                     // only arms again
@@ -1176,14 +1232,31 @@ int main(int argc, char** argv)
             settle();
             p2.undo();                                        // the Global EQ paste is one step
             const bool undone = !same(0, AP::kGlobalEq) && same(0, 2);
-            c1.clicked();                                     // COPIED: cancel
-            const bool cleared = p2.getEqClipboardSource() < 0;
+            // getting rid of an accidental COPY (owner 2026-10-28): the button, Ctrl+Z, Esc, 20 s
+            std::unique_ptr<juce::AudioProcessorEditor> ed(p2.createEditor());
+            c1.clicked();
+            c1.clicked();                                     // CANCEL COPY
+            const bool byButton = p2.getEqClipboardSource() < 0;
+            c1.clicked();
+            const bool undoBefore = !same(0, AP::kGlobalEq);
+            p2.undo();                                        // Ctrl+Z takes back the copy, not the paste before it
+            const bool byUndo = p2.getEqClipboardSource() < 0 && same(0, 2) && undoBefore;
+            c1.clicked();
+            ed->keyPressed(juce::KeyPress(juce::KeyPress::escapeKey));
+            const bool byEsc = p2.getEqClipboardSource() < 0;
+            c1.clicked();
+            p2.expireEqClipboard(20000.0);
+            const bool kept = p2.getEqClipboardSource() == 0;
+            p2.expireEqClipboard(0.0);                        // = 20 s later
+            const bool byTime = p2.getEqClipboardSource() < 0;
+            const bool cleared = byButton && byUndo && byEsc && kept && byTime;
             if (!(copied && sure && amp3 && globalBefore && noPaste && global && undone && cleared))
                 std::cout << "  (copied " << copied << " sure " << sure << " amp3 " << amp3 << " globalBefore " << globalBefore << " noPaste "
-                          << noPaste << " global " << global << " undone " << undone << " cleared " << cleared << ")\n";
+                          << noPaste << " global " << global << " undone " << undone << " button " << byButton << " undo " << byUndo
+                          << " esc " << byEsc << " kept " << kept << " time " << byTime << ")\n";
             std::cout << (copied && sure && amp3 && globalBefore && noPaste && global && undone && cleared ? "[PASS]" : "[FAIL]")
-                      << " EQ COPY / PASTE: amp 1 -> amp 3 and -> Global EQ identical (bands, count, on), SURE? expires after 3 s"
-                         " without pasting, undo restores, COPIED click clears; a pasted EQ shows COPY again\n";
+                      << " EQ COPY / PASTE: amp 1 -> amp 3 and -> Global EQ identical, SURE? expires after 3 s, one paste per copy, undo"
+                         " restores; a copy ends with CANCEL COPY, Ctrl+Z, Esc or after 20 s\n";
             settle();
         }
         p2.selectAb(1);                // B = copy of A

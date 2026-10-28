@@ -114,6 +114,8 @@ void AmpsurdProcessor::notePlayerStep()
 
 void AmpsurdProcessor::undo()
 {
+    // an EQ copy that was not pasted is the newest thing to take back (owner 2026-10-28)
+    if (eqClip.source >= 0) { clearEqClipboard(); return; }
     while (!undoOrder.empty())
     {
         if (undoOrder.back() == 'S')
@@ -192,6 +194,7 @@ void AmpsurdProcessor::copyEq(int target)
     }
     eqClip.source = target;
     eqClip.pasted = 0;
+    eqClip.copiedAt = juce::Time::getMillisecondCounterHiRes();
 }
 
 bool AmpsurdProcessor::pasteEq(int target)
@@ -209,7 +212,7 @@ bool AmpsurdProcessor::pasteEq(int target)
         set(bandParamId(target, b, "q"), eqClip.q[(size_t) b]);
     }
     set(slotParamId(target, "eqOn"), eqClip.eqOn);
-    eqClip.pasted |= 1u << target;
+    clearEqClipboard(); // one paste per copy: every EQ shows COPY again (owner 2026-10-28)
     return true;
 }
 
