@@ -181,6 +181,9 @@ private:
     std::array<float, 3 * ampsurd::ParametricEq::kNumBands + 2> lastSeen {};
     std::array<float, 3 * ampsurd::ParametricEq::kNumBands + 1> lastGlobal {};
     juce::ComboBox bandsBox; // how many bands this EQ shows (2 ... 10)
+    juce::TextButton presetsButton { "EQ PRESETS" }; // factory curves, the user's own, save as (owner 2026-10-28)
+    void showPresetMenu();
+    void saveAsDialog();
 };
 
 // ---------------------------------------------------------------------------------------------

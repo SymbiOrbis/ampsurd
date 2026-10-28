@@ -3,6 +3,8 @@
 
 #include "PluginProcessor.h"
 
+#include <BinaryData.h>
+
 #include <algorithm>
 
 #include <cstring>
@@ -214,6 +216,112 @@ bool AmpsurdProcessor::pasteEq(int target)
     set(slotParamId(target, "eqOn"), eqClip.eqOn);
     clearEqClipboard(); // one paste per copy: every EQ shows COPY again (owner 2026-10-28)
     return true;
+}
+
+// =============================================================================================
+// EQ presets
+// =============================================================================================
+juce::File AmpsurdProcessor::getEqPresetFolder()
+{
+    return juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile("AMPSURD").getChildFile("EQ");
+}
+
+juce::Array<juce::File> AmpsurdProcessor::listEqPresets()
+{
+    auto files = getEqPresetFolder().findChildFiles(juce::File::findFiles, false, "*.ampsurdeq");
+    std::sort(files.begin(), files.end(), [](const juce::File& a, const juce::File& b) {
+        return a.getFileNameWithoutExtension().compareNatural(b.getFileNameWithoutExtension()) < 0;
+    });
+    return files;
+}
+
+namespace
+{
+// embedded factory EQ presets: BinaryData entries "*.ampsurdeq" (plugin/assets/eq)
+std::unique_ptr<juce::XmlElement> factoryEq(const juce::String& name)
+{
+    for (int k = 0; k < BinaryData::namedResourceListSize; ++k)
+    {
+        const juce::String file(BinaryData::originalFilenames[k]);
+        if (!file.endsWithIgnoreCase(".ampsurdeq") || file.upToLastOccurrenceOf(".", false, false) != name) continue;
+        int size = 0;
+        if (const char* data = BinaryData::getNamedResource(BinaryData::namedResourceList[k], size))
+            return juce::parseXML(juce::String::fromUTF8(data, size));
+    }
+    return nullptr;
+}
+} // namespace
+
+juce::StringArray AmpsurdProcessor::listFactoryEqPresets()
+{
+    juce::StringArray names;
+    for (int k = 0; k < BinaryData::namedResourceListSize; ++k)
+    {
+        const juce::String file(BinaryData::originalFilenames[k]);
+        if (file.endsWithIgnoreCase(".ampsurdeq")) names.add(file.upToLastOccurrenceOf(".", false, false));
+    }
+    names.sortNatural();
+    return names;
+}
+
+bool AmpsurdProcessor::saveEqPreset(int target, const juce::File& file) const
+{
+    if (target < 0 || target >= kNumEqTargets) return false;
+    auto value = [this](const juce::String& id) {
+        auto* p = params.getParameter(id);
+        return p != nullptr ? p->convertFrom0to1(p->getValue()) : 0.0f;
+    };
+    juce::XmlElement xml("AMPSURD_EQ");
+    xml.setAttribute("version", 1);
+    xml.setAttribute("eqOn", value(slotParamId(target, "eqOn")) > 0.5f ? 1 : 0);
+    xml.setAttribute("bands", juce::roundToInt(value(slotParamId(target, "bands"))));
+    for (int b = 0; b < kNumBands; ++b)
+    {
+        auto* e = xml.createNewChildElement("BAND");
+        e->setAttribute("freq", value(bandParamId(target, b, "freq")));
+        e->setAttribute("gain", value(bandParamId(target, b, "gain")));
+        e->setAttribute("q", value(bandParamId(target, b, "q")));
+    }
+    file.getParentDirectory().createDirectory();
+    return xml.writeTo(file);
+}
+
+bool AmpsurdProcessor::applyEqPreset(int target, const juce::XmlElement& xml)
+{
+    if (target < 0 || target >= kNumEqTargets || !xml.hasTagName("AMPSURD_EQ")) return false;
+    // all values at once (one undo step, the EQ glides to them), as PASTE
+    auto set = [this](const juce::String& id, double v) {
+        if (auto* p = params.getParameter(id))
+        {
+            p->beginChangeGesture();
+            p->setValueNotifyingHost(p->convertTo0to1((float) v));
+            p->endChangeGesture();
+        }
+    };
+    set(slotParamId(target, "bands"), xml.getIntAttribute("bands", kNumBands));
+    int b = 0;
+    for (auto* e : xml.getChildWithTagNameIterator("BAND"))
+    {
+        if (b >= kNumBands) break;
+        set(bandParamId(target, b, "freq"), e->getDoubleAttribute("freq", 1000.0));
+        set(bandParamId(target, b, "gain"), e->getDoubleAttribute("gain", 0.0));
+        set(bandParamId(target, b, "q"), e->getDoubleAttribute("q", 0.7));
+        ++b;
+    }
+    set(slotParamId(target, "eqOn"), xml.getIntAttribute("eqOn", 1) != 0 ? 1.0 : 0.0);
+    return b > 0;
+}
+
+bool AmpsurdProcessor::loadEqPreset(int target, const juce::File& file)
+{
+    const auto xml = juce::parseXML(file);
+    return xml != nullptr && applyEqPreset(target, *xml);
+}
+
+bool AmpsurdProcessor::loadFactoryEqPreset(int target, const juce::String& name)
+{
+    const auto xml = factoryEq(name);
+    return xml != nullptr && applyEqPreset(target, *xml);
 }
 
 // =============================================================================================

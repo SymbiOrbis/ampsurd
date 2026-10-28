@@ -227,6 +227,13 @@ static int webShots(const juce::File& out, int argc, char** argv)
     shot("08_eq_copy_paste.png", findVisible<ampsurd::ui::EditPanel>(*ed), 2);
     e->selectSlot(-1);
 
+    // 3b. CANCEL COPY on the copied EQ (amp 1)
+    e->selectSlot(0);
+    settle(0.2);
+    shot("08b_eq_cancel_copy.png", findVisible<ampsurd::ui::EditPanel>(*ed), 2);
+    proc->clearEqClipboard();
+    e->selectSlot(-1);
+
     // 4. the cabinet IR on amp 2 with its own EQ
     e->showIr(1);
     settle(0.3);
@@ -285,6 +292,18 @@ static int webShots(const juce::File& out, int argc, char** argv)
     e->showDoubler(false);
     setP(*proc, "dblOn", 0.0f);
    #endif
+
+    // 8b. AMPSURD IRs: the map of the synthetic 4x12 IRs, amp 3 on DV77 + SM57 at 45 mm (between the dots too)
+    {
+        e->showAmpsurdIrs(2);
+        auto& mx = e->getCabIrMatrix();
+        mx.choose({ 3.0, 45.0 });
+        mx.flush();
+        settle(0.8);
+        shot("18_ampsurd_irs.png", &mx, 2);
+        e->showAmpsurdIrs(-1);
+        e->showIr(-1);
+    }
 
     // 9. player / recorder with metronome: a backing track, a recorded guitar take
     if (auto* pl = proc->getPlayer())
@@ -1371,6 +1390,37 @@ int main(int argc, char** argv)
             std::cout << (copied && sure && amp3 && globalBefore && noPaste && global && undone && cleared ? "[PASS]" : "[FAIL]")
                       << " EQ COPY / PASTE: amp 1 -> amp 3 and -> Global EQ identical, SURE? expires after 3 s, one paste per copy, undo"
                          " restores; a copy ends with CANCEL COPY, Ctrl+Z, Esc or after 20 s\n";
+            settle();
+        }
+        {
+            // EQ PRESETS (owner 2026-10-28): save amp 1's EQ under a name, change it, load it back = identical, one undo step
+            using AP = AmpsurdProcessor;
+            const auto f = AP::getEqPresetFolder().getChildFile("ui_snapshot test curve.ampsurdeq");
+            const float g1 = val(AP::bandParamId(0, 1, "gain").toRawUTF8()), f2 = val(AP::bandParamId(0, 2, "freq").toRawUTF8());
+            const int n = p2.getEqBandCount(0);
+            const bool saved = p2.saveEqPreset(0, f) && AP::listEqPresets().contains(f);
+            setP(p2, AP::bandParamId(0, 1, "gain"), -7.0f);
+            setP(p2, AP::slotParamId(0, "bands"), 4.0f);
+            settle();
+            const bool loaded = p2.loadEqPreset(0, f);
+            settle();
+            const bool same = std::abs(val(AP::bandParamId(0, 1, "gain").toRawUTF8()) - g1) < 0.01f
+                              && std::abs(val(AP::bandParamId(0, 2, "freq").toRawUTF8()) - f2) < 0.5f && p2.getEqBandCount(0) == n;
+            p2.undo();
+            const bool undone = std::abs(val(AP::bandParamId(0, 1, "gain").toRawUTF8()) + 7.0f) < 0.01f;
+            p2.redo();
+            // into another EQ (the Global EQ) too
+            const bool toGlobal = p2.loadEqPreset(AP::kGlobalEq, f)
+                                  && std::abs(val(AP::bandParamId(AP::kGlobalEq, 1, "gain").toRawUTF8()) - g1) < 0.01f;
+            settle();
+            f.deleteFile();
+            const auto factory = AP::listFactoryEqPresets();
+            bool factoryOk = true;
+            for (auto& name : factory) factoryOk = factoryOk && p2.loadFactoryEqPreset(2, name);
+            std::cout << (saved && loaded && same && undone && toGlobal && factoryOk ? "[PASS]" : "[FAIL]")
+                      << " EQ PRESETS: save under a name, load back identical (" << saved << loaded << same << "), one undo step ("
+                      << undone << "), into the Global EQ (" << toGlobal << "), " << factory.size() << " factory curve(s) load ("
+                      << factoryOk << ")\n";
             settle();
         }
         p2.selectAb(1);                // B = copy of A

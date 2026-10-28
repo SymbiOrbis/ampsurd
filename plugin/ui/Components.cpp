@@ -572,12 +572,71 @@ EqGraph::EqGraph(AmpsurdProcessor& p) : proc(p)
         repaint();
     };
     addChildComponent(bandsBox);
+    addChildComponent(presetsButton);
+    presetsButton.setWantsKeyboardFocus(false);
+    presetsButton.setTooltip("EQ presets: AMPSURD's curves and your own - load one, or save this EQ under any name");
+    presetsButton.onClick = [this] { showPresetMenu(); };
+}
+
+void EqGraph::showPresetMenu()
+{
+    if (slot < 0) return;
+    juce::PopupMenu m;
+    const auto factory = AmpsurdProcessor::listFactoryEqPresets();
+    const auto mine = AmpsurdProcessor::listEqPresets();
+    if (!factory.isEmpty())
+    {
+        m.addSectionHeader("AMPSURD");
+        for (int i = 0; i < factory.size(); ++i) m.addItem(1000 + i, factory[i]);
+    }
+    m.addSectionHeader("YOUR EQ PRESETS");
+    if (mine.isEmpty()) m.addItem(-1, "(none yet - save one below)", false);
+    for (int i = 0; i < mine.size(); ++i) m.addItem(2000 + i, mine[i].getFileNameWithoutExtension());
+    m.addSeparator();
+    m.addItem(1, "Save this EQ as...");
+    m.addItem(2, "Open EQ preset folder");
+    m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&presetsButton), [this, factory, mine](int r) {
+        if (slot < 0) return;
+        if (r >= 1000 && r - 1000 < factory.size()) proc.loadFactoryEqPreset(slot, factory[r - 1000]);
+        else if (r >= 2000 && r - 2000 < mine.size()) proc.loadEqPreset(slot, mine[r - 2000]);
+        else if (r == 1) juce::Timer::callAfterDelay(150, [sp = juce::Component::SafePointer<EqGraph>(this)] { if (sp != nullptr) sp->saveAsDialog(); });
+        else if (r == 2) { AmpsurdProcessor::getEqPresetFolder().createDirectory(); AmpsurdProcessor::getEqPresetFolder().revealToUser(); }
+        if (bandsBox.getSelectedId() != proc.getEqBandCount(slot)) bandsBox.setSelectedId(proc.getEqBandCount(slot), juce::dontSendNotification);
+        repaint();
+    });
+}
+
+void EqGraph::saveAsDialog()
+{
+    if (slot < 0) return;
+    auto* w = new juce::AlertWindow("Save EQ preset", "Name of this EQ curve:", juce::MessageBoxIconType::NoIcon, this);
+    w->addTextEditor("name", "My EQ");
+    w->addButton("SAVE", 1, juce::KeyPress(juce::KeyPress::returnKey));
+    w->addButton("CANCEL", 0, juce::KeyPress(juce::KeyPress::escapeKey));
+    w->enterModalState(true, juce::ModalCallbackFunction::create([sp = juce::Component::SafePointer<EqGraph>(this), w](int result) {
+        if (sp == nullptr || result != 1 || sp->slot < 0) return;
+        const auto name = juce::File::createLegalFileName(w->getTextEditorContents("name").trim());
+        if (name.isEmpty()) return;
+        const auto f = AmpsurdProcessor::getEqPresetFolder().getChildFile(name + ".ampsurdeq");
+        const int target = sp->slot;
+        auto doSave = [sp, f, target] {
+            if (sp == nullptr) return;
+            if (!sp->proc.saveEqPreset(target, f))
+                juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, "Save EQ preset", "Could not write " + f.getFullPathName());
+        };
+        if (f.existsAsFile())
+            juce::AlertWindow::showOkCancelBox(juce::MessageBoxIconType::QuestionIcon, "Save EQ preset",
+                                               "\"" + name + "\" exists already. Replace it?", "REPLACE", "CANCEL", sp.getComponent(),
+                                               juce::ModalCallbackFunction::create([doSave](int ok) { if (ok == 1) doSave(); }));
+        else doSave();
+    }), true);
 }
 
 void EqGraph::setSlot(int s)
 {
     slot = s;
     activeBand = hoverBand = -1;
+    presetsButton.setVisible(s >= 0);
     bandsBox.setVisible(s >= 0);
     if (s >= 0) bandsBox.setSelectedId(proc.getEqBandCount(s), juce::dontSendNotification);
     repaint();
@@ -587,6 +646,7 @@ void EqGraph::resized()
 {
     const auto r = plotArea();
     bandsBox.setBounds((int) r.getRight() - 140, (int) r.getY() + 4, 132, 22); // top right: the readout is top left
+    presetsButton.setBounds(bandsBox.getX() - 8 - 100, bandsBox.getY(), 100, 22);
 }
 
 juce::RangedAudioParameter* EqGraph::bandParam(int band, const char* name) const
@@ -1222,7 +1282,7 @@ void EditPanel::resized()
     header.removeFromRight(8);
     flatButton.setBounds(header.removeFromRight(64));
     header.removeFromRight(8);
-    copyButton.setBounds(header.removeFromRight(72));
+    copyButton.setBounds(header.removeFromRight(100)); // wide enough for CANCEL COPY
     header.removeFromRight(8);
     eqOnButton.setBounds(header.removeFromRight(64));
     r.removeFromTop(10);
@@ -1601,7 +1661,7 @@ void GlobalEqPanel::resized()
     auto eqHeader = left.removeFromTop(26);
     flatButton.setBounds(eqHeader.removeFromRight(64));
     eqHeader.removeFromRight(8);
-    copyButton.setBounds(eqHeader.removeFromRight(72));
+    copyButton.setBounds(eqHeader.removeFromRight(100)); // wide enough for CANCEL COPY
     eqHeader.removeFromRight(8);
     eqOnButton.setBounds(eqHeader.removeFromRight(64));
     eqHeader.removeFromRight(8);
@@ -2735,7 +2795,7 @@ void IrPanel::resized()
     auto eqHeader = r.removeFromTop(26);
     flatButton.setBounds(eqHeader.removeFromRight(64));
     eqHeader.removeFromRight(8);
-    copyButton.setBounds(eqHeader.removeFromRight(72));
+    copyButton.setBounds(eqHeader.removeFromRight(100)); // wide enough for CANCEL COPY
     eqHeader.removeFromRight(8);
     eqOnButton.setBounds(eqHeader.removeFromRight(64));
     r.removeFromTop(8);

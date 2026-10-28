@@ -292,6 +292,16 @@ public:
     bool pasteEq(int target);                                   // EQ on/off, band count, all bands; one undo step;
                                                                 // the copy ends with it (one paste per copy, 2026-10-28)
 
+    // --- EQ presets (owner 2026-10-28): any EQ (amp, IR, Global) can load a factory curve (chosen by the owner,
+    //     embedded: plugin/assets/eq/*.ampsurdeq) or the user's own, saved under any name in Documents/AMPSURD/EQ.
+    //     Loading is one undo step (like PASTE). A preset = EQ on / off, band count, every band. ---
+    static juce::File getEqPresetFolder();
+    static juce::Array<juce::File> listEqPresets();   // the user's, by name
+    static juce::StringArray listFactoryEqPresets();  // names of the embedded ones
+    bool saveEqPreset(int target, const juce::File& file) const;
+    bool loadEqPreset(int target, const juce::File& file);
+    bool loadFactoryEqPreset(int target, const juce::String& name);
+
     // --- move an amp to another slot by mouse (message thread): the two slots swap everything (capture, IR,
     //     mix share, mute / solo, EQs, alignment, pan, levels, ECO); Frankenstein sections follow the amps ---
     void swapSlots(int a, int b);
@@ -490,6 +500,7 @@ private:
     struct IrSource { std::vector<double> samples; double rate = 48000.0; };
     std::atomic<bool> irPreview { false };
     std::array<std::shared_ptr<const IrSource>, kNumSlots> irSources {};
+    bool applyEqPreset(int target, const juce::XmlElement& xml);
     void adoptIr(int slot, std::shared_ptr<IrSource> src, std::vector<double> prepared, const IrStatus& status); // configMutex held
     std::array<std::shared_ptr<const std::vector<double>>, kNumSlots> irPrepared {};
     std::array<std::shared_ptr<const std::vector<double>>, kNumSlots> rawRenders {};
