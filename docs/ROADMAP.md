@@ -89,6 +89,28 @@ Bank = sub-folder of the preset folder; footswitch actions Bank up / down and Pr
 standard Bank Select (CC 0 / 32) + Program Change; banks as groups in the preset menu; header shows
 "Bank 2 - Preset 3".
 
+## 3m. Full A2 by default (ECO off) - PROPOSED 2026-10-28 (owner), waiting for go-ahead
+Reverse the 2026-10-16 default: new captures load as Full A2; ECO (Lite) stays one click per amp and the
+setting "Load A2 captures as Lite (ECO)" becomes off by default (existing users keep what they chose;
+presets keep their own ECO state).
+
+## 3n. AMPSURD IR matrix - PROPOSED 2026-10-28 (owner), feasibility answered, waiting for decision
+Own cabinet IR set (e.g. 3 speakers x 3 mics x up to 16 positions = 144 IRs) chosen from a pop-up grid
+(speaker / mic / position on the axes); audition by click or hover while playing (crossfade, no clicks);
+ideally one continuous area: the IR between grid points is interpolated (neighbouring IRs time-aligned,
+blended; minimum-phase magnitude morph as an alternative), with "save this IR" as WAV. UI, crossfade,
+interpolation and saving: feasible. The blocker is the IRs themselves: they must be MEASURED on real
+cabinets and mics (the demo IR in the website screenshots is shaped noise, not a speaker - not usable as a
+product). Options: the owner records a set (sine sweep, deconvolution tool can be added), or a licensed set
+with written redistribution consent (see 3j).
+
+## 3o. Serial chain per amp slot - PROPOSED 2026-10-28 (owner), feasibility answered, waiting for decision
+Behind (or before) each of the five parallel slots a chain of up to 5 blocks: NAM captures (pedal -> amp),
+EQ, IR, effects; opened from EDIT. Feasible; the alignment / level match must measure the whole chain
+(already measured per slot). Costs: CPU (one A2 ~8-10 % of a core; 25 A2s would not run in real time),
+gain staging between captures, presets / packs / undo / UI. Suggested first step: one or two capture
+blocks BEFORE the amp in each slot (boost / overdrive pedal captures), with a CPU meter warning.
+
 ## 3j. Bundled cabinet IRs — ON HOLD (owner decision 2026-10-14)
 No IRs ship with AMPSURD until an author gives explicit written consent to redistribution (Jester
 Dyne's packs: pages say "free even for commercial use", no redistribution wording; the site was
