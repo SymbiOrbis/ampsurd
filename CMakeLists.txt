@@ -57,6 +57,7 @@ if(AMPSURD_BUILD_UI_SNAPSHOT AND AMPSURD_BUILD_PLUGIN)
   # compile exactly like the plugin's own sources
   target_include_directories(ui_snapshot PRIVATE $<TARGET_PROPERTY:Ampsurd,INCLUDE_DIRECTORIES>)
   target_compile_definitions(ui_snapshot PRIVATE $<TARGET_PROPERTY:Ampsurd,COMPILE_DEFINITIONS>)
+  target_compile_definitions(ui_snapshot PRIVATE AMPSURD_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
   target_compile_options(ui_snapshot PRIVATE $<TARGET_PROPERTY:Ampsurd,COMPILE_OPTIONS>)
 
   # standalone player / recorder through the real processor (no audio device needed)

@@ -81,7 +81,7 @@ void AmpsurdProcessor::trackUndo(double now)
     }
     if (h == committedHash) { pendingHash = h; return; }
     if (h != pendingHash) { pendingHash = h; pendingSince = now; return; }
-    if (now - pendingSince < kSettleMs || mixGestureSlot >= 0) return; // still moving
+    if (now - pendingSince < kSettleMs || mixGestureSlot >= 0 || irPreview.load()) return; // still moving / only listening
 
     undoStack.push_back(committedState);
     undoOrder.push_back('S');
@@ -472,7 +472,7 @@ bool AmpsurdProcessor::exportPack(const juce::File& packFileIn, juce::String& er
             for (const auto& id : { kPath, kIrPath })
             {
                 const auto path = slot.getProperty(id).toString();
-                if (path.isEmpty()) continue;
+                if (path.isEmpty() || path.startsWith("ampsurd-ir:")) continue; // AMPSURD IRs are calculated, not files
                 const auto entry = addFile(path);
                 if (entry.isEmpty()) { error = "File not found: " + path; return false; }
                 slot.setProperty(id, entry, nullptr);

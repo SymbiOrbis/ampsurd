@@ -351,6 +351,7 @@ public:
     void resized() override;
     void refresh();
     std::function<void()> onClose;
+    std::function<void(int)> onAmpsurdIrs; // AMPSURD IRs: the editor shows the IR map for this amp
 
     bool isInterestedInFileDrag(const juce::StringArray&) override;
     void filesDropped(const juce::StringArray&, int, int) override;
@@ -360,7 +361,7 @@ private:
     AmpsurdProcessor& proc;
     int slot = -1;
     EqGraph graph;
-    juce::TextButton loadButton { "LOAD IR" }, irOnButton { "IR ON" }, removeButton { "REMOVE IR" },
+    juce::TextButton ampsurdIrsButton { "AMPSURD IRs" }, loadButton { "LOAD IR" }, irOnButton { "IR ON" }, removeButton { "REMOVE IR" },
                      eqOnButton { "EQ ON" }, flatButton { "FLAT" }, closeButton { "CLOSE" };
     EqCopyButton copyButton;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> irOnAtt, eqOnAtt;

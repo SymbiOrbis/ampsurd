@@ -6,6 +6,7 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 
 #include "PluginProcessor.h"
+#include "ui/CabIrMatrix.h"
 #include "ui/Components.h"
 #include "ui/DoublerPanel.h"
 #include "ui/RootPanel.h"
@@ -31,6 +32,8 @@ public:
     void frankensteinPressed(); // FRANKENSTEIN button (also used by tests)
     void showGlobalEq(bool show);
     void showIr(int slot);   // -1 closes the IR editor
+    void showAmpsurdIrs(int slot); // the AMPSURD IRs map for this amp (-1 closes it)
+    ampsurd::ui::CabIrMatrix& getCabIrMatrix() { return content.cabIrs; } // tests
     void showPlayer(bool show);
     void showRoot(bool show); // ROOT panel (experimental module; does nothing without it)
     void showDoubler(bool show); // DOUBLER panel (experimental module; does nothing without it)
@@ -64,6 +67,7 @@ private:
         ampsurd::ui::MasterPanel master;
         ampsurd::ui::BrandingFooter footer;
         ampsurd::ui::DragonLayer dragon;
+        ampsurd::ui::CabIrMatrix cabIrs; // over the slots and the centre area while open
         bool showDragon = true;
     };
 

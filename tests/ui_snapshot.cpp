@@ -685,6 +685,120 @@ int main(int argc, char** argv)
                   << onFromEdit << ")\n";
     }
 
+    // AMPSURD IRs (owner 2026-10-28): the map of the synthetic 4x12 IRs - choose, hover (no undo steps), presets,
+    // packs, saved WAV = the owner's file
+    {
+        proc->setFrankenstein(false);
+        std::unique_ptr<juce::AudioProcessorEditor> ed(proc->createEditor());
+        auto* e = dynamic_cast<AmpsurdEditor*>(ed.get());
+        auto& mx = e->getCabIrMatrix();
+        auto settleIr = [&](int ms) {
+            for (int t = 0; t < ms / 20; ++t)
+            {
+                buf.clear();
+                proc->processBlock(buf, midi);
+                proc->runHousekeeping();
+                e->refreshAll();
+                pump(20);
+            }
+        };
+        proc->removeIr(0);
+        settleIr(600);
+        e->showAmpsurdIrs(0);
+        const bool shown = mx.isVisible() && mx.getSlot() == 0;
+        mx.setHoverToListen(true);
+        mx.setSnap(false);
+        // the map's corners are the set's corners
+        const auto tl = mx.pointAt(mx.positionOf({ 0, 25 }).toInt()), br = mx.pointAt(mx.positionOf({ 8, 100 }).toInt());
+        const bool mapOk = std::abs(tl.row) < 0.05 && std::abs(tl.mm - 25) < 0.3 && std::abs(br.row - 8) < 0.05 && std::abs(br.mm - 100) < 0.3;
+        mx.choose({ 3.0, 45.0 }); // DV77 + SM57, 45 mm
+        mx.flush();
+        settleIr(900);
+        ampsurd::CabPoint got;
+        const bool chosen = proc->getCabIrPoint(0, got) && got.row == 3.0 && got.mm == 45.0
+                            && proc->getIrStatus(0).state == AmpsurdProcessor::IrState::loaded && proc->isIrOn(0);
+        // hovering: heard, but no undo step; leaving the map goes back to the chosen point
+        mx.preview({ 7.5, 80.0 });
+        mx.flush();
+        settleIr(900);
+        const bool previewHeard = proc->getCabIrPoint(0, got) && got.row == 7.5;
+        mx.endPreview();
+        settleIr(900);
+        const bool back = proc->getCabIrPoint(0, got) && got.row == 3.0 && got.mm == 45.0;
+        e->showAmpsurdIrs(0);
+        save(*ed, out.getChildFile("22_ampsurd_irs.png"));
+        proc->undo(); // one step: choosing the IR (the preview was none) -> no IR
+        settleIr(600);
+        const bool undoOk = proc->getIrStatus(0).state == AmpsurdProcessor::IrState::none;
+        proc->redo();
+        settleIr(900);
+        const bool redoOk = proc->getCabIrPoint(0, got) && got.row == 3.0;
+        // presets keep the point (no file); packs need no file for it
+        const auto pf = out.getChildFile("ampsurd_ir_test.ampsurd");
+        proc->savePreset(pf);
+        proc->removeIr(0);
+        settleIr(300);
+        proc->loadPreset(pf);
+        settleIr(1500);
+        const bool presetOk = proc->getCabIrPoint(0, got) && got.row == 3.0 && got.mm == 45.0
+                              && proc->getIrStatus(0).state == AmpsurdProcessor::IrState::loaded;
+        juce::String packErr;
+        const auto pack = out.getChildFile("ampsurd_ir_test.ampsurdpack");
+        const bool packOk = proc->exportPack(pack, packErr);
+        bool packHasWav = false;
+        {
+            juce::ZipFile z(pack);
+            for (int i = 0; i < z.getNumEntries(); ++i) packHasWav = packHasWav || z.getEntry(i)->filename.endsWithIgnoreCase(".wav");
+        }
+        pack.deleteFile();
+        pf.deleteFile();
+        // SAVE IR = the owner's file (same level, same samples)
+        bool fileOk = false;
+        const juce::File ref = juce::File(juce::String(AMPSURD_SOURCE_DIR)).getChildFile("tests/data/ampsurd_irs/48k/AMPSURD-412-30-57-P025mm.wav");
+        if (ref.existsAsFile())
+        {
+            juce::String err;
+            const auto mine = out.getChildFile("AMPSURD-412-30-57-P025mm.wav");
+            if (ampsurd::ui::CabIrMatrix::writeIrFile({ 0, 25 }, 48000.0, mine, err))
+            {
+                juce::AudioFormatManager fm;
+                fm.registerBasicFormats();
+                std::unique_ptr<juce::AudioFormatReader> a(fm.createReaderFor(ref)), b(fm.createReaderFor(mine));
+                if (a && b && a->lengthInSamples == b->lengthInSamples)
+                {
+                    juce::AudioBuffer<float> x(1, (int) a->lengthInSamples), y(1, (int) b->lengthInSamples);
+                    a->read(&x, 0, x.getNumSamples(), 0, true, false);
+                    b->read(&y, 0, y.getNumSamples(), 0, true, false);
+                    float d = 0.0f;
+                    for (int i = 0; i < x.getNumSamples(); ++i) d = juce::jmax(d, std::abs(x.getSample(0, i) - y.getSample(0, i)));
+                    fileOk = d <= 2.5f / 8388608.0f; // within 24-bit rounding
+                    std::cout << "  saved IR vs the owner's file: largest difference " << d * 8388608.0f << " LSB (24-bit)\n";
+                }
+            }
+            mine.deleteFile();
+        }
+        // the sound: not silent, not louder than the safety limit
+        float peak = 0.0f;
+        for (int k = 0; k < 100; ++k)
+        {
+            juce::AudioBuffer<float> b(2, 256);
+            for (int i = 0; i < 256; ++i) b.setSample(0, i, 0.2f * (float) std::sin(2 * juce::MathConstants<double>::pi * 110 * (k * 256 + i) / 48000.0));
+            b.setSample(1, 0, 0.0f);
+            proc->processBlock(b, midi);
+            if (k > 50) peak = juce::jmax(peak, b.getMagnitude(0, 0, 256));
+        }
+        e->showAmpsurdIrs(-1);
+        const bool closed = !mx.isVisible();
+        const bool ok = shown && mapOk && chosen && previewHeard && back && undoOk && redoOk && presetOk && packOk && !packHasWav
+                        && (fileOk || !ref.existsAsFile()) && peak > 0.001f && peak < 0.9f && closed;
+        std::cout << (ok ? "[PASS]" : "[FAIL]") << " AMPSURD IRs: map " << shown << mapOk << ", choose " << chosen << ", hover heard "
+                  << previewHeard << " and back " << back << ", one undo step (undo " << undoOk << " redo " << redoOk << "), preset "
+                  << presetOk << ", pack without files " << (packOk && !packHasWav) << ", SAVE IR = owner's file " << fileOk
+                  << ", sound peak " << peak << ", closes " << closed << "\n";
+        proc->removeIr(0);
+        settleIr(300);
+    }
+
     // Cabinet IR (file given in AMPSURD_TEST_IR)
     const juce::File irFile(juce::SystemStats::getEnvironmentVariable("AMPSURD_TEST_IR", ""));
     if (irFile.existsAsFile())

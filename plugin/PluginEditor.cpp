@@ -9,7 +9,8 @@ AmpsurdEditor::Content::Content(AmpsurdProcessor& p) : header(p), edit(p), ir(p)
 #if AMPSURD_DOUBLER
       doubler(p),
 #endif
-      master(p)
+      master(p),
+      cabIrs(p)
 {
     addAndMakeVisible(header);
     for (int s = 0; s < AmpsurdProcessor::kNumSlots; ++s)
@@ -37,6 +38,7 @@ AmpsurdEditor::Content::Content(AmpsurdProcessor& p) : header(p), edit(p), ir(p)
         addAndMakeVisible(playerButton);
         playerButton.setTooltip("Backing track and recorder");
     }
+    addChildComponent(cabIrs); // last: on top of everything while open
 }
 
 void AmpsurdEditor::Content::paint(juce::Graphics& g)
@@ -90,6 +92,8 @@ void AmpsurdEditor::Content::resized()
    #if AMPSURD_DOUBLER
     doubler.setBounds(r);
    #endif
+    // AMPSURD IRs map: over the slots and the centre area (between the header and the master row)
+    cabIrs.setBounds(24, 56 + 8, getWidth() - 48, r.getBottom() - (56 + 8));
     auto withButton = r;
     globalEqButton.setBounds(withButton.removeFromRight(40));
     withButton.removeFromRight(10);
@@ -110,6 +114,8 @@ AmpsurdEditor::AmpsurdEditor(AmpsurdProcessor& p) : AudioProcessorEditor(&p), pr
     }
     content.edit.onClose = [this] { selectSlot(-1); };
     content.ir.onClose = [this] { showIr(-1); };
+    content.ir.onAmpsurdIrs = [this](int slot) { showAmpsurdIrs(slot); };
+    content.cabIrs.onClose = [this] { timerCallback(); };
     if (content.playerPanel)
     {
         content.playerPanel->onClose = [this] { showPlayer(false); };
@@ -160,6 +166,7 @@ bool AmpsurdEditor::keyPressed(const juce::KeyPress& key)
     const auto kc = juce::CharacterFunctions::toLowerCase((juce::juce_wchar) key.getKeyCode());
     if (mods.isCommandDown() && kc == 'z') { if (mods.isShiftDown()) proc.redo(); else proc.undo(); return true; }
     if (mods.isCommandDown() && kc == 'y') { proc.redo(); return true; }
+    if (key == juce::KeyPress::escapeKey && content.cabIrs.isVisible()) { content.cabIrs.close(); return true; }
     if (key == juce::KeyPress::escapeKey && proc.getEqClipboardSource() >= 0) { proc.clearEqClipboard(); return true; } // cancel a COPY
 
     auto* pl = proc.getPlayer();
@@ -237,6 +244,14 @@ void AmpsurdEditor::showRoot(bool show)
         content.ir.setSlot(-1);
     }
     timerCallback();
+}
+
+void AmpsurdEditor::showAmpsurdIrs(int slot)
+{
+    if (slot < 0) { if (content.cabIrs.isVisible()) content.cabIrs.close(); return; }
+    if (content.ir.getSlot() != slot) showIr(slot);
+    content.cabIrs.toFront(false);
+    content.cabIrs.open(slot);
 }
 
 void AmpsurdEditor::frankensteinPressed()
@@ -320,6 +335,8 @@ void AmpsurdEditor::showIr(int slot)
 void AmpsurdEditor::timerCallback()
 {
     proc.expireEqClipboard(); // an unused EQ copy ends after 20 s
+    if (content.cabIrs.isVisible() && proc.getSlotStatus(content.cabIrs.getSlot()).state == AmpsurdProcessor::SlotState::empty)
+        content.cabIrs.close(); // its amp was removed
     if (content.ir.getSlot() >= 0 && proc.getSlotStatus(content.ir.getSlot()).state == AmpsurdProcessor::SlotState::empty)
         content.ir.setSlot(-1); // the slot was emptied
     if (selected >= 0 && content.edit.getSlot() < 0 && content.ir.getSlot() < 0)

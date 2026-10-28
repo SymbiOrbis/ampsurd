@@ -20,6 +20,7 @@
 #if AMPSURD_ROOT
   #include "ampsurd/RootEnhancer.h"
 #endif
+#include "ampsurd/CabIrModel.h"
 #include "ampsurd/Engine.h"
 #include "ampsurd/NoiseGate.h"
 #include "ampsurd/PitchDetector.h"
@@ -92,6 +93,11 @@ public:
     };
     IrStatus getIrStatus(int slot) const;
     void loadIr(int slot, const juce::File& file);
+    // AMPSURD IRs (owner's synthetic 4x12 set, calculated - core/CabIrModel): any point of the speaker x mic x
+    // position area; quick enough to follow the mouse (older requests are skipped). Presets store the point.
+    void loadCabIr(int slot, ampsurd::CabPoint p);
+    bool getCabIrPoint(int slot, ampsurd::CabPoint& p) const; // false = no AMPSURD IR in this slot
+    void setIrPreview(bool on) { irPreview.store(on); }        // hovering the IR map: listening, not undo steps
     void removeIr(int slot);
     bool isIrOn(int slot) const { return slotParams[(size_t) slot].irOn->load() > 0.5f; }
 
@@ -279,7 +285,7 @@ public:
     // an unused copy ends by itself (owner 2026-10-28: an accidental COPY was "sticky"); message thread, ~30 Hz
     void expireEqClipboard(double afterMs = 20000.0)
     {
-        if (eqClip.source >= 0 && juce::Time::getMillisecondCounterHiRes() - eqClip.copiedAt > afterMs) clearEqClipboard();
+        if (eqClip.source >= 0 && juce::Time::getMillisecondCounterHiRes() - eqClip.copiedAt >= afterMs) clearEqClipboard();
     }
     int getEqClipboardSource() const { return eqClip.source; } // -1 = nothing copied
     bool wasEqPastedInto(int target) const { return target >= 0 && target < 32 && ((eqClip.pasted >> target) & 1u) != 0; }
@@ -482,7 +488,9 @@ private:
     // rate (for measuring) - guarded by configMutex. Cached raw capture renders (analysisMutex) let an
     // IR change re-measure a slot without running the capture again.
     struct IrSource { std::vector<double> samples; double rate = 48000.0; };
+    std::atomic<bool> irPreview { false };
     std::array<std::shared_ptr<const IrSource>, kNumSlots> irSources {};
+    void adoptIr(int slot, std::shared_ptr<IrSource> src, std::vector<double> prepared, const IrStatus& status); // configMutex held
     std::array<std::shared_ptr<const std::vector<double>>, kNumSlots> irPrepared {};
     std::array<std::shared_ptr<const std::vector<double>>, kNumSlots> rawRenders {};
     std::array<std::atomic<int>, kNumSlots> irGeneration {};

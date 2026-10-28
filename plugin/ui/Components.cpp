@@ -2675,8 +2675,11 @@ IrPanel::IrPanel(AmpsurdProcessor& p) : proc(p), graph(p), copyButton(p)
 {
     addAndMakeVisible(copyButton);
     addAndMakeVisible(graph);
-    for (auto* b : { &loadButton, &irOnButton, &removeButton, &eqOnButton, &flatButton, &closeButton })
+    for (auto* b : { &ampsurdIrsButton, &loadButton, &irOnButton, &removeButton, &eqOnButton, &flatButton, &closeButton })
         addAndMakeVisible(*b);
+    ampsurdIrsButton.onClick = [this] { if (slot >= 0 && onAmpsurdIrs) onAmpsurdIrs(slot); };
+    ampsurdIrsButton.setTooltip("AMPSURD's own cabinet IRs: a map of 3 speakers x 3 microphones x mic positions - click, drag or "
+                                "just hover to hear them (no file needed)");
     irOnButton.setClickingTogglesState(true);
     eqOnButton.setClickingTogglesState(true);
     loadButton.onClick = [this] { chooseFile(); };
@@ -2739,7 +2742,9 @@ void IrPanel::resized()
     graph.setBounds(r);
     // left: buttons at the bottom
     auto buttons = left.removeFromBottom(28);
-    const int bw = (buttons.getWidth() - 16) / 3;
+    const int bw = (buttons.getWidth() - 24) / 4;
+    ampsurdIrsButton.setBounds(buttons.removeFromLeft(bw));
+    buttons.removeFromLeft(8);
     loadButton.setBounds(buttons.removeFromLeft(bw));
     buttons.removeFromLeft(8);
     irOnButton.setBounds(buttons.removeFromLeft(bw));
@@ -2775,8 +2780,9 @@ void IrPanel::paint(juce::Graphics& g)
     {
         g.setColour(textFaint);
         g.setFont(Fonts::get().regular(13.0f));
-        g.drawFittedText("No IR loaded.\n\nFor captures of an amp WITHOUT its cabinet: load a cabinet impulse response "
-                         "(WAV, AIFF or FLAC), or drop the file here or on the slot.\nFull-rig captures need no IR.",
+        g.drawFittedText("No IR loaded.\n\nFor captures of an amp WITHOUT its cabinet: choose one of AMPSURD's own IRs "
+                         "(AMPSURD IRs), or load a cabinet impulse response (WAV, AIFF or FLAC) - or drop the file here or on "
+                         "the slot.\nFull-rig captures need no IR.",
                          left, juce::Justification::topLeft, 6);
         return;
     }

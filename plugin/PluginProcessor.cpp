@@ -1,5 +1,7 @@
 #include "PluginProcessor.h"
 
+#include "ampsurd/CabIrModel.h"
+
 #include <limits>
 
 #include "ampsurd/Convolver.h"
@@ -1301,10 +1303,17 @@ void AmpsurdProcessor::irJob(int slot, juce::File file, int gen)
     if (prep.truncated) info << "\nshortened to 1 s";
 
     if (gen != irGeneration[(size_t) slot].load()) return;
+    adoptIr(slot, src, std::move(prep.samples), { IrState::loaded, file.getFullPathName(), file.getFileNameWithoutExtension(), info });
+}
+
+// configMutex held: the prepared IR goes to the engine (crossfaded), then the slot is re-measured with it
+void AmpsurdProcessor::adoptIr(int slot, std::shared_ptr<IrSource> src, std::vector<double> prepared, const IrStatus& status)
+{
+    const double sr = currentSampleRate.load();
     irSources[(size_t) slot] = src;
-    irPrepared[(size_t) slot] = std::make_shared<const std::vector<double>>(prep.samples);
-    engine.getIrSlot(slot).submit(std::make_unique<ampsurd::Convolver>(std::move(prep.samples)));
-    setIrStatus(slot, { IrState::loaded, file.getFullPathName(), file.getFileNameWithoutExtension(), info });
+    irPrepared[(size_t) slot] = std::make_shared<const std::vector<double>>(prepared);
+    engine.getIrSlot(slot).submit(std::make_unique<ampsurd::Convolver>(std::move(prepared)));
+    setIrStatus(slot, status);
     lastIrOn[(size_t) slot] = isIrOn(slot);
 
     // re-measure the slot as it now sounds (level match, alignment, mix law)
@@ -1320,6 +1329,36 @@ void AmpsurdProcessor::irJob(int slot, juce::File file, int gen)
         storeMeasurement(slot, measureWithIr(slot, *raw, sr), gainDb);
         requestDriveCurve(slot);
     }
+}
+
+void AmpsurdProcessor::loadCabIr(int slot, ampsurd::CabPoint p)
+{
+    p = ampsurd::CabIrModel::clamp(p);
+    const int gen = ++irGeneration[(size_t) slot];
+    const auto ref = juce::String(ampsurd::CabIrModel::toRef(p));
+    const auto name = "AMPSURD " + juce::String(ampsurd::CabIrModel::describe(p));
+    // shown at once (the IR follows within a few ms; while dragging, older requests are skipped)
+    const auto cur = getIrStatus(slot);
+    setIrStatus(slot, { cur.state == IrState::loaded ? IrState::loaded : IrState::loading, ref, name, cur.info });
+    auto aliveFlag = alive;
+    loaderPool.addJob([this, slot, p, gen, ref, name, aliveFlag] {
+        if (!aliveFlag->load() || gen != irGeneration[(size_t) slot].load()) return;
+        const double sr = currentSampleRate.load();
+        auto src = std::make_shared<IrSource>();
+        src->rate = sr;
+        src->samples = ampsurd::CabIrModel::make(p, sr); // designed at the session rate: no resampling
+        std::lock_guard<std::mutex> lock(configMutex);
+        if (gen != irGeneration[(size_t) slot].load()) return;
+        auto prep = ampsurd::prepareImpulseResponse(src->samples, sr, sr);
+        const juce::String info = "Calculated by AMPSURD (synthetic 4x12: speaker, microphone and its position)\n"
+                                + juce::String(ampsurd::CabIrModel::kIrLength) + " samples at " + juce::String(sr / 1000.0, 1) + " kHz";
+        adoptIr(slot, src, std::move(prep.samples), { IrState::loaded, ref, name, info });
+    });
+}
+
+bool AmpsurdProcessor::getCabIrPoint(int slot, ampsurd::CabPoint& p) const
+{
+    return ampsurd::CabIrModel::fromRef(getIrStatus(slot).path.toStdString(), p);
 }
 
 void AmpsurdProcessor::removeIr(int slot)
@@ -1947,6 +1986,16 @@ void AmpsurdProcessor::restoreState(const juce::ValueTree& tree, const juce::Fil
             {
                 if (getIrStatus(s).state != IrState::none) removeIr(s);
                 return;
+            }
+            {
+                ampsurd::CabPoint cp;
+                if (ampsurd::CabIrModel::fromRef(irPath.toStdString(), cp)) // an AMPSURD IR: calculated, no file
+                {
+                    const auto cur = getIrStatus(s);
+                    if ((cur.state == IrState::loaded || cur.state == IrState::loading) && cur.path == irPath) return;
+                    loadCabIr(s, cp);
+                    return;
+                }
             }
             const juce::File f = resolveFileRef(irPath, presetFile);
             const auto cur = getIrStatus(s);

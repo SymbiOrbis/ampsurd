@@ -41,6 +41,7 @@ target_sources(Ampsurd PRIVATE
   ui/RootPanel.cpp
   ui/DoublerPanel.cpp
   ui/CameraWindow.cpp
+  ui/CabIrMatrix.cpp
   standalone/StandaloneApp.cpp
   player/PlayerRecorder.cpp
   player/VideoCapture.cpp)
