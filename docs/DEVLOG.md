@@ -6,6 +6,23 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-29 — Session 4b: loud click vs guitar, video playback, release 0.9.3 - Claude (Opus 5.5)
+
+- Owner (test build): IR map fine (the earlier problems were an older build); "guitar tone and click track on its
+  loudest setting don't mix well"; "recorded video cannot be played" ("The video cannot be played: Can't create
+  window"); publish a new version with the new mic order.
+- Metronome: the hi-hat at +12 dB peaked at ~4 (!) and the player's safety limiter turned the whole sum down on
+  every click (measured: the guitar -10.9 dB). Now the clicks are made into their own block, delayed by the
+  limiter's look-ahead (timing unchanged: recorder_test click / take alignment still exact), soft-limited
+  (0.7 tanh) and added AFTER the limiter only into the headroom left to -1 dBFS (PlayerRecorder::mixClicks). The
+  guitar is no longer turned down (-0.9 dB in the test window, mostly the click itself). recorder_test: new check.
+- VIDEO playback (Windows): juce::VideoComponent::load() needs the component inside a window (DirectShow opens a
+  native child window in the top-level peer); it was loaded before being added -> "Can't create window".
+  CameraView::loadPlayback() adds it first, then loads (both the last take and saved videos). Not testable here
+  (no Windows camera); the owner checks.
+- Version 0.9.3 (CMake, AMPSURD.iss / build_pkg.sh examples), RELEASE_NOTES 0.9.3 (everything since 0.9.2),
+  release made by the workflow. Next: owner signs the Windows files (installer/sign_release.ps1 -Version 0.9.3).
+
 ## 2026-10-29 — Session 4a: AMPSURD IRs mic order - Claude (Opus 5.5)
 
 - Owner: on the IR map, order the mics per speaker SM57 - R121 - MD421 (was SM57 - MD421 - R121).

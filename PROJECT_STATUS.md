@@ -50,9 +50,11 @@ footswitches (program change, MIDI learn), preset packs, undo / redo, A/B, fast 
 (checklist 30-33). Bundled IRs on hold (no IRs without the author's explicit consent).
 **Public beta v0.9.0 released 2026-10-14** (GitHub pre-release, unsigned):
 https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.0
-**In development (next beta, 2026-10-28):** AMPSURD IRs (owner's synthetic 4x12 set, calculated, map with
-hover-to-listen), up to 2 pedal captures before each amp, EQ presets, easier EQ COPY cancel, Full A2 by default,
-tester fixes (FRANKENSTEIN button, macOS file dialogs). Awaiting tests by the owner / Mac tester (BUILD_WINDOWS 45-49).
+**Public beta v0.9.3 released 2026-10-29:** AMPSURD IRs (owner's synthetic 4x12 set, calculated, map with
+hover-to-listen; mics SM57 / R121 / MD421), up to 2 pedal captures before each amp, EQ presets, easier EQ COPY
+cancel, Full A2 by default, metronome mixed after the limiter, tester fixes (FRANKENSTEIN button, macOS file
+dialogs, video playback on Windows). https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.3 - Windows files to be
+signed by the owner. Awaiting tests (BUILD_WINDOWS 45-49).
 
 **Public beta v0.9.2 released 2026-10-24** (first with macOS, signed + notarized; fixed download names; normal, not pre-release): https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.2 - Windows files to be signed with installer/sign_release.ps1 (owner). Known: VIDEO takes still have recording problems (owner, details pending).
 

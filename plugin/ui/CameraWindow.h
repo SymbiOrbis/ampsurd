@@ -53,6 +53,7 @@ private:
     double noticeUntil = 0.0;
     bool noticeOk = true;
    #if JUCE_WINDOWS || JUCE_MAC
+    juce::Result loadPlayback(const juce::File& f); // creates the player in the window, then loads (Windows needs both)
     std::unique_ptr<juce::VideoComponent> playback; // the recorded take (muted; the sound comes from the player)
     juce::File loadedVideo;
    #endif

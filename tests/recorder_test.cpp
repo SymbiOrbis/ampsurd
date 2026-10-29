@@ -564,9 +564,43 @@ int main()
         hatRun(0.0f, p0, zc0, alike0);
         hatRun(12.0f, p12, zc12, alike12);
         pl->setClickSound(0);
-        check(zc0 > 4000.0 && alike0 && p12 > 1.8f * p0 && p12 <= 0.8913f,
+        check(zc0 > 4000.0 && alike0 && p12 > 1.3f * p0 && p12 <= 0.8913f,
               "METRONOME HI-HAT: bright (" + juce::String((int) zc0) + " zero crossings / s), EVEN clicks alike, +12 dB peak "
-                  + juce::String(p12, 3) + " vs 0 dB " + juce::String(p0, 3) + " (limited, never clips)");
+                  + juce::String(p12, 3) + " vs 0 dB " + juce::String(p0, 3) + " (soft-limited, never clips)");
+
+        // the loudest click does not push the guitar down (owner 2026-10-29: "guitar tone and click track on its
+        // loudest setting don't mix well" - the limiter ducked the whole sum on every click). A loud steady guitar,
+        // +12 dB hi-hat: between and during the clicks the guitar keeps its level (before: -10.9 dB on every click;
+        // now ~-0.9 dB, mostly the click itself inside the measuring window); the sum never clips.
+        {
+            pl->setClickSound(1);
+            auto tone = [](juce::int64 t) { return (float) (0.6 * std::sin(2.0 * juce::MathConstants<double>::pi * 220.0 * (double) t / 48000.0)); };
+            pl->setMetronome(false, 120.0, 4, false, 12.0f, 0);
+            run(0.3, tone);
+            const auto quiet = run(1.0, tone);
+            pl->setMetronome(true, 120.0, 4, false, 12.0f, 0);
+            const auto loud = run(2.0, tone);
+            pl->setMetronome(false, 120.0, 4, false, -12.0f, 0);
+            pl->setClickSound(0);
+            // the guitar's level per 220 Hz cycle (correlation with the tone removes the click)
+            auto level220 = [&](const juce::AudioBuffer<float>& b, int from, int len) {
+                double re = 0, im = 0;
+                for (int i = from; i < from + len; ++i)
+                {
+                    const double w = 2.0 * juce::MathConstants<double>::pi * 220.0 * i / 48000.0;
+                    re += b.getSample(0, i) * std::cos(w);
+                    im += b.getSample(0, i) * std::sin(w);
+                }
+                return 2.0 * std::sqrt(re * re + im * im) / len;
+            };
+            const double ref = level220(quiet, 0, 48000);
+            double minLevel = 1e9;
+            for (int at = 0; at + 2400 <= loud.getNumSamples(); at += 1200) minLevel = std::min(minLevel, level220(loud, at, 2400));
+            const float peak = loud.getMagnitude(0, 0, loud.getNumSamples());
+            const double duckDb = 20.0 * std::log10(minLevel / ref);
+            check(duckDb > -1.5 && peak <= 0.8913f, "METRONOME +12 dB over a loud guitar: the guitar is not turned down by the clicks ("
+                                                       + juce::String(duckDb, 2) + " dB), peak " + juce::String(peak, 3) + " (never clips)");
+        }
 
         // count-in 1 bar (2 s at 120 BPM, 4/4), then recording; the take must contain no click
         pl->setMetronome(true, 120.0, 4, false, -6.0f, 1);

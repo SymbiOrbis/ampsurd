@@ -257,12 +257,8 @@ void CameraView::startPlayback()
     {
         // a saved video: it has its sound inside (AMPSURD's, as saved) - played as it is, the player stays out
         if (!saved.existsAsFile()) { setStatus("This video is no longer there."); refreshVideoList(); return; }
-        playback = std::make_unique<juce::VideoComponent>(false);
-        const auto r = playback->load(saved);
-        if (r.failed()) { playback.reset(); loadedVideo = juce::File(); setStatus("The video cannot be played: " + r.getErrorMessage()); return; }
-        loadedVideo = saved;
-        addChildComponent(*playback);
-        resized();
+        const auto r = loadPlayback(saved);
+        if (r.failed()) { setStatus("The video cannot be played: " + r.getErrorMessage()); return; }
         player.stop();
         playback->setAudioVolume(1.0f);
         playback->setPlayPosition(0.0);
@@ -279,12 +275,8 @@ void CameraView::startPlayback()
     if (player.isBusy()) { setStatus("Still saving - PLAY works again in a moment."); return; }
     if (playback == nullptr || loadedVideo != file)
     {
-        playback = std::make_unique<juce::VideoComponent>(false);
-        const auto r = playback->load(file);
-        if (r.failed()) { playback.reset(); setStatus("The video cannot be played: " + r.getErrorMessage()); return; }
-        loadedVideo = file;
-        addChildComponent(*playback);
-        resized();
+        const auto r = loadPlayback(file);
+        if (r.failed()) { setStatus("The video cannot be played: " + r.getErrorMessage()); return; }
     }
     playback->setAudioVolume(0.0f); // the camera has no sound worth hearing: AMPSURD plays it
     // video time v belongs to song time v - lead (lead = how much earlier the song's start is than frame 0)
@@ -304,6 +296,28 @@ void CameraView::startPlayback()
     setStatus("Video playback is not available on this system.");
    #endif
 }
+
+#if JUCE_WINDOWS || JUCE_MAC
+juce::Result CameraView::loadPlayback(const juce::File& f)
+{
+    // The player component must be IN the window before load(): on Windows it opens its own native video window
+    // inside AMPSURD's, and without a window to put it in load() failed with "Can't create window" (owner 2026-10-29).
+    if (playback != nullptr) removeChildComponent(playback.get());
+    playback = std::make_unique<juce::VideoComponent>(false);
+    addChildComponent(*playback);
+    resized(); // its place: where the camera picture is
+    const auto r = playback->load(f);
+    if (r.failed())
+    {
+        removeChildComponent(playback.get());
+        playback.reset();
+        loadedVideo = juce::File();
+        return r;
+    }
+    loadedVideo = f;
+    return r;
+}
+#endif
 
 void CameraView::stopPlayback()
 {

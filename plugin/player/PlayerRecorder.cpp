@@ -137,6 +137,9 @@ void PlayerRecorder::prepare(double sr, int block)
     bufB.setSize(2, maxBlock);
     recBuf.setSize(2, maxBlock);
     limiter.prepare(sr);
+    clickBlock.assign((size_t) maxBlock, 0.0);
+    clickDelay.assign((size_t) limiter.getLatencySamples() + 1, 0.0);
+    clickDelayPos = 0;
     if (rateChanged || backing || take)
     {
         closePunch();
@@ -263,6 +266,7 @@ void PlayerRecorder::process(double* L, double* R, int n, int ampsurdLatency, bo
         addClicks(L, R, n, (double) (countInEnd - left), 2);
         countInLeft.store(std::max<juce::int64>(0, left - n), std::memory_order_relaxed);
         limiter.process(L, R, n);
+        mixClicks(L, R, n);
         return;
     }
 
@@ -379,8 +383,30 @@ void PlayerRecorder::process(double* L, double* R, int n, int ampsurdLatency, bo
         clickSource = -1;
     }
 
-    // 5. the sum never clips (always in the path, so the latency is constant)
+    // 5. the sum never clips (always in the path, so the latency is constant); the click comes on top
     limiter.process(L, R, n);
+    mixClicks(L, R, n);
+}
+
+void PlayerRecorder::mixClicks(double* L, double* R, int n) noexcept
+{
+    const int d = (int) clickDelay.size();
+    constexpr double ceiling = 0.891; // -1 dBFS, like the limiter
+    for (int i = 0; i < n; ++i)
+    {
+        // delayed by the limiter's look-ahead: the click stays exactly in time with the music
+        const double raw = clickDelay[(size_t) clickDelayPos];
+        clickDelay[(size_t) clickDelayPos] = clickBlock[(size_t) i];
+        clickBlock[(size_t) i] = 0.0;
+        if (++clickDelayPos >= d) clickDelayPos = 0;
+        if (raw == 0.0) continue;
+        // loud, but never above -1 dBFS by itself (soft), and only into the headroom the music leaves
+        double c = 0.7 * std::tanh(raw / 0.7);
+        const double lo = -ceiling - juce::jmin(L[i], R[i]), hi = ceiling - juce::jmax(L[i], R[i]);
+        c = lo > hi ? 0.0 : std::min(hi, std::max(lo, c));
+        L[i] += c;
+        R[i] += c;
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -455,8 +481,7 @@ void PlayerRecorder::addClicks(double* L, double* R, int n, double s0, int sourc
                 const double env = clickAmp * std::min(1.0, clickPos * attack) * std::pow(decay, (double) clickPos);
                 v = env * std::sin(2.0 * juce::MathConstants<double>::pi * clickFreq * clickPos / sampleRate);
             }
-            L[i] += v;
-            R[i] += v;
+            clickBlock[(size_t) i] += v; // mixed after the limiter (mixClicks)
             if (++clickPos >= clickLen) clickPos = -1;
         }
     }

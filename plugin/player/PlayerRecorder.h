@@ -297,6 +297,12 @@ private:
     std::atomic<int> lastAmpsurdLatency { 0 };
     juce::AudioBuffer<float> bufA, bufB, recBuf;
     ampsurd::SafetyLimiter limiter;
+    // the metronome is mixed AFTER the limiter (owner 2026-10-29: a loud click made the limiter duck the guitar):
+    // clicks of a block are made here, delayed by the limiter's look-ahead (timing unchanged) and added with the
+    // headroom that is left - the guitar is never turned down for a click
+    std::vector<double> clickBlock, clickDelay;
+    int clickDelayPos = 0;
+    void mixClicks(double* L, double* R, int n) noexcept;
 
     juce::ThreadPool jobs { juce::ThreadPoolOptions {}.withThreadName("AMPSURD export").withNumberOfThreads(1) };
     std::atomic<bool> busy { false };

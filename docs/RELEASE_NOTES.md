@@ -19,7 +19,13 @@ notarized (Developer ID: Radovan Glovna): double-click it and install. The first
 access to the audio input: allow it, or AMPSURD hears no guitar (the camera is asked for only when you use
 VIDEO in the player).
 
-## Next beta (in preparation - not released yet)
+## AMPSURD 0.9.3 (beta)
+
+Fourth public beta. **Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the
+standalone app. **macOS 10.15 or newer:** AMPSURD-macOS.pkg installs the app, the VST3 plugin and the Audio
+Unit. Installing over an older version is fine: presets and recordings (Documents/AMPSURD) stay untouched.
+
+New in 0.9.3:
 
 - AMPSURD IRs: AMPSURD's own 4x12 cabinet IRs - 3 speakers (V30, DV77, SWAMP) x 3 microphones (SM57, R121,
   MD421) x mic positions from 25 to 100 mm - on one map (IR -> AMPSURD IRs). Click, drag or just hover to
@@ -31,8 +37,11 @@ VIDEO in the player).
 - EQ COPY is easy to get rid of: CANCEL COPY, Ctrl+Z, Esc, or it ends by itself after 20 s; a copy ends with
   its paste.
 - New A2 captures load in their full version by default (ECO = Lite is one click away).
+- Metronome: even at its loudest it no longer pushes the guitar down - the click is mixed after the safety
+  limiter, into the headroom the guitar leaves (before, every loud click turned the whole mix down).
 - Fixes: FRANKENSTEIN shows itself with one press (it could switch on and off unseen behind another view);
-  on macOS the pack import / export dialog could not be clicked.
+  on macOS the pack import / export dialog could not be clicked; a recorded VIDEO take could not be played
+  in the camera window on Windows ("Can't create window").
 
 ## AMPSURD 0.9.2 (beta)
 
@@ -88,5 +97,6 @@ recorder with punch-in corrections and crossfaded edits, presets.
 Downloads (the same names in every release): AMPSURD-Windows-Setup.exe, AMPSURD-Windows.zip (VST3 + app, no
 installer), AMPSURD-macOS.pkg, AMPSURD-macOS.zip (app, VST3, Audio Unit).
 
-Earlier: 0.9.1 (2026-10-17) - metronome, moving amps by drag and drop, typed PAN, left / right OUTPUT meter,
+Earlier: 0.9.2 (2026-10-24) - first macOS release, VIDEO takes, blend tone, DOUBLER, SAVE AS pack, MUTE.
+0.9.1 (2026-10-17) - metronome, moving amps by drag and drop, typed PAN, left / right OUTPUT meter,
 UNDO / REDO arrows.
