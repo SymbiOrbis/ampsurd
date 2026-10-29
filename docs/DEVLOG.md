@@ -6,6 +6,14 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-29 — Session 4a: AMPSURD IRs mic order - Claude (Opus 5.5)
+
+- Owner: on the IR map, order the mics per speaker SM57 - R121 - MD421 (was SM57 - MD421 - R121).
+  CabIrModel::micOfRow / rowOf map the map row to the model's mic; between two rows the neighbours are now
+  SM57 / R121 and R121 / MD421. Presets now write "ampsurd-ir2:<row>,<mm>"; the "ampsurd-ir:" refs of the
+  2026-10-28 test builds still load (same speaker, nearest mic). cab_ir_test (288 files, names, old refs) and
+  ui_snapshot pass.
+
 ## 2026-10-28 — Session 3z: tester fixes, AMPSURD IRs, pedals before the amps, EQ presets - Claude (Opus 5.5)
 
 - Owner's list of the day (ROADMAP 3m-3q) + a Mac tester (M4 Pro, macOS Tahoe, Audient EVO8): pack import dialog

@@ -13,7 +13,7 @@ designs of the project.
 is an exact C++ port of the generator (tested against all 288 files by `tools/cab_ir_test`, largest
 difference 6e-8 = 24-bit rounding), so the plugin calculates any IR - also between the grid points - at any
 sample rate. In the plugin: IR -> AMPSURD IRs (a map: rows = speaker x mic, columns = position; click, drag,
-hover to listen, SAVE IR, EXPORT ALL 144). Presets store the point as `ampsurd-ir:<row>,<mm>`.
+hover to listen, SAVE IR, EXPORT ALL 144). Presets store the point as `ampsurd-ir2:<row>,<mm>` (rows per speaker: SM57, R121, MD421 - owner 2026-10-29; the older `ampsurd-ir:` of the 2026-10-28 test builds is still read).
 
 Between grid points the model's magnitude responses (dB) are blended - rows: the two neighbouring
 speaker / mic combinations; columns: the position model is continuous - then made minimum-phase like the

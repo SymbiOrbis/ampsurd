@@ -194,21 +194,28 @@ std::string CabIrModel::fileName(CabPoint p)
 std::string CabIrModel::toRef(CabPoint p)
 {
     p = clamp(p);
-    return "ampsurd-ir:" + num(p.row, 4) + "," + num(p.mm, 3);
+    return "ampsurd-ir2:" + num(p.row, 4) + "," + num(p.mm, 3);
 }
 
 bool CabIrModel::fromRef(const std::string& ref, CabPoint& p)
 {
-    static const std::string prefix = "ampsurd-ir:";
-    if (ref.compare(0, prefix.size(), prefix) != 0) return false;
-    const auto rest = ref.substr(prefix.size());
+    static const std::string prefix = "ampsurd-ir2:", oldPrefix = "ampsurd-ir:";
+    const bool old = ref.compare(0, oldPrefix.size(), oldPrefix) == 0;
+    if (!old && ref.compare(0, prefix.size(), prefix) != 0) return false;
+    const auto rest = ref.substr(old ? oldPrefix.size() : prefix.size());
     const auto comma = rest.find(',');
     if (comma == std::string::npos) return false;
     char* end = nullptr;
     const double row = std::strtod(rest.c_str(), &end);
     const double mm = std::strtod(rest.c_str() + comma + 1, &end);
     if (!std::isfinite(row) || !std::isfinite(mm)) return false;
-    p = clamp({ row, mm });
+    double r = row;
+    if (old) // old mic order (row % 3 = SM57, MD421, R121): same speaker, nearest mic
+    {
+        const int oldRow = std::clamp((int) std::lround(row), 0, kRows - 1);
+        r = rowOf(oldRow / kMics, oldRow % kMics);
+    }
+    p = clamp({ r, mm });
     return true;
 }
 
@@ -236,7 +243,7 @@ std::shared_ptr<const CabIrModel::RateCache> CabIrModel::cacheFor(double fs)
         for (int i = 0; i < bins; ++i)
         {
             const double lf = std::log2(std::max(c->freqs[(size_t) i], 20.0));
-            const double rip = interpClamped(lf, knots.data(), kRipple[row], 60);
+            const double rip = interpClamped(lf, knots.data(), kRipple[speakerOfRow(row) * kMics + micOfRow(row)], 60);
             const double weight = std::clamp((lf - std::log2(1500.0)) / 2.0, 0.0, 1.0);
             db[(size_t) i] += 1.5 * rip * weight * 1.5; // the table is already divided by max |vals|
         }

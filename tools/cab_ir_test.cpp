@@ -66,12 +66,12 @@ int main(int argc, char** argv)
             double sr = 0.0;
             if (!tools::loadWav(entry.path().string(), audio, sr)) { check(false, "read " + name); continue; }
             const auto ref = unitEnergy(std::vector<double>(audio.begin(), audio.end()));
-            const auto mine = unitEnergy(CabIrModel::make({ (double) (spk * CabIrModel::kMics + mic), mm }, sr));
+            const auto mine = unitEnergy(CabIrModel::make({ (double) CabIrModel::rowOf(spk, mic), mm }, sr));
             double d = ref.size() == mine.size() ? 0.0 : 1.0;
             for (size_t i = 0; i < std::min(ref.size(), mine.size()); ++i) d = std::max(d, std::abs(ref[i] - mine[i]));
             if (d > worst) { worst = d; worstName = name + " @ " + std::to_string((int) sr); }
-            if (CabIrModel::fileName({ (double) (spk * CabIrModel::kMics + mic), mm }) + ".wav" != name)
-                check(false, "file name for " + name + ": " + CabIrModel::fileName({ (double) (spk * CabIrModel::kMics + mic), mm }));
+            if (CabIrModel::fileName({ (double) CabIrModel::rowOf(spk, mic), mm }) + ".wav" != name)
+                check(false, "file name for " + name + ": " + CabIrModel::fileName({ (double) CabIrModel::rowOf(spk, mic), mm }));
             ++files;
         }
     std::printf("compared %d files from %s, largest sample difference %.2e (%s)\n", files, dir.string().c_str(), worst, worstName.c_str());
@@ -109,7 +109,9 @@ int main(int argc, char** argv)
         std::printf("  %s | %s | %s\n", CabIrModel::describe({ 0, 25 }).c_str(), CabIrModel::describe({ 0.3, 47.5 }).c_str(),
                     CabIrModel::describe({ 2.5, 100 }).c_str());
         check(refOk && CabIrModel::describe({ 0, 25 }) == "V30 + SM57, 25 mm"
-                  && CabIrModel::describe({ 0.3, 47.5 }) == "V30 + 70 % SM57 / 30 % MD421, 47.5 mm",
+                  && CabIrModel::describe({ 0.3, 47.5 }) == "V30 + 70 % SM57 / 30 % R121, 47.5 mm"
+                  && CabIrModel::describe({ 1, 30 }) == "V30 + R121, 30 mm" && CabIrModel::describe({ 2, 30 }) == "V30 + MD421, 30 mm"
+                  && CabIrModel::fromRef("ampsurd-ir:1.0000,40.000", p) && p.row == 2.0, // old ref: V30 MD421 -> its new row
               "preset reference and names");
     }
     // speed (a new point while dragging must be quick)

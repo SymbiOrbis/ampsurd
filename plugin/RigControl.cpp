@@ -586,7 +586,7 @@ bool AmpsurdProcessor::exportPack(const juce::File& packFileIn, juce::String& er
             for (const auto& id : { kPath, kIrPath, juce::Identifier("pedal1Path"), juce::Identifier("pedal2Path") })
             {
                 const auto path = slot.getProperty(id).toString();
-                if (path.isEmpty() || path.startsWith("ampsurd-ir:")) continue; // AMPSURD IRs are calculated, not files
+                if (path.isEmpty() || path.startsWith("ampsurd-ir")) continue; // AMPSURD IRs are calculated, not files
                 const auto entry = addFile(path);
                 if (entry.isEmpty()) { error = "File not found: " + path; return false; }
                 slot.setProperty(id, entry, nullptr);

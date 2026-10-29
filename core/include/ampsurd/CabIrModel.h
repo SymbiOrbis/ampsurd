@@ -8,7 +8,7 @@
 // per-combination "cone ripple". This class is an exact port of that generator (tested against the 144 WAV
 // files: same shape to ~1e-9), so AMPSURD needs no IR files and can make ANY point between them:
 //
-//   row  0 .. 8  = speaker x mic (V30 SM57, V30 MD421, V30 R121, DV77 ..., SWAMP ...); between two rows the
+//   row  0 .. 8  = speaker x mic (V30 SM57, V30 R121, V30 MD421, DV77 ..., SWAMP ...); between two rows the
 //                  two combinations are blended (in dB, i.e. their responses are averaged on a log scale)
 //   mm  25 .. 100 = mic position, continuous (the files are every 5 mm)
 //
@@ -42,7 +42,10 @@ public:
     static const char* speakerFileTag(int s);   // as in the file names: "30", "77", "SWAMP"
     static const char* micFileTag(int m);       // "57", "421", "121"
     static int speakerOfRow(int row) { return row / kMics; }
-    static int micOfRow(int row) { return row % kMics; }
+    // mic order on the map, per speaker: SM57, R121, MD421 (owner 2026-10-29) - mic index = the model's
+    // (0 SM57, 1 MD421, 2 R121), row = speaker * 3 + position of the mic on the map
+    static int micOfRow(int row) { static const int m[kMics] { 0, 2, 1 }; return m[row % kMics]; }
+    static int rowOf(int speaker, int micIndex) { static const int pos[kMics] { 0, 2, 1 }; return speaker * kMics + pos[micIndex]; }
 
     static CabPoint clamp(CabPoint p);
     // "V30 + SM57, 45 mm" or, between rows, "V30 + 70 % SM57 / 30 % MD421, 47.5 mm"
@@ -50,7 +53,8 @@ public:
     // a file name like the original set: "AMPSURD-412-30-57-P045mm" (a point between rows / positions gets
     // both tags and the exact position, e.g. "AMPSURD-412-30-57+30-421-P047.5mm")
     static std::string fileName(CabPoint p);
-    // "ampsurd-ir:<row>,<mm>" - how presets refer to it (no file needed)
+    // "ampsurd-ir2:<row>,<mm>" - how presets refer to it (no file needed). "ampsurd-ir:" (test builds of
+    // 2026-10-28, mic order SM57 / MD421 / R121) is still read: its row goes to the same speaker and nearest mic.
     static std::string toRef(CabPoint p);
     static bool fromRef(const std::string& ref, CabPoint& p);
 

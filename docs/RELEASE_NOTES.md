@@ -21,8 +21,8 @@ VIDEO in the player).
 
 ## Next beta (in preparation - not released yet)
 
-- AMPSURD IRs: AMPSURD's own 4x12 cabinet IRs - 3 speakers (V30, DV77, SWAMP) x 3 microphones (SM57, MD421,
-  R121) x mic positions from 25 to 100 mm - on one map (IR -> AMPSURD IRs). Click, drag or just hover to
+- AMPSURD IRs: AMPSURD's own 4x12 cabinet IRs - 3 speakers (V30, DV77, SWAMP) x 3 microphones (SM57, R121,
+  MD421) x mic positions from 25 to 100 mm - on one map (IR -> AMPSURD IRs). Click, drag or just hover to
   hear them; between the dots AMPSURD calculates the sound in between, like moving the mic. Save any point
   as a WAV, or export all 144. Synthetic (calculated) IRs, no recordings; presets remember the point.
 - Pedals before an amp: up to two captures (boost, overdrive, preamp...) in front of each amp (EDIT ->
