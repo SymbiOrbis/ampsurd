@@ -51,6 +51,7 @@ void AmpsurdEditor::Content::paint(juce::Graphics& g)
             g.setColour(colours::raised);
             g.fillRoundedRectangle(sl->getBounds().toFloat().reduced(1.25f), 3.0f);
         }
+    paintPedalStacks(g);
     if (!showDragon) return;
     dragon.draw(g, getLocalBounds().toFloat());
     dragon.drawEyes(g, getLocalBounds().toFloat()); // under the slot texts
@@ -60,6 +61,44 @@ void AmpsurdEditor::Content::paint(juce::Graphics& g)
     g.fillRect(master.getBounds().getUnion(edit.getBounds()).withTop(edit.getY() - 2).withBottom(master.getBottom() + 2)
                    .withLeft(edit.getX() - 2).withRight(edit.getRight() + 2));
     g.fillRect(footer.getBounds());
+}
+
+// Pedals before an amp (owner 2026-10-30): one more frame behind the slot per pedal, offset up and left like a
+// stack of paper - only its top and left edges show. A bypassed pedal's frame is dimmed but stays.
+void AmpsurdEditor::Content::paintPedalStacks(juce::Graphics& g)
+{
+    constexpr float step = 4.0f, radius = 3.0f; // 2 pedals = 8 px: fits the gaps above / between the slots
+    for (auto& sl : slots)
+    {
+        const auto layers = sl->getPedalLayers(); // [0] = the pedal right before the amp ... (0 none, 1 on, 2 bypassed)
+        const auto front = sl->getBounds().toFloat().reduced(colours::sectionBorder * 0.5f + 0.25f);
+        int depth = 0;
+        for (int st : layers) if (st != 0) ++depth;
+        // back to front, each clipped by everything in front of it (so only the top / left edges are drawn)
+        for (int k = depth; k >= 1; --k)
+        {
+            int seen = 0, state = 0;
+            for (int st : layers) if (st != 0 && ++seen == k) { state = st; break; }
+            juce::Graphics::ScopedSaveState save(g);
+            g.excludeClipRegion(front.translated(-step * (float) (k - 1), -step * (float) (k - 1)).expanded(1.0f).toNearestInt());
+            const auto r = front.translated(-step * (float) k, -step * (float) k);
+            if (state == 2)
+            {
+                // bypassed: dimmed and dashed (not by colour alone)
+                juce::Path p, dashed;
+                p.addRoundedRectangle(r, radius);
+                const float dashes[] { 4.0f, 3.0f };
+                juce::PathStrokeType(1.5f).createDashedStroke(dashed, p, dashes, 2);
+                g.setColour(colours::lineStrong.withAlpha(0.45f));
+                g.fillPath(dashed);
+            }
+            else
+            {
+                g.setColour(colours::lineStrong.withAlpha(0.8f));
+                g.drawRoundedRectangle(r, radius, 1.5f);
+            }
+        }
+    }
 }
 
 void AmpsurdEditor::Content::resized()

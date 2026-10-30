@@ -24,6 +24,8 @@ VIDEO in the player).
 - TONES (.ampsurdtone): save one amp's whole sound - capture, pedals, cabinet IR (also AMPSURD IRs), its EQ and the
   IR's EQ, INPUT / OUTPUT - under a name, and load it into any amp with one click (EDIT -> TONES, right-click a
   slot, LOAD NAM, or drop the file on a slot). The rest of the rig stays as it is.
+- Pedals before an amp are visible on the slot: one frame behind it per pedal, like a stack of paper (a bypassed
+  pedal's frame is dimmed).
 
 ## AMPSURD 0.9.3 (beta)
 

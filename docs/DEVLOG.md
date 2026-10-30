@@ -19,6 +19,11 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
   open the folder); slot right-click -> Tones...; LOAD NAM also opens .ampsurdtone; a tone dropped on a slot loads.
 - ui_snapshot TONES test (save amp 1 with pedal + AMPSURD IR + EQs, load into amp 3: identical, amp 3's PAN kept,
   wrong file refused). All tests pass with / without the player.
+- Owner: stay with 2 pedals; show them on the slot as stacked frames (stack of paper), a bypassed one dimmed but
+  visible; a tone must hold everything of the slot. Frames: Content::paintPedalStacks (4 px per pedal up / left,
+  clipped so only the top / left edges show; bypassed = dimmed + dashed). Tones hold every parameter of the amp's
+  chain (pedals, IR + IR EQ, EQ, ECO, INPUT / OUTPUT); rig placement (fader, PAN, MUTE / SOLO, alignment) stays out.
+  ui_snapshot PEDAL FRAMES test.
 
 ## 2026-10-29 — Session 4b: loud click vs guitar, video playback, release 0.9.3 - Claude (Opus 5.5)
 

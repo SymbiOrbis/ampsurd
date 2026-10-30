@@ -508,6 +508,21 @@ void SlotComponent::refresh(bool isSelected, bool irEditorOpen)
         pl << (pl.isEmpty() ? "" : "  ") << (pOn ? "" : "(off) ") << ps.fileName << "  " << juce::String::charToString((juce::juce_wchar) 0x2192);
     }
     if (pl != pedalLine) { pedalLine = pl; repaint(); }
+    std::array<int, AmpsurdProcessor::kNumPedals> layers {};
+    for (int k = 0; k < AmpsurdProcessor::kNumPedals; ++k)
+    {
+        const int chainPos = AmpsurdProcessor::kNumPedals - 1 - k; // the pedal next to the amp is the first frame
+        const auto ps = proc.getPedalStatus(slot, chainPos);
+        if (ps.state == AmpsurdProcessor::SlotState::empty) continue;
+        const bool pOn = ps.state == AmpsurdProcessor::SlotState::loaded
+                         && proc.params.getRawParameterValue(AmpsurdProcessor::slotParamId(slot, ("ped" + juce::String(chainPos + 1) + "On").toRawUTF8()))->load() > 0.5f;
+        layers[(size_t) k] = pOn ? 1 : 2;
+    }
+    if (layers != pedalLayers)
+    {
+        pedalLayers = layers;
+        if (auto* parent = getParentComponent()) parent->repaint(getBounds().expanded(12)); // the frames are painted behind the slot
+    }
     const float eff = proc.getEffectivePercent(slot);
     const bool aud = proc.isSlotAudible(slot);
     const bool changed = st.state != status.state || st.path != status.path || std::abs(eff - effective) > 0.05f

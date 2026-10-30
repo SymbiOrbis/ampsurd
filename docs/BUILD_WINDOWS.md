@@ -304,7 +304,8 @@ REAPER picks up the new version.
     set in Documents\AMPSURD\IRs\AMPSURD IRs\48k. Save a preset, load another, load it back: the same
     point comes back (no file needed). Esc / CLOSE closes the map.
 49. PEDALS before an amp (EDIT, row "BEFORE THE AMP"): + PEDAL 1 -> a boost / overdrive / preamp capture
-    (or drop a .nam there): the slot shows "name ->"; ON bypasses it (no click), LEVEL drives the amp
+    (or drop a .nam there): the slot shows "name ->" and one more frame behind it, offset up / left like a
+    stack of paper (2 pedals = 2 frames; a bypassed pedal's frame is dimmed and dashed); ON bypasses it (no click), LEVEL drives the amp
     harder / softer. After ~1 s the amp is re-measured (alignment, level match). PEDAL 2 likewise. Save a
     preset / export a pack: the pedals come back / are inside. CPU meter: each pedal costs like an amp.
     REMOVE on the amp removes its pedals too.

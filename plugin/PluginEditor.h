@@ -48,6 +48,7 @@ private:
         explicit Content(AmpsurdProcessor&);
         void paint(juce::Graphics&) override;
         void resized() override;
+        void paintPedalStacks(juce::Graphics&);
 
         ampsurd::ui::HeaderBar header;
         std::array<std::unique_ptr<ampsurd::ui::SlotComponent>, AmpsurdProcessor::kNumSlots> slots;

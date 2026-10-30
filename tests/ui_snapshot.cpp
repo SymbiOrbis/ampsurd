@@ -878,8 +878,24 @@ int main(int argc, char** argv)
         const auto alignAfter = proc->getAlignInfo(0);
         const double withPedal = rms();
         e->selectSlot(0);
-        run(200);
+        proc->loadPedal(0, 1, juce::File(argv[2])); // a second pedal (bypassed) for the stacked frames
+        for (int t = 0; t < 300 && proc->getPedalStatus(0, 1).state != AmpsurdProcessor::SlotState::loaded; ++t) run(20);
+        setP(*proc, AmpsurdProcessor::slotParamId(0, "ped2On"), 0.0f);
+        run(400);
+        ampsurd::ui::SlotComponent* slot1 = nullptr;
+        std::function<void(juce::Component&)> findSlot = [&](juce::Component& c) {
+            if (auto* sc = dynamic_cast<ampsurd::ui::SlotComponent*>(&c)) if (slot1 == nullptr) slot1 = sc;
+            for (auto* ch : c.getChildren()) findSlot(*ch);
+        };
+        findSlot(*ed);
+        const auto layers = slot1 != nullptr ? slot1->getPedalLayers() : std::array<int, 2> {};
+        const bool frames = layers[0] == 2 && layers[1] == 1; // next to the amp: pedal 2 (bypassed, dimmed), behind it: pedal 1
+        std::cout << (frames ? "[PASS]" : "[FAIL]") << " PEDAL FRAMES: two pedals = two frames behind the slot, the bypassed one dimmed ("
+                  << layers[0] << "," << layers[1] << ")\n";
         save(*ed, out.getChildFile("23_pedal_chain.png"));
+        proc->removePedal(0, 1);
+        setP(*proc, AmpsurdProcessor::slotParamId(0, "ped2On"), 1.0f);
+        run(2500);
         // bypass -> the amp alone again
         setP(*proc, AmpsurdProcessor::slotParamId(0, "ped1On"), 0.0f);
         run(2500);

@@ -59,6 +59,8 @@ class SlotComponent final : public juce::Component,
                             public juce::SettableTooltipClient
 {
 public:
+    // pedals before this amp, for the stacked frames behind the slot: [0] = the one next to the amp; 0 none, 1 on, 2 bypassed
+    std::array<int, AmpsurdProcessor::kNumPedals> getPedalLayers() const { return pedalLayers; }
     SlotComponent(AmpsurdProcessor&, int slot);
     ~SlotComponent() override;
 
@@ -94,6 +96,7 @@ private:
     double removeArmedAt = -1.0; // REMOVE needs a second click within 3 s
     AmpsurdProcessor::IrStatus irStatus;
     juce::String pedalLine; // "lstm  >" when pedal captures play before this amp
+    std::array<int, AmpsurdProcessor::kNumPedals> pedalLayers {}; // [0] = pedal next to the amp: 0 none, 1 on, 2 bypassed
     bool irOn = true;
     MixFader fader;
     juce::Slider panSlider;   // per-amp PAN (stereo width)
