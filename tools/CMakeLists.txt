@@ -47,3 +47,8 @@ add_executable(cab_ir_test cab_ir_test.cpp ${ADT_WAV})
 target_include_directories(cab_ir_test PRIVATE "${audiodsptools_SOURCE_DIR}/dsp" "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_definitions(cab_ir_test PRIVATE AMPSURD_SOURCE_DIR="${PROJECT_SOURCE_DIR}" _USE_MATH_DEFINES)
 target_link_libraries(cab_ir_test PRIVATE ampsurd_core)
+
+add_executable(amp_profile_test amp_profile_test.cpp ${ADT_WAV})
+target_include_directories(amp_profile_test PRIVATE "${audiodsptools_SOURCE_DIR}/dsp" "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(amp_profile_test PRIVATE AMPSURD_SOURCE_DIR="${PROJECT_SOURCE_DIR}" _USE_MATH_DEFINES)
+target_link_libraries(amp_profile_test PRIVATE ampsurd_core)

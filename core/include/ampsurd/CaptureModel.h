@@ -57,6 +57,24 @@ public:
     // Non-RT. An "empty" model outputs silence (used to unload a slot without a special case).
     static std::unique_ptr<CaptureModel> makeEmpty(double hostSampleRate, int maxBlockSize);
 
+    // Non-RT. AMPSURD amp (.ampsurdamp, 2026-10-30): several captures of ONE amp at different GAIN knob positions
+    // (`knob`, ascending, 0..10). process() plays the two captures around the current GAIN position and blends them
+    // (smoothly; on a step only that capture runs). Each step is brought to the same loudness (`gain`), polarity
+    // and timing (`delay`, whole samples) as the others, so moving GAIN changes the character, not the level.
+    struct MorphStep
+    {
+        std::unique_ptr<CaptureModel> model;
+        double knob = 5.0, gain = 1.0, polarity = 1.0;
+        int delay = 0;
+    };
+    static std::unique_ptr<CaptureModel> makeMorph(std::vector<MorphStep> steps, const CaptureInfo& info, double hostSampleRate, int maxBlockSize);
+    bool isMorph() const noexcept { return !steps.empty(); }
+    int getMorphStepCount() const noexcept { return (int) steps.size(); }
+    // any thread: the GAIN knob (0..10); the audio thread glides to it
+    void setMorphPosition(double knob) noexcept { morphTarget.store(knob, std::memory_order_relaxed); }
+    // which steps play at a knob position and how loud the upper one is (pure, for tests / the UI)
+    static void morphPair(const std::vector<double>& knobs, double pos, int& lower, double& weightUpper) noexcept;
+
     ~CaptureModel();
 
     // Non-RT (may allocate). Call whenever the host sample rate or max block size changes.
@@ -67,7 +85,7 @@ public:
     // metadata is used to bring it to a common reference level.
     void process(const Sample* in, Sample* out, int numFrames, bool normalise) noexcept;
 
-    bool isEmpty() const noexcept { return dsp == nullptr; }
+    bool isEmpty() const noexcept { return dsp == nullptr && steps.empty(); }
     int getLatencySamples() const noexcept { return latencySamples; }
     double getPreparedSampleRate() const noexcept { return preparedSampleRate; }
     int getPreparedBlockSize() const noexcept { return preparedBlockSize; }
@@ -98,6 +116,17 @@ private:
     float normalisationGain = 1.0f;
 
     std::vector<Sample> inScratch;
+
+    // morph (AMPSURD amp)
+    std::vector<MorphStep> steps;
+    std::vector<double> stepKnobs;
+    std::vector<std::vector<Sample>> stepDelayLines; // per step: its output delayed by its `delay`
+    std::vector<int> stepDelayPos;
+    std::vector<Sample> morphA, morphB;
+    std::atomic<double> morphTarget { 5.0 };
+    double morphNow = -1.0, morphCoef = 0.0;
+    void processMorph(const Sample* in, Sample* out, int numFrames) noexcept;
+    void runStep(size_t i, const Sample* in, Sample* out, int numFrames) noexcept;
 };
 
 } // namespace ampsurd

@@ -194,11 +194,59 @@ std::unique_ptr<CaptureModel> CaptureModel::makeEmpty(double hostSampleRate, int
     return m;
 }
 
+std::unique_ptr<CaptureModel> CaptureModel::makeMorph(std::vector<MorphStep> s, const CaptureInfo& inf, double hostSampleRate, int maxBlockSize)
+{
+    auto m = std::unique_ptr<CaptureModel>(new CaptureModel());
+    std::sort(s.begin(), s.end(), [](const MorphStep& a, const MorphStep& b) { return a.knob < b.knob; });
+    m->steps = std::move(s);
+    for (auto& st : m->steps) m->stepKnobs.push_back(st.knob);
+    m->info = inf;
+    m->prepare(hostSampleRate, maxBlockSize);
+    return m;
+}
+
+void CaptureModel::morphPair(const std::vector<double>& knobs, double pos, int& lower, double& weightUpper) noexcept
+{
+    lower = 0;
+    weightUpper = 0.0;
+    const int n = (int) knobs.size();
+    if (n <= 1) return;
+    if (pos <= knobs.front()) return;
+    if (pos >= knobs.back()) { lower = n - 2; weightUpper = 1.0; return; }
+    while (lower < n - 2 && pos >= knobs[(size_t) lower + 1]) ++lower;
+    const double span = knobs[(size_t) lower + 1] - knobs[(size_t) lower];
+    weightUpper = span > 0.0 ? (pos - knobs[(size_t) lower]) / span : 0.0;
+}
+
 void CaptureModel::prepare(double hostSampleRate, int maxBlockSize)
 {
     preparedSampleRate = hostSampleRate;
     preparedBlockSize = std::max(1, maxBlockSize);
     inScratch.assign((size_t) preparedBlockSize, 0.0);
+
+    if (!steps.empty())
+    {
+        int maxLatency = 0;
+        for (auto& st : steps)
+        {
+            st.model->prepare(hostSampleRate, preparedBlockSize);
+            maxLatency = std::max(maxLatency, st.model->getLatencySamples() + st.delay);
+        }
+        stepDelayLines.assign(steps.size(), {});
+        stepDelayPos.assign(steps.size(), 0);
+        for (size_t i = 0; i < steps.size(); ++i)
+        {
+            // every step ends up at the same total latency: its own (resampling) latency + its alignment delay + the rest
+            const int total = std::max(0, maxLatency - steps[i].model->getLatencySamples());
+            stepDelayLines[i].assign((size_t) total + 1, 0.0);
+        }
+        latencySamples = maxLatency;
+        morphA.assign((size_t) preparedBlockSize, 0.0);
+        morphB.assign((size_t) preparedBlockSize, 0.0);
+        morphCoef = 1.0 - std::exp(-(double) preparedBlockSize / (0.030 * hostSampleRate)); // ~30 ms glide (per block)
+        morphNow = -1.0;
+        return;
+    }
 
     if (!dsp)
     {
@@ -229,8 +277,60 @@ void CaptureModel::prepare(double hostSampleRate, int maxBlockSize)
     }
 }
 
+void CaptureModel::runStep(size_t i, const Sample* in, Sample* out, int n) noexcept
+{
+    auto& st = steps[i];
+    st.model->process(in, out, n, false);
+    auto& line = stepDelayLines[i];
+    const int d = (int) line.size();
+    int& pos = stepDelayPos[i];
+    const double g = st.gain * st.polarity;
+    for (int k = 0; k < n; ++k)
+    {
+        line[(size_t) pos] = out[k];
+        if (++pos >= d) pos = 0;
+        out[k] = line[(size_t) pos] * g; // `delay` samples old (d = delay + 1)
+    }
+}
+
+void CaptureModel::processMorph(const Sample* in, Sample* out, int n) noexcept
+{
+    const double target = morphTarget.load(std::memory_order_relaxed);
+    const double start = morphNow < 0.0 ? target : morphNow;
+    double end = start + (target - start) * morphCoef;
+    if (std::abs(target - end) < 1e-4) end = target;
+    morphNow = end;
+    // the pair is chosen at the block's middle; at a step both pairs give that step alone, so changing pairs is seamless
+    int lower = 0;
+    double w0 = 0.0, w1 = 0.0;
+    morphPair(stepKnobs, 0.5 * (start + end), lower, w0);
+    {
+        int l2 = 0;
+        double a = 0.0, b = 0.0;
+        morphPair(stepKnobs, start, l2, a);
+        w0 = l2 == lower ? a : (l2 < lower ? 0.0 : 1.0);
+        morphPair(stepKnobs, end, l2, b);
+        w1 = l2 == lower ? b : (l2 < lower ? 0.0 : 1.0);
+    }
+    if (steps.size() == 1) { runStep(0, in, out, n); return; }
+    const bool needLower = w0 < 1.0 || w1 < 1.0, needUpper = w0 > 0.0 || w1 > 0.0;
+    if (needLower) runStep((size_t) lower, in, morphA.data(), n);
+    if (needUpper) runStep((size_t) lower + 1, in, morphB.data(), n);
+    for (int k = 0; k < n; ++k)
+    {
+        const double w = w0 + (w1 - w0) * (n > 1 ? (double) k / (double) (n - 1) : 1.0);
+        out[k] = (needLower ? (1.0 - w) * morphA[(size_t) k] : 0.0) + (needUpper ? w * morphB[(size_t) k] : 0.0);
+    }
+}
+
 void CaptureModel::process(const Sample* in, Sample* out, int numFrames, bool normalise) noexcept
 {
+    if (!steps.empty())
+    {
+        if (numFrames > preparedBlockSize) { std::fill(out, out + std::max(0, numFrames), 0.0); return; }
+        processMorph(in, out, numFrames);
+        return;
+    }
     if (!dsp || numFrames > preparedBlockSize)
     {
         std::fill(out, out + std::max(0, numFrames), 0.0);
