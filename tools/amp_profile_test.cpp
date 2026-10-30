@@ -181,8 +181,20 @@ int main(int argc, char** argv)
             m->process(sweepX.data() + i, y.data(), 256, false);
             for (int k = 0; k < 256; ++k) { if (i > 4800) maxStep = std::max(maxStep, std::abs(y[k] - last)); last = y[k]; }
         }
-        for (size_t i = 1; i < ya.size(); ++i) ref = std::max(ref, std::abs(ya[i] - ya[i - 1]));
-        check(maxStep < 2.0 * std::max(ref, 0.05), "MORPH: turning GAIN across all steps while playing: no jumps");
+        // reference: the largest sample step of the same tone at GAIN 2 and at GAIN 8 (held)
+        for (double pos : { 2.0, 8.0 })
+        {
+            m->prepare(fs, 256);
+            last = 0;
+            for (size_t i = 0; i < sweepX.size(); i += 256)
+            {
+                m->setMorphPosition(pos);
+                m->process(sweepX.data() + i, y.data(), 256, false);
+                for (int k = 0; k < 256; ++k) { if (i > 4800) ref = std::max(ref, std::abs(y[k] - last)); last = y[k]; }
+            }
+        }
+        check(maxStep < 1.5 * ref, "MORPH: turning GAIN across all steps while playing: no jumps (largest step " + std::to_string(maxStep)
+                                       + " vs " + std::to_string(ref) + " held)");
     }
     std::printf(failures == 0 ? "ALL PASS\n" : "%d FAILED\n", failures);
     return failures == 0 ? 0 : 1;

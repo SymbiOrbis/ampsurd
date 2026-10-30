@@ -21,6 +21,10 @@ VIDEO in the player).
 
 ## Next beta (in preparation - not released yet)
 
+- AMPSURD amps (.ampsurdamp): an amp with real knobs - GAIN moves smoothly between captures of the amp at different
+  gain settings, BASS / MID / TREBLE are the amp's measured tone controls. Load it like a NAM. Make your own from
+  recordings (settings menu -> "Build an AMPSURD amp from recordings...", docs/AMPSURD_AMP.md).
+
 - TONES (.ampsurdtone): save one amp's whole sound - capture, pedals, cabinet IR (also AMPSURD IRs), its EQ and the
   IR's EQ, INPUT / OUTPUT - under a name, and load it into any amp with one click (EDIT -> TONES, right-click a
   slot, LOAD NAM, or drop the file on a slot). The rest of the rig stays as it is.

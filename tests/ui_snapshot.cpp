@@ -11,6 +11,7 @@
 #include <iostream>
 
 #include "../plugin/PluginEditor.h"
+#include "../plugin/AmpProfileFile.h"
 #include "../plugin/ui/CameraWindow.h"
 #include "../plugin/UpdateCheck.h"
 #include "../plugin/PluginProcessor.h"
@@ -937,6 +938,133 @@ int main(int argc, char** argv)
                   << " / bypassed " << juce::String(20.0 * std::log10(bypassed), 1) << " / removed " << juce::String(20.0 * std::log10(afterRemove), 1)
                   << " dBFS, preset " << presetOk << ", pack carries it " << packHasPedal << ", latency " << latBefore << " -> " << latAfter << "\n";
         setP(*proc, "gateOn", 1.0f);
+    }
+
+    // AMPSURD AMP (.ampsurdamp, owner 2026-10-30): built from a folder of "recordings" named as in the recording sheet
+    // (two captures as GAIN 9:00 / 3:00, synthetic tone sweeps with known shelves), loaded into slot 4: knobs on the
+    // slot, GAIN morphs, BASS / TREBLE change the sound as measured, presets keep the knobs
+    if (argc >= 4)
+    {
+        auto run = [&](int ms) { for (int t = 0; t < ms / 20; ++t) { buf.clear(); proc->processBlock(buf, midi); proc->runHousekeeping(); pump(20); } };
+        using AP = AmpsurdProcessor;
+        const auto dir = out.getChildFile("amp recordings");
+        dir.deleteRecursively();
+        dir.createDirectory();
+        juce::File(argv[2]).copyFileTo(dir.getChildFile("G1_gain_0900.nam"));
+        juce::File(argv[3]).copyFileTo(dir.getChildFile("G7_gain_1500.nam"));
+        const auto sweep = ampsurd::ToneSweep::make();
+        auto shelf = [](std::vector<double> x, bool low, double gainDb) {
+            const double fs = 48000.0, f0 = low ? 150.0 : 3000.0, A = std::pow(10.0, gainDb / 40.0), w = 2 * juce::MathConstants<double>::pi * f0 / fs;
+            const double a = std::sin(w) / (2 * 0.7), c = std::cos(w), sq = 2 * std::sqrt(A) * a;
+            double b0, b1, b2, a0, a1, a2;
+            if (low) { b0 = A*((A+1)-(A-1)*c+sq); b1 = 2*A*((A-1)-(A+1)*c); b2 = A*((A+1)-(A-1)*c-sq); a0 = (A+1)+(A-1)*c+sq; a1 = -2*((A-1)+(A+1)*c); a2 = (A+1)+(A-1)*c-sq; }
+            else { b0 = A*((A+1)+(A-1)*c+sq); b1 = -2*A*((A-1)+(A+1)*c); b2 = A*((A+1)+(A-1)*c-sq); a0 = (A+1)-(A-1)*c+sq; a1 = 2*((A-1)-(A+1)*c); a2 = (A+1)-(A-1)*c-sq; }
+            double x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+            for (auto& v : x) { const double y = (b0*v + b1*x1 + b2*x2 - a1*y1 - a2*y2) / a0; x2 = x1; x1 = v; y2 = y1; y1 = y; v = y; }
+            return x;
+        };
+        auto writeRec = [&](const juce::String& name, const std::vector<double>& x) {
+            juce::AudioBuffer<float> b(1, (int) x.size() + 2000);
+            b.clear();
+            for (size_t i = 0; i < x.size(); ++i) b.setSample(0, (int) i + 200, (float) (0.5 * x[i])); // latency 200 samples
+            writeWav(dir.getChildFile(name + ".wav"), b, 48000.0);
+        };
+        writeRec("T00_ref_all_noon", sweep);
+        writeRec("T13_ref_all_noon", sweep);
+        writeRec("T01_bass_min", shelf(sweep, true, -9.0));
+        writeRec("T02_bass_0900", shelf(sweep, true, -5.0));
+        writeRec("T03_bass_1500", shelf(sweep, true, 5.0));
+        writeRec("T04_bass_max", shelf(sweep, true, 9.0));
+        writeRec("T09_treble_min", shelf(sweep, false, -8.0));
+        writeRec("T12_treble_max", shelf(sweep, false, 8.0));
+        const auto ampFile = out.getChildFile("Test amp.ampsurdamp");
+        juce::String report, err;
+        const bool built = ampsurd::amp::build(dir, "Test amp", "ui_snapshot", ampFile, report, err);
+        ampsurd::amp::Profile prof;
+        const bool readOk = ampsurd::amp::read(ampFile, prof, err) && prof.steps.size() == 2 && prof.steps[0].knob == 2.0 && prof.steps[1].knob == 8.0
+                            && prof.tone != nullptr && prof.tone->knobs[0].size() == 5 && prof.tone->knobs[2].size() == 3 && prof.tone->knobs[1].empty();
+        // the measured bass max at 60 Hz ~ +9 dB shelf
+        double bassMax60 = 0.0;
+        if (readOk)
+        {
+            const auto c = prof.tone->curveDb(10, 5, 5);
+            const auto& grid = ampsurd::ToneSweep::gridHz();
+            size_t g60 = 0;
+            for (size_t g = 0; g < grid.size(); ++g) if (std::abs(grid[g] - 60) < std::abs(grid[g60] - 60)) g60 = g;
+            bassMax60 = c[g60];
+        }
+        proc->loadCapture(3, ampFile);
+        for (int t = 0; t < 600 && proc->getSlotStatus(3).state != AP::SlotState::loaded; ++t) run(20);
+        run(1500);
+        const auto st = proc->getSlotStatus(3);
+        const bool loaded = st.state == AP::SlotState::loaded && st.isAmp && st.hasTone && st.toneMask == 5 && st.fileName == "Test amp";
+        // solo amp 4 and listen to an 80 Hz tone: BASS max is about +8 dB louder there than noon
+        setP(*proc, AP::slotParamId(3, "solo"), 1.0f);
+        setP(*proc, "gateOn", 0.0f);
+        auto level80 = [&] {
+            double re = 0, im = 0;
+            for (int k = 0; k < 140; ++k)
+            {
+                juce::AudioBuffer<float> b(2, 256);
+                for (int i = 0; i < 256; ++i) { const double t = (k * 256 + i) / 48000.0; b.setSample(0, i, (float) (0.02 * std::sin(2 * juce::MathConstants<double>::pi * 80.0 * t))); b.setSample(1, i, 0.0f); }
+                proc->processBlock(b, midi);
+                if (k >= 60) for (int i = 0; i < 256; ++i) { const double t = (k * 256 + i) / 48000.0; re += b.getSample(0, i) * std::cos(2 * juce::MathConstants<double>::pi * 80.0 * t); im += b.getSample(0, i) * std::sin(2 * juce::MathConstants<double>::pi * 80.0 * t); }
+            }
+            return 20.0 * std::log10(std::sqrt(re * re + im * im) + 1e-12);
+        };
+        proc->runHousekeeping();
+        const double noon = level80();
+        setP(*proc, AP::slotParamId(3, "ampBass"), 10.0f);
+        proc->runHousekeeping();
+        run(100);
+        const double bassUp = level80();
+        setP(*proc, AP::slotParamId(3, "ampBass"), 5.0f);
+        proc->runHousekeeping();
+        run(100);
+        // GAIN: 9:00 = the first capture, 3:00 = the second -> the sound differs; halfway = a blend
+        setP(*proc, AP::slotParamId(3, "ampGain"), 2.0f);
+        run(200);
+        const double g2 = level80();
+        setP(*proc, AP::slotParamId(3, "ampGain"), 8.0f);
+        run(200);
+        const double g8 = level80();
+        // the knobs on the slot + a screenshot
+        std::unique_ptr<juce::AudioProcessorEditor> ed(proc->createEditor());
+        auto* e = dynamic_cast<AmpsurdEditor*>(ed.get());
+        e->refreshAll();
+        int knobsShown = 0;
+        std::function<void(juce::Component&)> count = [&](juce::Component& c) {
+            if (auto* sl = dynamic_cast<juce::Slider*>(&c)) if (sl->isVisible() && sl->getSliderStyle() == juce::Slider::RotaryHorizontalVerticalDrag) ++knobsShown;
+            for (auto* ch : c.getChildren()) count(*ch);
+        };
+        count(*ed);
+        setP(*proc, AP::slotParamId(3, "ampGain"), 6.5f);
+        setP(*proc, AP::slotParamId(3, "ampTreble"), 7.0f);
+        e->refreshAll();
+        save(*ed, out.getChildFile("24_ampsurd_amp.png"));
+        // presets keep the amp and its knobs
+        const auto pf = out.getChildFile("amp_test.ampsurd");
+        proc->savePreset(pf);
+        setP(*proc, AP::slotParamId(3, "ampTreble"), 5.0f);
+        proc->loadPreset(pf);
+        run(500);
+        const bool presetOk = std::abs(proc->params.getRawParameterValue(AP::slotParamId(3, "ampTreble"))->load() - 7.0f) < 0.01f
+                              && proc->getSlotStatus(3).path == ampFile.getFullPathName();
+        pf.deleteFile();
+        const bool soundOk = std::abs((bassUp - noon) - bassMax60) < 1.5 && bassMax60 > 7.0 && std::abs(g2 - g8) > 0.05;
+        const bool ok = built && readOk && loaded && soundOk && knobsShown == 3 && presetOk; // GAIN, BASS, TREBLE (no MID measured)
+        std::cout << (ok ? "[PASS]" : "[FAIL]") << " AMPSURD AMP: built from recordings (" << built << "), read back (" << readOk
+                  << ": 2 gain steps, bass 5 / treble 3 positions), loaded as an amp with tone (" << loaded << "), knobs on the slot: GAIN + the measured BASS, TREBLE ("
+                  << knobsShown << "), BASS max at 80 Hz " << juce::String(bassUp - noon, 1) << " dB (measured curve " << juce::String(bassMax60, 1)
+                  << " dB at 60 Hz), GAIN 9:00 vs 3:00 differ (" << juce::String(g2, 1) << " / " << juce::String(g8, 1) << " dB), preset keeps it ("
+                  << presetOk << ")\n";
+        if (!ok) std::cout << report << err << "\n";
+        setP(*proc, AP::slotParamId(3, "solo"), 0.0f);
+        setP(*proc, "gateOn", 1.0f);
+        for (const char* id : { "ampGain", "ampBass", "ampMid", "ampTreble" }) setP(*proc, AP::slotParamId(3, id), 5.0f);
+        proc->unloadCapture(3);
+        run(500);
+        dir.deleteRecursively();
     }
 
     // AMPSURD TONES (.ampsurdtone, owner 2026-10-30): one amp's sound - capture, pedal, IR, EQs, INPUT / OUTPUT -

@@ -45,6 +45,8 @@ public:
 
     // Audio thread. Overwrites out[0..n). n <= maxBlockSize.
     void process(const Sample* in, Sample* out, int n, bool normalise) noexcept;
+    // Audio thread, before process(): the GAIN knob of an AMPSURD amp (.ampsurdamp); ignored by plain captures.
+    void setMorphPosition(double knob) noexcept { morph = knob; }
 
     // Audio thread: true when a real (non-empty) capture is currently playing.
     bool hasActiveCapture() const noexcept { return active != nullptr && !active->isEmpty(); }
@@ -64,6 +66,7 @@ private:
     // Owned by the audio thread while it runs; touched elsewhere only in prepare()/destructor.
     CaptureModel* active = nullptr;
     uint32_t swaps = 0;
+    double morph = -1.0;
     CaptureModel* fadingOut = nullptr;
     int fadePos = 0;
     int fadeLength = 1;

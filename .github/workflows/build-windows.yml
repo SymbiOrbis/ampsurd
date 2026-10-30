@@ -33,7 +33,7 @@ jobs:
         run: cmake -S . -B build -A x64 -DAMPSURD_BUILD_UI_SNAPSHOT=ON
 
       - name: Build plugin and tools
-        run: cmake --build build --config Release --target Ampsurd_VST3 Ampsurd_Standalone recorder_test tone_test ampsurd_render ampsurd_bench limiter_test engine_test gate_tuner_test frankenstein_test ir_test fx_test pitch_test mix_experiment root_test doubler_test cab_ir_test --parallel
+        run: cmake --build build --config Release --target Ampsurd_VST3 Ampsurd_Standalone recorder_test tone_test ampsurd_render ampsurd_bench limiter_test engine_test gate_tuner_test frankenstein_test ir_test fx_test pitch_test mix_experiment root_test doubler_test cab_ir_test amp_profile_test --parallel
 
       - name: Smoke test (load NAM Core example A2 model, hot-swap stress)
         shell: pwsh
@@ -60,6 +60,7 @@ jobs:
           Run-Test ./build/tools/Release/root_test.exe @()
           Run-Test ./build/tools/Release/doubler_test.exe @()
           Run-Test ./build/tools/Release/cab_ir_test.exe @()
+          Run-Test ./build/tools/Release/amp_profile_test.exe @("build/_deps/namcore-src/example_models/A2.nam", "build/_deps/namcore-src/example_models/wavenet_a1_standard.nam")
           $env:AMPSURD_FORCE_PLAYER = "1"
           Run-Test ./build/Release/recorder_test.exe @()
           $env:AMPSURD_FORCE_PLAYER = "0"
@@ -127,7 +128,7 @@ jobs:
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DAMPSURD_BUILD_UI_SNAPSHOT=ON
 
       - name: Build plugin and tools
-        run: cmake --build build --target Ampsurd_VST3 Ampsurd_AU Ampsurd_Standalone recorder_test tone_test ampsurd_render ampsurd_bench limiter_test engine_test gate_tuner_test frankenstein_test ir_test fx_test pitch_test root_test doubler_test cab_ir_test --parallel
+        run: cmake --build build --target Ampsurd_VST3 Ampsurd_AU Ampsurd_Standalone recorder_test tone_test ampsurd_render ampsurd_bench limiter_test engine_test gate_tuner_test frankenstein_test ir_test fx_test pitch_test root_test doubler_test cab_ir_test amp_profile_test --parallel
 
       - name: Check the binaries are universal (Apple Silicon + Intel)
         run: |
@@ -156,6 +157,7 @@ jobs:
           run build/tools/root_test
           run build/tools/doubler_test
           run build/tools/cab_ir_test
+          run build/tools/amp_profile_test build/_deps/namcore-src/example_models/A2.nam build/_deps/namcore-src/example_models/wavenet_a1_standard.nam
           AMPSURD_FORCE_PLAYER=1 run build/recorder_test
           run build/tone_test $M/A2.nam 48000 128 12
           run build/tools/engine_test $M/A2.nam $M/wavenet_a1_standard.nam

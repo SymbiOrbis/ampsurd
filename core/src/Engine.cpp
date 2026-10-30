@@ -31,6 +31,7 @@ void Engine::prepare(double sr, int maxBlockSize, double maxDelayMs)
         pedalMix[(size_t) i].fill(0.0);
         pedalGain[(size_t) i].fill(1.0);
         irSlots[(size_t) i].prepare(sr, maxBlock);
+        toneStacks[(size_t) i].prepare(sr, maxBlock);
         irEqs[(size_t) i].prepare(sr);
         aligners[(size_t) i].prepare(sr, maxDelay);
         eqs[(size_t) i].prepare(sr);
@@ -278,7 +279,9 @@ void Engine::processPath(int i, const EngineSettings& s, const double* in, int n
         std::copy(pb, pb + n, t);
         slotIn = t;
     }
+    slots[(size_t) i].setMorphPosition(ss.ampGain);
     slots[(size_t) i].process(slotIn, buf, n, false); // level match is applied as levelGain
+    toneStacks[(size_t) i].process(buf, n, true);       // AMPSURD amp: BASS / MID / TREBLE (nothing without a filter)
 
     // cabinet IR and its own EQ (both bypassed together; no CPU without an IR)
     auto& ir = irSlots[(size_t) i];

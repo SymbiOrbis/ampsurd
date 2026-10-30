@@ -162,6 +162,30 @@ void LookAndFeel::drawButtonText(juce::Graphics& g, juce::TextButton& b, bool, b
     g.drawFittedText(b.getButtonText(), b.getLocalBounds().reduced(3, 0), juce::Justification::centred, 1, 0.85f);
 }
 
+// amp knobs (AMPSURD amps): a thin ring from 7 to 5 o'clock, the set part lighter, a pointer line - no colour coding
+void LookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int w, int h, float pos, float startAngle, float endAngle, juce::Slider& s)
+{
+    using namespace colours;
+    const auto area = juce::Rectangle<float>((float) x, (float) y, (float) w, (float) h).reduced(3.0f);
+    const float d = juce::jmin(area.getWidth(), area.getHeight());
+    const auto c = area.getCentre();
+    const float r = d * 0.5f, angle = startAngle + pos * (endAngle - startAngle);
+    const bool on = s.isEnabled();
+    juce::Path ring, value;
+    ring.addCentredArc(c.x, c.y, r - 1.5f, r - 1.5f, 0.0f, startAngle, endAngle, true);
+    value.addCentredArc(c.x, c.y, r - 1.5f, r - 1.5f, 0.0f, startAngle, angle, true);
+    g.setColour(line);
+    g.strokePath(ring, juce::PathStrokeType(2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    g.setColour(on ? textDim : textFaint);
+    g.strokePath(value, juce::PathStrokeType(2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    g.setColour(raised);
+    g.fillEllipse(c.x - r + 5.0f, c.y - r + 5.0f, (r - 5.0f) * 2.0f, (r - 5.0f) * 2.0f);
+    g.setColour(on ? text : textFaint);
+    const juce::Point<float> tip(c.x + (r - 5.0f) * std::sin(angle), c.y - (r - 5.0f) * std::cos(angle));
+    const juce::Point<float> base(c.x + (r * 0.25f) * std::sin(angle), c.y - (r * 0.25f) * std::cos(angle));
+    g.drawLine({ base, tip }, 2.0f);
+}
+
 void LookAndFeel::drawLinearSlider(juce::Graphics& g, int x, int y, int w, int h, float pos, float, float,
                                    juce::Slider::SliderStyle style, juce::Slider& s)
 {

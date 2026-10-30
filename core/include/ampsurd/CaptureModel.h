@@ -60,7 +60,8 @@ public:
     // Non-RT. AMPSURD amp (.ampsurdamp, 2026-10-30): several captures of ONE amp at different GAIN knob positions
     // (`knob`, ascending, 0..10). process() plays the two captures around the current GAIN position and blends them
     // (smoothly; on a step only that capture runs). Each step is brought to the same loudness (`gain`), polarity
-    // and timing (`delay`, whole samples) as the others, so moving GAIN changes the character, not the level.
+    // and timing (`delay`, whole samples, measured from the steps' outputs) as the others, so moving GAIN changes the
+    // character, not the level. Latency = the largest step latency + delay.
     struct MorphStep
     {
         std::unique_ptr<CaptureModel> model;

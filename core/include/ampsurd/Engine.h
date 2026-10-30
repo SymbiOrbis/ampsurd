@@ -64,6 +64,7 @@ struct SlotSettings
     bool irEnabled = true;      // IR ON / BYPASS (only matters when an IR is loaded)
     bool irEqEnabled = true;    // the IR's own EQ (bypassed together with the IR)
     std::array<EqBand, ParametricEq::kNumBands> irEq = ParametricEq::defaultBands();
+    double ampGain = -1.0;      // AMPSURD amp: its GAIN knob (0..10); -1 = a plain capture
     std::array<bool, kNumPedals> pedalOn {};          // a pedal capture before the amp (only if one is loaded)
     std::array<double, kNumPedals> pedalLevel { 1.0, 1.0 }; // its output level into the next block (linear)
 };
@@ -93,6 +94,9 @@ public:
     // Bypassed or empty = the amp gets the guitar straight (20 ms crossfade); a bypassed pedal does not run.
     CaptureSlot& getPedal(int i, int k) noexcept { return pedals[(size_t) i][(size_t) k]; }
     IrSlot& getIrSlot(int i) noexcept { return irSlots[(size_t) i]; }
+    // AMPSURD amp: its tone controls (BASS / MID / TREBLE) as a short minimum-phase filter after the amp, before the
+    // cabinet IR. Empty (all knobs at noon, or a plain capture) = the signal passes untouched.
+    IrSlot& getToneStack(int i) noexcept { return toneStacks[(size_t) i]; }
 
     // Any thread. C[i][j] = covariance of aligned capture outputs; valid[i] = slot i measured.
     // This form has no band data: the blend's tone is not corrected.
@@ -161,6 +165,7 @@ private:
     std::array<std::array<double, kNumPedals>, kNumSlots> pedalMix {}, pedalGain {}; // smoothed in / out, level
     std::vector<double> pedalBuf;                // one per slot
     std::array<IrSlot, kNumSlots> irSlots;
+    std::array<IrSlot, kNumSlots> toneStacks;
     std::array<ParametricEq, kNumSlots> irEqs;
     std::array<PathAligner, kNumSlots> aligners;
     std::array<ParametricEq, kNumSlots> eqs;

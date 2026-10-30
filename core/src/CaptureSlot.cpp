@@ -87,7 +87,12 @@ void CaptureSlot::process(const Sample* in, Sample* out, int n, bool normalise) 
         }
     }
 
-    // 2. Run the active capture.
+    // 2. Run the active capture (an AMPSURD amp gets its GAIN position first).
+    if (morph >= 0.0)
+    {
+        if (active != nullptr && active->isMorph()) active->setMorphPosition(morph);
+        if (fadingOut != nullptr && fadingOut->isMorph()) fadingOut->setMorphPosition(morph);
+    }
     if (active != nullptr)
         active->process(in, out, n, normalise);
     else

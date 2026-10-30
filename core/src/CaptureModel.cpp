@@ -234,12 +234,8 @@ void CaptureModel::prepare(double hostSampleRate, int maxBlockSize)
         }
         stepDelayLines.assign(steps.size(), {});
         stepDelayPos.assign(steps.size(), 0);
-        for (size_t i = 0; i < steps.size(); ++i)
-        {
-            // every step ends up at the same total latency: its own (resampling) latency + its alignment delay + the rest
-            const int total = std::max(0, maxLatency - steps[i].model->getLatencySamples());
-            stepDelayLines[i].assign((size_t) total + 1, 0.0);
-        }
+        // `delay` aligns the steps as they sound (it was measured from their outputs, resampling latency included)
+        for (size_t i = 0; i < steps.size(); ++i) stepDelayLines[i].assign((size_t) std::max(0, steps[i].delay) + 1, 0.0);
         latencySamples = maxLatency;
         morphA.assign((size_t) preparedBlockSize, 0.0);
         morphB.assign((size_t) preparedBlockSize, 0.0);

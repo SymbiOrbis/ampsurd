@@ -57,6 +57,7 @@ public:
     void drawLinearSlider(juce::Graphics&, int x, int y, int w, int h, float pos, float minPos, float maxPos,
                           juce::Slider::SliderStyle, juce::Slider&) override;
     juce::Slider::SliderLayout getSliderLayout(juce::Slider&) override;
+    void drawRotarySlider(juce::Graphics&, int x, int y, int w, int h, float pos, float startAngle, float endAngle, juce::Slider&) override;
     juce::Label* createSliderTextBox(juce::Slider&) override;
 
     void drawPopupMenuBackground(juce::Graphics&, int w, int h) override;

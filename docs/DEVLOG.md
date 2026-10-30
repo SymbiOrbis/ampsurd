@@ -6,6 +6,22 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-30 — Session 4d: AMPSURD amp (.ampsurdamp) - Claude (Opus 5.5)
+
+- Owner: a new format with real amp knob behaviour, recognised alongside .nam, .ampsurd presets / packs and tones.
+- docs/AMPSURD_AMP.md. Core: CaptureModel::makeMorph (GAIN: the two captures around the knob blended, per-step
+  level / polarity / delay; morphPair), ToneSweep (the owner's sweep file bit-identical, analysis with loud / quiet
+  choice), ToneStack (interpolated curves, minimum-phase FIR). Engine: per-slot tone-stack IrSlot after the amp
+  (empty = untouched), SlotSettings::ampGain -> CaptureSlot::setMorphPosition. Plugin: AmpProfileFile (zip read /
+  unpack to a cache folder, builder from a folder of recordings), AmpsurdProcessor::loadSlotModel (every place that
+  loads a slot's model: load, re-measure, INPUT curve, pedal re-measure; steps measured once per file / rate / ECO and
+  cached), params sN_ampGain / Bass / Mid / Treble, updateToneStacks() in the timer. UI: rotary knobs under the name
+  on the slot (only the measured tone knobs), LookAndFeel::drawRotarySlider, LOAD NAM / drop accept .ampsurdamp,
+  settings menu "Build an AMPSURD amp from recordings...".
+- Tests: amp_profile_test (new, CI), ui_snapshot AMPSURD AMP (build from synthetic recordings -> load -> BASS max
+  +8.2 dB at 80 Hz vs the measured +8.8 dB at 60 Hz, GAIN steps differ, preset keeps knobs). All suites pass.
+- Not testable here: real recordings of the owner's amp (sheet + sweep file sent).
+
 ## 2026-10-30 — Session 4c: AMPSURD tones (.ampsurdtone) - Claude (Opus 5.5)
 
 - Owner: a new file format for ONE tone - an amp-only capture + IR + EQs + effects / levels of that amp - without

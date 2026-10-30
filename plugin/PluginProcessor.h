@@ -20,6 +20,7 @@
 #if AMPSURD_ROOT
   #include "ampsurd/RootEnhancer.h"
 #endif
+#include "ampsurd/AmpProfile.h"
 #include "ampsurd/CabIrModel.h"
 #include "ampsurd/Engine.h"
 #include "ampsurd/NoiseGate.h"
@@ -145,6 +146,9 @@ public:
         juce::String info;      // details for tooltips / diagnostics
         bool canEco = false;    // the file contains an A2 Lite model (ECO button available)
         bool ecoActive = false; // the Lite model is running
+        bool isAmp = false;     // an AMPSURD amp (.ampsurdamp): GAIN knob
+        bool hasTone = false;   // ... with BASS / MID / TREBLE
+        int toneMask = 0;       // which of them were measured (bit 0 BASS, 1 MID, 2 TREBLE)
     };
     // --- pedal captures BEFORE an amp (serial chain, owner 2026-10-28; message thread): e.g. a boost or overdrive
     //     capture driving the amp capture. Measured with the amp (alignment, level match and INPUT curve include
@@ -387,6 +391,8 @@ private:
         std::atomic<float>* drive = nullptr;    // per-amp INPUT (dB): drives this capture harder / softer
         std::atomic<float>* level = nullptr;    // per-amp OUTPUT (dB): deliberate level change in the mix
         std::array<std::atomic<float>*, ampsurd::kNumPedals> pedalOn {}, pedalLevel {}; // pedal captures before the amp
+        std::atomic<float>* ampGain = nullptr;  // AMPSURD amp knobs (0..10, noon = 5)
+        std::array<std::atomic<float>*, 3> ampTone {}; // BASS, MID, TREBLE
         std::array<std::atomic<float>*, kNumBands> freq {}, gain {}, q {};
     };
     std::array<SlotParams, kNumSlots> slotParams;
@@ -538,6 +544,14 @@ private:
     std::vector<double> renderPedals(int slot, std::vector<double> x, double sr, int block) const;
     void requestSlotRemeasure(int slot);                         // a pedal changed: measure the amp again
     void slotRemeasureJob(int slot, int gen);
+    // a slot's model: a .nam, or an AMPSURD amp (.ampsurdamp: gain morph; `tone` gets its tone controls)
+    ampsurd::CaptureModel::LoadResult loadSlotModel(int slot, const juce::File& file, double sr, int block, bool eco,
+                                           std::shared_ptr<const ampsurd::ToneStack>* tone = nullptr);
+    std::mutex morphCacheMutex;
+    std::map<juce::String, std::vector<std::array<double, 3>>> morphCache; // file|rate|ECO -> per step gain, polarity, delay
+    std::array<std::shared_ptr<const ampsurd::ToneStack>, kNumSlots> toneStacks {}; // statusLock
+    std::array<juce::String, kNumSlots> toneShown;                               // knobs the tone filter was made for
+    void updateToneStacks();                                                      // message thread (timer)
     void adoptIr(int slot, std::shared_ptr<IrSource> src, std::vector<double> prepared, const IrStatus& status); // configMutex held
     std::array<std::shared_ptr<const std::vector<double>>, kNumSlots> irPrepared {};
     std::array<std::shared_ptr<const std::vector<double>>, kNumSlots> rawRenders {};

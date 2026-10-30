@@ -1,4 +1,6 @@
 #include "Components.h"
+
+#include "../AmpProfileFile.h"
 #include "SaveDialog.h"
 
 #include "BinaryData.h"
@@ -291,6 +293,25 @@ void MixFader::mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDet
 // =============================================================================================
 SlotComponent::SlotComponent(AmpsurdProcessor& p, int s) : proc(p), slot(s), fader(p, s)
 {
+    {
+        const char* ids[4] { "ampGain", "ampBass", "ampMid", "ampTreble" };
+        const char* tips[4] { "GAIN of this AMPSURD amp: moves between its gain captures, like the amp's own knob (0-10, noon = 5). Double-click: 5",
+                              "BASS of this AMPSURD amp: the amp's own tone control, measured (0-10, noon = 5). Double-click: 5",
+                              "MID of this AMPSURD amp: the amp's own tone control, measured (0-10, noon = 5). Double-click: 5",
+                              "TREBLE of this AMPSURD amp: the amp's own tone control, measured (0-10, noon = 5). Double-click: 5" };
+        for (int k = 0; k < 4; ++k)
+        {
+            auto& kn = ampKnobs[(size_t) k];
+            kn.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+            kn.setTextBoxStyle(juce::Slider::NoTextBox, true, 0, 0);
+            kn.setPopupDisplayEnabled(true, true, nullptr);
+            kn.setDoubleClickReturnValue(true, 5.0);
+            kn.setWantsKeyboardFocus(false);
+            kn.setTooltip(tips[k]);
+            addChildComponent(kn);
+            ampKnobAtt[(size_t) k] = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(p.params, AmpsurdProcessor::slotParamId(s, ids[k]), kn);
+        }
+    }
     for (auto* b : { &loadButton, &editButton, &irButton, &soloButton, &muteButton, &removeButton })
         addAndMakeVisible(*b);
     irButton.onClick = [this] { if (onIrClicked) onIrClicked(slot); };
@@ -376,7 +397,13 @@ SlotComponent::~SlotComponent() = default;
 // Slot layout (300 px high): number + % / filename (+ IR line) and fader / PAN / two button rows.
 juce::Rectangle<int> SlotComponent::nameArea() const
 {
+    if (ampShown) return { 14, 40, getWidth() - 14 - 14 - 44, 52 }; // an AMPSURD amp: the knobs are under the name
     return { 14, 40, getWidth() - 14 - 14 - 44, 128 };
+}
+
+juce::Rectangle<int> SlotComponent::ampKnobArea() const
+{
+    return { 14, 96, getWidth() - 14 - 14 - 44, 50 };
 }
 
 juce::Rectangle<int> SlotComponent::irLineArea() const
@@ -399,6 +426,16 @@ void SlotComponent::resized()
     r.removeFromBottom(10);
     fader.setBounds(r.removeFromRight(40).withTrimmedTop(22));
     ecoButton.setBounds(40, 10, 44, 20);
+    {
+        // the shown knobs side by side (GAIN alone, or GAIN + the measured tone knobs)
+        auto ka = ampKnobArea();
+        int shown = 0;
+        for (auto& kn : ampKnobs) shown += kn.isVisible() ? 1 : 0;
+        const int kw = ka.getWidth() / 4;
+        ka = ka.withSizeKeepingCentre(kw * juce::jmax(1, shown), ka.getHeight());
+        for (auto& kn : ampKnobs)
+            if (kn.isVisible()) kn.setBounds(ka.removeFromLeft(kw).withHeight(38));
+    }
     auto pa = panArea();
     pa.removeFromLeft(34);  // "PAN" label
     panValue.setBounds(pa.removeFromRight(34));
@@ -464,6 +501,18 @@ void SlotComponent::paint(juce::Graphics& g)
     {
         const bool dim = !audible || status.state != AmpsurdProcessor::SlotState::loaded;
         FilenameLayout::draw(g, status.fileName, area, dim ? textFaint : text);
+    }
+
+    // AMPSURD amp: the knobs' names
+    if (ampShown)
+    {
+        const char* names[4] { "GAIN", "BASS", "MID", "TREBLE" };
+        for (int k = 0; k < 4; ++k)
+            if (ampKnobs[(size_t) k].isVisible())
+            {
+                const auto b = ampKnobs[(size_t) k].getBounds();
+                drawLabel(g, names[k], { b.getX() - 6, b.getBottom(), b.getWidth() + 12, 12 }, textDim, juce::Justification::centred, 9.5f);
+            }
     }
 
     // pedal captures before the amp: one quiet line above the IR line
@@ -535,6 +584,19 @@ void SlotComponent::refresh(bool isSelected, bool irEditorOpen)
     selected = isSelected;
 
     const bool loaded = isLoadedState(st.state);
+    {
+        const bool amp = st.state == AmpsurdProcessor::SlotState::loaded && st.isAmp;
+        const int mask = amp ? st.toneMask : 0;
+        if (amp != ampShown || mask != toneMaskShown)
+        {
+            ampShown = amp;
+            toneMaskShown = mask;
+            ampKnobs[0].setVisible(amp);
+            for (int k = 1; k < 4; ++k) ampKnobs[(size_t) k].setVisible(amp && (mask & (1 << (k - 1))) != 0); // only measured knobs
+            resized();
+            repaint();
+        }
+    }
     editButton.setEnabled(loaded);
     ecoButton.setEnabled(st.state == AmpsurdProcessor::SlotState::loaded && st.canEco);
     ecoButton.setVisible(st.state != AmpsurdProcessor::SlotState::empty);
@@ -583,8 +645,8 @@ void SlotComponent::refresh(bool isSelected, bool irEditorOpen)
 void SlotComponent::chooseFile()
 {
     auto start = juce::File(status.path).getParentDirectory();
-    chooser = std::make_unique<juce::FileChooser>("Load a NAM capture or an AMPSURD tone into slot " + juce::String(slot + 1),
-                                                  start.isDirectory() ? start : juce::File(), "*.nam;*.ampsurdtone");
+    chooser = std::make_unique<juce::FileChooser>("Load a NAM capture, an AMPSURD amp or an AMPSURD tone into slot " + juce::String(slot + 1),
+                                                  start.isDirectory() ? start : juce::File(), "*.nam;*.ampsurdamp;*.ampsurdtone");
     chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                          [this](const juce::FileChooser& fc) {
                              const auto f = fc.getResult();
@@ -642,7 +704,7 @@ bool SlotComponent::isInterestedInFileDrag(const juce::StringArray& files)
 {
     if (files.size() != 1) return false;
     const juce::File f(files[0]);
-    return f.hasFileExtension(".nam;.ampsurdtone")
+    return f.hasFileExtension(".nam;.ampsurdamp;.ampsurdtone")
         || (f.hasFileExtension(".wav;.aif;.aiff;.flac") && proc.getSlotStatus(slot).state != AmpsurdProcessor::SlotState::empty);
 }
 
@@ -652,7 +714,7 @@ void SlotComponent::filesDropped(const juce::StringArray& files, int, int)
     if (!files.isEmpty())
     {
         const juce::File f(files[0]);
-        if (f.hasFileExtension(".nam")) proc.loadCapture(slot, f);
+        if (f.hasFileExtension(".nam;.ampsurdamp")) proc.loadCapture(slot, f);
         else if (f.hasFileExtension(".ampsurdtone")) loadToneInto(proc, slot, f);
         else proc.loadIr(slot, f); // an audio file dropped on a slot = its cabinet IR
     }
@@ -4226,6 +4288,44 @@ void HeaderBar::importPack()
                          });
 }
 
+// AMPSURD amp builder: a folder of recordings named as in the recording sheet -> Documents/AMPSURD/Amps/<name>.ampsurdamp
+void HeaderBar::buildAmpDialog()
+{
+    chooser = std::make_unique<juce::FileChooser>("Folder with the gain captures (.nam) and tone sweeps (.wav)",
+                                                  juce::File::getSpecialLocation(juce::File::userDocumentsDirectory));
+    chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories, [this](const juce::FileChooser& fc) {
+        const auto folder = fc.getResult();
+        if (!folder.isDirectory()) return;
+        auto* w = new juce::AlertWindow("Build an AMPSURD amp", "Name of the amp (e.g. EVH 5150 III Red):", juce::MessageBoxIconType::NoIcon, this);
+        w->addTextEditor("name", folder.getFileName());
+        w->addTextEditor("author", "", "Author (optional):");
+        w->addButton("BUILD", 1, juce::KeyPress(juce::KeyPress::returnKey));
+        w->addButton("CANCEL", 0, juce::KeyPress(juce::KeyPress::escapeKey));
+        w->enterModalState(true, juce::ModalCallbackFunction::create([sp = juce::Component::SafePointer<HeaderBar>(this), w, folder](int result) {
+            if (sp == nullptr || result != 1) return;
+            const auto name = juce::File::createLegalFileName(w->getTextEditorContents("name").trim());
+            const auto author = w->getTextEditorContents("author").trim();
+            if (name.isEmpty()) return;
+            const auto out = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile("AMPSURD").getChildFile("Amps")
+                                 .getChildFile(name + ".ampsurdamp");
+            juce::Thread::launch([sp, folder, name, author, out] {
+                juce::String report, error;
+                const bool ok = ampsurd::amp::build(folder, name, author, out, report, error);
+                juce::MessageManager::callAsync([sp, ok, report, error, out] {
+                    if (sp == nullptr) return;
+                    if (ok)
+                    {
+                        juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon, "AMPSURD amp built",
+                            out.getFullPathName() + "\n\nLoad it into a slot like a NAM (LOAD NAM, or drop it on a slot).\n\n" + report);
+                        out.revealToUser();
+                    }
+                    else juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, "Build an AMPSURD amp", error + "\n\n" + report);
+                });
+            });
+        }), true);
+    });
+}
+
 void HeaderBar::save(bool saveAs)
 {
     const auto current = proc.getCurrentPresetFile();
@@ -4296,6 +4396,7 @@ void HeaderBar::showSettings()
     }
     m.addSubMenu("My interface's input level: " + juce::String(dbu, 1) + " dBu", levels, true);
     m.addItem(50, "Load A2 captures as Lite (ECO) - like TONE3000", true, proc.isEcoByDefault());
+    m.addItem(90, "Build an AMPSURD amp from recordings...");
     {
         // which interface input the guitar is plugged into
         juce::PopupMenu gin;
@@ -4353,6 +4454,7 @@ void HeaderBar::showSettings()
         if (r == 20) proc.setMultiCore(!proc.isMultiCoreOn());
         if (r == 30) proc.setDragonShown(!proc.isDragonShown());
         if (r == 50) proc.setEcoByDefault(!proc.isEcoByDefault());
+        if (r == 90) juce::Timer::callAfterDelay(150, [sp = juce::Component::SafePointer<HeaderBar>(this)] { if (sp != nullptr) sp->buildAmpDialog(); });
         if (r == 70 || r == 71) proc.setGuitarInput(r - 70);
         if (auto* sa = proc.getStandaloneAudio())
         {

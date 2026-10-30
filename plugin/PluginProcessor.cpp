@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 
 #include "ampsurd/CabIrModel.h"
+#include "AmpProfileFile.h"
 
 #include <limits>
 
@@ -35,6 +36,11 @@ juce::String describe(const CaptureModel& m, const juce::File& f)
     const auto& i = m.getInfo();
     juce::String s;
     s << f.getFileName() << "\n";
+    if (m.isMorph())
+    {
+        s << i.architectureHint << "\n" << f.getParentDirectory().getFullPathName();
+        return s;
+    }
     s << i.architectureHint << " - file format " << i.fileVersion << "\n";
     s << "Model " << juce::String(i.modelSampleRate, 0) << " Hz";
     if (std::abs(i.modelSampleRate - m.getPreparedSampleRate()) > 0.5)
@@ -258,6 +264,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout AmpsurdProcessor::createLayo
                                                               NormalisableRange<float>(-24.0f, 24.0f, 0.1f), 0.0f, unitAttr("dB", 1)));
         group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { slotParamId(s, "level"), 1 }, n + "Output",
                                                               NormalisableRange<float>(-24.0f, 12.0f, 0.1f), 0.0f, unitAttr("dB", 1)));
+        // AMPSURD amp knobs (.ampsurdamp, owner 2026-10-30): GAIN morphs between the gain captures, BASS / MID / TREBLE
+        // are the measured tone controls; 0..10 like the amp's own scale (7 o'clock = 0, noon = 5)
+        for (const char* k : { "ampGain", "ampBass", "ampMid", "ampTreble" })
+        {
+            const String label = juce::String(k).substring(3);
+            group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { slotParamId(s, k), 1 }, n + "Amp " + label,
+                                                                  NormalisableRange<float>(0.0f, 10.0f, 0.01f), 5.0f,
+                                                                  AudioParameterFloatAttributes().withStringFromValueFunction([](float v, int) { return juce::String(v, 1); })));
+        }
         // pedal captures before the amp (serial chain, owner 2026-10-28): on / bypass and output level each
         for (int k = 0; k < kNumPedals; ++k)
         {
@@ -466,6 +481,10 @@ AmpsurdProcessor::AmpsurdProcessor()
         sp.eco = params.getRawParameterValue(slotParamId(s, "eco"));
         sp.drive = params.getRawParameterValue(slotParamId(s, "drive"));
         sp.level = params.getRawParameterValue(slotParamId(s, "level"));
+        sp.ampGain = params.getRawParameterValue(slotParamId(s, "ampGain"));
+        sp.ampTone[0] = params.getRawParameterValue(slotParamId(s, "ampBass"));
+        sp.ampTone[1] = params.getRawParameterValue(slotParamId(s, "ampMid"));
+        sp.ampTone[2] = params.getRawParameterValue(slotParamId(s, "ampTreble"));
         for (int k = 0; k < kNumPedals; ++k)
         {
             sp.pedalOn[(size_t) k] = params.getRawParameterValue(slotParamId(s, ("ped" + juce::String(k + 1) + "On").toRawUTF8()));
@@ -710,6 +729,7 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         ss.phaseRadians = a.phaseRadians;
         ss.levelGain = slotOutputGain(s, levelMatch);
         ss.inputTrim = std::pow(10.0, (getCalibrationTrimDb(s) + (double) sp.drive->load()) / 20.0);
+        ss.ampGain = sp.ampGain->load(); // only an AMPSURD amp uses it
         for (int k = 0; k < kNumPedals; ++k)
         {
             ss.pedalOn[(size_t) k] = sp.pedalOn[(size_t) k]->load() > 0.5f;
@@ -923,7 +943,8 @@ void AmpsurdProcessor::loadJob(int slot, juce::File file, int gen, bool /*adjust
 
     const double sr = currentSampleRate.load();
     const bool eco = slotParams[(size_t) slot].eco->load() > 0.5f;
-    auto result = CaptureModel::load(toStdPath(file), sr, currentMaxBlock, eco);
+    std::shared_ptr<const ampsurd::ToneStack> tone;
+    auto result = loadSlotModel(slot, file, sr, currentMaxBlock, eco, &tone);
     if (!result.model)
     {
         setSlotStatus(slot, { SlotState::error, file.getFullPathName(), file.getFileNameWithoutExtension(),
@@ -962,9 +983,19 @@ void AmpsurdProcessor::loadJob(int slot, juce::File file, int gen, bool /*adjust
     const auto info = describe(*result.model, file);
     captureDbu[(size_t) slot].store(newDbu);
     const bool canEco = mi.slimmable, ecoActive = mi.ecoActive;
+    const bool isAmp = result.model->isMorph();
     lastEco[(size_t) slot] = eco;
     engine.getSlot(slot).submit(std::move(result.model));
-    setSlotStatus(slot, { SlotState::loaded, file.getFullPathName(), file.getFileNameWithoutExtension(), info, canEco, ecoActive });
+    {
+        const juce::ScopedLock sl(statusLock);
+        toneStacks[(size_t) slot] = tone;
+        toneShown[(size_t) slot] = "?"; // the tone filter is (re)made by the timer
+    }
+    SlotStatus newStatus { SlotState::loaded, file.getFullPathName(), isAmp ? juce::String(mi.displayName) : file.getFileNameWithoutExtension(), info, canEco, ecoActive };
+    newStatus.isAmp = isAmp;
+    newStatus.hasTone = tone != nullptr && !tone->empty();
+    for (int k = 0; k < 3 && tone != nullptr; ++k) if (!tone->knobs[(size_t) k].empty()) newStatus.toneMask |= 1 << k;
+    setSlotStatus(slot, newStatus);
     startDropoutGrace(2000); // the new capture's first blocks
     {
         std::lock_guard<std::mutex> al(analysisMutex);
@@ -997,6 +1028,11 @@ void AmpsurdProcessor::unloadCapture(int slot)
         std::lock_guard<std::mutex> lock(configMutex);
         if (gen != slotGeneration[(size_t) slot].load()) return;
         engine.getSlot(slot).submit(CaptureModel::makeEmpty(currentSampleRate.load(), currentMaxBlock));
+        {
+            const juce::ScopedLock sl(statusLock);
+            toneStacks[(size_t) slot] = nullptr;
+            toneShown[(size_t) slot] = "?";
+        }
         captureDbu[(size_t) slot].store(std::numeric_limits<double>::quiet_NaN());
         std::array<std::shared_ptr<const CaptureAnalyzer::Measurement>, kNumSlots> snapshot;
         {
@@ -1031,7 +1067,7 @@ void AmpsurdProcessor::remeasureJob(int gen)
         const auto st = getSlotStatus(s);
         gens[(size_t) s] = slotGeneration[(size_t) s].load();
         if (st.state != SlotState::loaded) continue;
-        auto r = CaptureModel::load(toStdPath(juce::File(st.path)), sr, currentMaxBlock, slotParams[(size_t) s].eco->load() > 0.5f);
+        auto r = loadSlotModel(s, juce::File(st.path), sr, currentMaxBlock, slotParams[(size_t) s].eco->load() > 0.5f);
         if (!r.model) continue;
         const auto& mi = r.model->getInfo();
         const double g = std::pow(10.0, (gainDb + drives[(size_t) s] + trimDbFor(calibrateOn.load(), interfaceDbu.load(),
@@ -1117,7 +1153,7 @@ void AmpsurdProcessor::driveCurveJob(int slot, int gen)
         if (c.valid && std::abs(c.baseDb - baseDb) < 0.25 && c.eco == eco && c.irData == (const void*) ir.get() && c.pedals == pedals)
             return; // nothing changed
     }
-    auto r = CaptureModel::load(toStdPath(juce::File(path)), sr, block, eco);
+    auto r = loadSlotModel(slot, juce::File(path), sr, block, eco);
     if (!r.model) return;
     auto test = CaptureAnalyzer::makeTestSignal(sr);
     const double g = std::pow(10.0, baseDb / 20.0);
@@ -1486,7 +1522,7 @@ void AmpsurdProcessor::slotRemeasureJob(int slot, int gen)
     if (st.state != SlotState::loaded) return;
     const int slotGen = slotGeneration[(size_t) slot].load();
     const double sr = currentSampleRate.load();
-    auto r = CaptureModel::load(toStdPath(juce::File(st.path)), sr, currentMaxBlock, slotParams[(size_t) slot].eco->load() > 0.5f);
+    auto r = loadSlotModel(slot, juce::File(st.path), sr, currentMaxBlock, slotParams[(size_t) slot].eco->load() > 0.5f);
     if (!r.model) return;
     const auto& mi = r.model->getInfo();
     const double gainDb = inputParam->load();
@@ -1506,6 +1542,121 @@ void AmpsurdProcessor::slotRemeasureJob(int slot, int gen)
     storeMeasurement(slot, meas, gainDb);
     derived[(size_t) slot].measuredDriveDb.store(driveDb);
     requestDriveCurve(slot);
+}
+
+// ---------------------------------------------------------------------------------------------
+// AMPSURD amps (.ampsurdamp)
+// ---------------------------------------------------------------------------------------------
+CaptureModel::LoadResult AmpsurdProcessor::loadSlotModel(int slot, const juce::File& file, double sr, int block, bool eco,
+                                                         std::shared_ptr<const ampsurd::ToneStack>* tone)
+{
+    if (!file.hasFileExtension(".ampsurdamp")) return CaptureModel::load(toStdPath(file), sr, block, eco);
+    CaptureModel::LoadResult res;
+    ampsurd::amp::Profile prof;
+    juce::String err;
+    if (!ampsurd::amp::read(file, prof, err)) { res.error = err.toStdString(); return res; }
+    std::vector<CaptureModel::MorphStep> steps;
+    for (auto& st : prof.steps)
+    {
+        auto r = CaptureModel::load(toStdPath(st.nam), sr, block, eco);
+        if (!r.model) { res.error = (st.nam.getFileName() + ": ").toStdString() + r.error; return res; }
+        steps.push_back({ std::move(r.model), st.knob, 1.0, 1.0, 0 });
+    }
+    // the steps' level, polarity and timing relative to the one nearest noon - measured once per file, rate and ECO
+    const juce::String key = file.getFullPathName() + "|" + juce::String(file.getLastModificationTime().toMilliseconds()) + "|"
+                           + juce::String(sr) + "|" + (eco ? "eco" : "full");
+    std::vector<std::array<double, 3>> cal;
+    {
+        std::lock_guard<std::mutex> l(morphCacheMutex);
+        if (auto it = morphCache.find(key); it != morphCache.end()) cal = it->second;
+    }
+    size_t ref = 0;
+    for (size_t i = 0; i < steps.size(); ++i)
+        if (std::abs(steps[i].knob - 5.0) < std::abs(steps[ref].knob - 5.0)) ref = i;
+    if (cal.size() != steps.size())
+    {
+        auto test = CaptureAnalyzer::makeTestSignal(sr);
+        const double g = std::pow(10.0, inputParam->load() / 20.0);
+        for (double& v : test) v *= g;
+        std::vector<std::shared_ptr<const CaptureAnalyzer::Measurement>> meas;
+        std::vector<double> loud;
+        for (auto& st : steps)
+        {
+            auto m = CaptureAnalyzer::measure(CaptureAnalyzer::render(*st.model, test, false), sr);
+            loud.push_back(CaptureAnalyzer::loudnessDb(*m));
+            meas.push_back(m);
+            st.model->prepare(sr, block);
+        }
+        std::vector<double> rel(steps.size(), 0.0), pol(steps.size(), 1.0);
+        for (size_t i = 0; i < steps.size(); ++i)
+        {
+            if (i == ref) continue;
+            std::array<std::shared_ptr<const CaptureAnalyzer::Measurement>, kNumSlots> pair {};
+            pair[0] = meas[ref];
+            pair[1] = meas[i];
+            const auto rig = CaptureAnalyzer::analyseRig(pair);
+            if (rig != nullptr && rig->align[1].reliable)
+            {
+                rel[i] = rig->autoDelay[1] - rig->autoDelay[0];
+                pol[i] = rig->align[1].polarity * rig->align[0].polarity;
+            }
+        }
+        const double minRel = *std::min_element(rel.begin(), rel.end());
+        cal.clear();
+        for (size_t i = 0; i < steps.size(); ++i)
+            cal.push_back({ std::pow(10.0, (loud[ref] - loud[i]) / 20.0), pol[i], std::round(rel[i] - minRel) });
+        std::lock_guard<std::mutex> l(morphCacheMutex);
+        morphCache[key] = cal;
+    }
+    for (size_t i = 0; i < steps.size(); ++i)
+    {
+        steps[i].gain = cal[i][0];
+        steps[i].polarity = cal[i][1];
+        steps[i].delay = (int) cal[i][2];
+    }
+    auto info = steps[ref].model->getInfo();
+    info.filePath = toStdPath(file).string();
+    info.displayName = prof.name.toStdString();
+    info.architecture = "AMPSURD amp";
+    info.architectureHint = ("AMPSURD amp: " + juce::String((int) steps.size()) + " gain captures"
+                             + (prof.tone != nullptr && !prof.tone->empty() ? juce::String(" + tone controls") : juce::String())
+                             + (prof.author.isNotEmpty() ? " - " + prof.author : juce::String())).toStdString();
+    info.slimmable = std::all_of(steps.begin(), steps.end(), [](const CaptureModel::MorphStep& m) { return m.model->getInfo().slimmable; });
+    info.ecoActive = eco && info.slimmable;
+    res.model = CaptureModel::makeMorph(std::move(steps), info, sr, block);
+    res.model->setMorphPosition(slotParams[(size_t) slot].ampGain->load());
+    if (tone != nullptr) *tone = prof.tone;
+    return res;
+}
+
+void AmpsurdProcessor::updateToneStacks()
+{
+    const double sr = currentSampleRate.load();
+    for (int s = 0; s < kNumSlots; ++s)
+    {
+        std::shared_ptr<const ampsurd::ToneStack> ts;
+        juce::String shown;
+        {
+            const juce::ScopedLock sl(statusLock);
+            ts = toneStacks[(size_t) s];
+            shown = toneShown[(size_t) s];
+        }
+        const auto& sp = slotParams[(size_t) s];
+        const juce::String want = ts == nullptr || ts->empty() ? juce::String("none")
+                                : juce::String(sp.ampTone[0]->load(), 2) + "|" + juce::String(sp.ampTone[1]->load(), 2) + "|"
+                                      + juce::String(sp.ampTone[2]->load(), 2) + "|" + juce::String(sr);
+        if (want == shown) continue;
+        if (ts == nullptr || ts->empty())
+            engine.getToneStack(s).submit(std::make_unique<ampsurd::Convolver>(std::vector<double> {}));
+        else
+        {
+            const auto curve = ts->curveDb(sp.ampTone[0]->load(), sp.ampTone[1]->load(), sp.ampTone[2]->load());
+            if (ampsurd::ToneStack::isFlat(curve)) engine.getToneStack(s).submit(std::make_unique<ampsurd::Convolver>(std::vector<double> {}));
+            else engine.getToneStack(s).submit(std::make_unique<ampsurd::Convolver>(ampsurd::ToneStack::minPhaseFir(curve, sr, 1024)));
+        }
+        const juce::ScopedLock sl(statusLock);
+        toneShown[(size_t) s] = want;
+    }
 }
 
 void AmpsurdProcessor::loadCabIr(int slot, ampsurd::CabPoint p)
@@ -1978,6 +2129,8 @@ void AmpsurdProcessor::timerCallback()
         for (int k = 0; k < kNumPedals; ++k) engine.getPedal(s, k).collectGarbage();
     }
 
+    for (int s = 0; s < kNumSlots; ++s) engine.getToneStack(s).collectGarbage();
+    updateToneStacks();
     updateCovariance(false);
     updateLatency();
     handleMidiEvents();

@@ -100,6 +100,12 @@ private:
     bool irOn = true;
     MixFader fader;
     juce::Slider panSlider;   // per-amp PAN (stereo width)
+    // AMPSURD amp (.ampsurdamp): GAIN, BASS, MID, TREBLE knobs under the name (the tone knobs only if it has them)
+    std::array<juce::Slider, 4> ampKnobs;
+    std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>, 4> ampKnobAtt;
+    bool ampShown = false;
+    int toneMaskShown = 0;
+    juce::Rectangle<int> ampKnobArea() const;
     juce::Label panValue;     // C / L35 / R20 - click and type a value
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> soloAtt, muteAtt;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> panAtt;
@@ -575,6 +581,7 @@ private:
     void showSettings();
 
     void exportPack();
+    void buildAmpDialog(); // settings menu: an AMPSURD amp from recordings
     void importPack();
 
     AmpsurdProcessor& proc;
