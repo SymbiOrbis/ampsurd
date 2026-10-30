@@ -50,7 +50,7 @@ footswitches (program change, MIDI learn), preset packs, undo / redo, A/B, fast 
 (checklist 30-33). Bundled IRs on hold (no IRs without the author's explicit consent).
 **Public beta v0.9.0 released 2026-10-14** (GitHub pre-release, unsigned):
 https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.0
-**Public beta v0.9.4 released 2026-10-30:** AMPSURD amps (.ampsurdamp: GAIN morph + measured tone controls, builder), tones (.ampsurdtone), pedals shown as stacked frames. https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.4 - Windows files to be signed by the owner.
+**Public beta v0.9.4 released 2026-10-30:** AMPSURD amps (.ampsurdamp: GAIN morph + measured tone controls, builder), tones (.ampsurdtone), pedals shown as stacked frames. https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.4 - Windows files signed (Certum) by the owner on 2026-10-30.
 
 **Public beta v0.9.3 released 2026-10-29:** AMPSURD IRs (owner's synthetic 4x12 set, calculated, map with
 hover-to-listen; mics SM57 / R121 / MD421), up to 2 pedal captures before each amp, EQ presets, easier EQ COPY
