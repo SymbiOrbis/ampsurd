@@ -6,6 +6,11 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-30 — Session 4e: release 0.9.4 - Claude (Opus 5.5)
+
+- Owner: publish (also Windows). Version 0.9.4, RELEASE_NOTES 0.9.4 (AMPSURD amps, tones, stacked pedal frames),
+  release made by the workflow. Next: owner signs the Windows files (installer/sign_release.ps1 -Version 0.9.4).
+
 ## 2026-10-30 — Session 4d: AMPSURD amp (.ampsurdamp) - Claude (Opus 5.5)
 
 - Owner: a new format with real amp knob behaviour, recognised alongside .nam, .ampsurd presets / packs and tones.

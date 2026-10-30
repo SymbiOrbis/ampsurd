@@ -19,12 +19,16 @@ notarized (Developer ID: Radovan Glovna): double-click it and install. The first
 access to the audio input: allow it, or AMPSURD hears no guitar (the camera is asked for only when you use
 VIDEO in the player).
 
-## Next beta (in preparation - not released yet)
+## AMPSURD 0.9.4 (beta)
 
+Fifth public beta. **Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the
+standalone app. **macOS 10.15 or newer:** AMPSURD-macOS.pkg installs the app, the VST3 plugin and the Audio
+Unit. Installing over an older version is fine: presets and recordings (Documents/AMPSURD) stay untouched.
+
+New in 0.9.4:
 - AMPSURD amps (.ampsurdamp): an amp with real knobs - GAIN moves smoothly between captures of the amp at different
   gain settings, BASS / MID / TREBLE are the amp's measured tone controls. Load it like a NAM. Make your own from
   recordings (settings menu -> "Build an AMPSURD amp from recordings...", docs/AMPSURD_AMP.md).
-
 - TONES (.ampsurdtone): save one amp's whole sound - capture, pedals, cabinet IR (also AMPSURD IRs), its EQ and the
   IR's EQ, INPUT / OUTPUT - under a name, and load it into any amp with one click (EDIT -> TONES, right-click a
   slot, LOAD NAM, or drop the file on a slot). The rest of the rig stays as it is.
@@ -109,6 +113,7 @@ recorder with punch-in corrections and crossfaded edits, presets.
 Downloads (the same names in every release): AMPSURD-Windows-Setup.exe, AMPSURD-Windows.zip (VST3 + app, no
 installer), AMPSURD-macOS.pkg, AMPSURD-macOS.zip (app, VST3, Audio Unit).
 
-Earlier: 0.9.2 (2026-10-24) - first macOS release, VIDEO takes, blend tone, DOUBLER, SAVE AS pack, MUTE.
+Earlier: 0.9.3 (2026-10-29) - AMPSURD IRs, pedals before an amp, EQ presets, easier EQ COPY, Full A2 by default.
+0.9.2 (2026-10-24) - first macOS release, VIDEO takes, blend tone, DOUBLER, SAVE AS pack, MUTE.
 0.9.1 (2026-10-17) - metronome, moving amps by drag and drop, typed PAN, left / right OUTPUT meter,
 UNDO / REDO arrows.
