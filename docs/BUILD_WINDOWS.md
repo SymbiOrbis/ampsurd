@@ -313,6 +313,12 @@ REAPER picks up the new version.
     (its EDIT -> TONES -> the name, or right-click the slot -> Tones..., or LOAD NAM -> the .ampsurdtone, or drop
     the file on the slot): same capture, pedals, IR (also AMPSURD IRs), EQs, INPUT / OUTPUT; that amp's fader and
     PAN stay. Ctrl+Z takes the load back. Files in Documents\AMPSURD\Tones.
+51. AMPSURD AMP (.ampsurdamp, docs/AMPSURD_AMP.md): settings menu -> "Build an AMPSURD amp from recordings..." -> the
+    folder with the recordings named as in the recording sheet -> a name. The report lists the gain steps, the tone
+    knobs and any sweep where the quiet sweep had to be used. LOAD NAM (or drop) the .ampsurdamp from
+    Documents\AMPSURD\Amps: the slot shows GAIN (+ BASS / MID / TREBLE if measured). Turn GAIN slowly while playing:
+    smooth, no clicks, level stays about the same; BASS / TREBLE act like the amp's knobs. Save a preset / tone: the
+    knobs come back.
 
 Expected latency shown by REAPER: 104 samples at 48 kHz (2.2 ms), 123 at 44.1 kHz (2.8 ms), 242 at 96 kHz
 (2.5 ms); +5 ms while PITCH is on. Pedals add nothing (unless a pedal capture has another sample rate than

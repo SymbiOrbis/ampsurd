@@ -133,7 +133,7 @@ loading = one undo step; factory set shipped with the app. Feasible, small to me
 One amp's sound as a file (capture, pedals, IR, EQs, levels; no rig settings). Later: a tone pack that carries the
 files (like .ampsurdpack), tones in the preset menu, MIDI selection of tones.
 
-## 3s. AMPSURD amp profile (gain captures + tone stack) - PLANNED 2026-10-30
+## 3s. AMPSURD amp profile (gain captures + tone stack) - IMPLEMENTED 2026-10-30 (.ampsurdamp, docs/AMPSURD_AMP.md), awaiting the owner's recordings
 Gain captures every hour from 9 to 3 o'clock (tone at noon) + clean tone-control sweeps (bass / mid / treble);
 AMPSURD morphs between gain captures and applies the measured tone stack as an EQ; .ampsurdamp container with the
 standard .nam files inside. Recording sheet + AMPSURD_tone_sweep_48k.wav sent to the owner 2026-10-30. Later: a

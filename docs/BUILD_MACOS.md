@@ -69,7 +69,7 @@ checklist below.
 11. VIDEO takes as in item 42 there (macOS asks for the camera the first time: allow it).
 12. Blend tone as in item 43 there.
 13. DOUBLER as in item 44 there.
-14. Items 45-50 there (tester fixes - above all the pack import dialog, EQ COPY, EQ PRESETS, AMPSURD IRs,
+14. Items 45-51 there (tester fixes - above all the pack import dialog, EQ COPY, EQ PRESETS, AMPSURD IRs,
     pedals before an amp).
 
 ## Building on a Mac yourself
