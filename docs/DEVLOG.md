@@ -6,6 +6,18 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-30 — Session 4f: macOS standalone dialogs could not be typed into / browsed - Claude (Opus 5.5)
+
+- Mac tester (M5, newest macOS, 0.9.2): in Logic (plugin) Save as / renaming works; in the standalone app SAVE AS
+  keeps the default name and only saves into Documents (no typing, no browsing) - the same as the earlier "Import
+  pack dialog cannot be clicked".
+- Cause: the standalone editor took the keyboard focus every timer tick (30 Hz) when no component had it (for the
+  player's Space / R / W). With a native dialog in front, grabKeyboardFocus() made AMPSURD's window key again, so the
+  dialog lost the keys all the time. The plugin has no player, so it never grabbed - which is why Logic worked.
+- Fix: grab only while AMPSURD's own window is focused, the app is in front and no modal window (name prompts) is
+  open. Applies to every dialog (Save as, packs, LOAD NAM, IR, tones, EQ presets, builder) and the camera window.
+  Not testable here (no Mac GUI); the tester checks. The 150 ms delay after menus (session 3z) stays (harmless).
+
 ## 2026-10-30 — Session 4e: release 0.9.4 - Claude (Opus 5.5)
 
 - Owner: publish (also Windows). Version 0.9.4, RELEASE_NOTES 0.9.4 (AMPSURD amps, tones, stacked pedal frames),

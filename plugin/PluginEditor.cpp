@@ -477,7 +477,12 @@ void AmpsurdEditor::timerCallback()
             content.repaint();
         }
     }
-    // standalone: take the keyboard focus whenever nothing else has it (typing a value keeps it)
-    if (proc.getPlayer() != nullptr && isShowing() && juce::Component::getCurrentlyFocusedComponent() == nullptr)
-        grabKeyboardFocus();
+    // standalone: take the keyboard focus whenever nothing else has it (typing a value keeps it) - but ONLY while
+    // AMPSURD's own window is the active one. Grabbing it while a file dialog (Save as, Import pack, LOAD NAM), a name
+    // prompt or the camera window was in front made macOS give the keys back to AMPSURD every 30 ms: the dialog could
+    // not be typed into or browsed (Mac tester 2026-10-30, standalone only - the plugin has no player, so no grab).
+    if (proc.getPlayer() != nullptr && isShowing() && juce::Component::getCurrentlyFocusedComponent() == nullptr
+        && juce::ModalComponentManager::getInstance()->getNumModalComponents() == 0 && juce::Process::isForegroundProcess())
+        if (auto* peer = getPeer(); peer != nullptr && peer->isFocused())
+            grabKeyboardFocus();
 }

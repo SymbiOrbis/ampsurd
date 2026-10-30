@@ -19,6 +19,12 @@ notarized (Developer ID: Radovan Glovna): double-click it and install. The first
 access to the audio input: allow it, or AMPSURD hears no guitar (the camera is asked for only when you use
 VIDEO in the player).
 
+## Next beta (in preparation - not released yet)
+
+- Fix (standalone app, above all on macOS): file dialogs (Save as, Import / Export pack, LOAD NAM ...) could not be
+  typed into or browsed - the name could not be changed and only Documents could be used. AMPSURD kept taking the
+  keyboard back for its player shortcuts while a dialog was open.
+
 ## AMPSURD 0.9.4 (beta)
 
 Fifth public beta. **Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the
