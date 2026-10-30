@@ -39,6 +39,72 @@ void drawLabel(juce::Graphics& g, const juce::String& t, juce::Rectangle<int> r,
     g.setFont(Fonts::get().label(size));
     g.drawText(t, r, j, false);
 }
+
+// ---- AMPSURD tones (.ampsurdtone): one amp's sound, shared by the slot menu, LOAD NAM, drops and EDIT ----
+void loadToneInto(AmpsurdProcessor& proc, int slot, const juce::File& f)
+{
+    juce::String err;
+    if (!proc.loadTone(slot, f, err))
+        juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, "Load tone", err);
+}
+
+void saveToneDialog(AmpsurdProcessor& proc, int slot, juce::Component* parent)
+{
+    auto* w = new juce::AlertWindow("Save tone", "Name of this tone (amp " + juce::String(slot + 1)
+                                        + ": capture, pedals, IR, EQs, INPUT / OUTPUT):", juce::MessageBoxIconType::NoIcon, parent);
+    w->addTextEditor("name", proc.getSlotStatus(slot).fileName);
+    w->addButton("SAVE", 1, juce::KeyPress(juce::KeyPress::returnKey));
+    w->addButton("CANCEL", 0, juce::KeyPress(juce::KeyPress::escapeKey));
+    w->enterModalState(true, juce::ModalCallbackFunction::create([&proc, slot, w, parent](int result) {
+        if (result != 1) return;
+        const auto name = juce::File::createLegalFileName(w->getTextEditorContents("name").trim());
+        if (name.isEmpty()) return;
+        const auto f = AmpsurdProcessor::getToneFolder().getChildFile(name + ".ampsurdtone");
+        auto doSave = [&proc, slot, f] {
+            juce::String err;
+            if (!proc.saveTone(slot, f, err))
+                juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, "Save tone", err);
+        };
+        if (f.existsAsFile())
+            juce::AlertWindow::showOkCancelBox(juce::MessageBoxIconType::QuestionIcon, "Save tone", "\"" + name + "\" exists already. Replace it?",
+                                               "REPLACE", "CANCEL", parent, juce::ModalCallbackFunction::create([doSave](int ok) { if (ok == 1) doSave(); }));
+        else doSave();
+    }), true);
+}
+
+void chooseToneFile(AmpsurdProcessor& proc, int slot)
+{
+    static std::unique_ptr<juce::FileChooser> chooser;
+    AmpsurdProcessor::getToneFolder().createDirectory();
+    chooser = std::make_unique<juce::FileChooser>("Load a tone into amp " + juce::String(slot + 1), AmpsurdProcessor::getToneFolder(), "*.ampsurdtone");
+    chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles, [&proc, slot](const juce::FileChooser& fc) {
+        const auto f = fc.getResult();
+        if (f.existsAsFile()) loadToneInto(proc, slot, f);
+    });
+}
+
+// the TONE menu: saved tones (click = load), save, load from a file, the folder
+void showToneMenu(AmpsurdProcessor& proc, int slot, juce::Component* target)
+{
+    juce::PopupMenu m;
+    const auto tones = AmpsurdProcessor::listTones();
+    const bool hasCapture = proc.getSlotStatus(slot).state == AmpsurdProcessor::SlotState::loaded;
+    m.addSectionHeader("TONES (load into amp " + juce::String(slot + 1) + ")");
+    if (tones.isEmpty()) m.addItem(-1, "(none yet - save one below)", false);
+    for (int i = 0; i < tones.size(); ++i) m.addItem(100 + i, tones[i].getFileNameWithoutExtension());
+    m.addSeparator();
+    m.addItem(1, "Save this amp's tone as...", hasCapture);
+    m.addItem(2, "Load a tone from a file...");
+    m.addItem(3, "Open the tones folder");
+    m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(target),
+                    [&proc, slot, tones, sp = juce::Component::SafePointer<juce::Component>(target)](int r) {
+                        if (r >= 100 && r - 100 < tones.size()) loadToneInto(proc, slot, tones[r - 100]);
+                        // dialogs a moment after the menu has closed (macOS)
+                        else if (r == 1) juce::Timer::callAfterDelay(150, [&proc, slot, sp] { saveToneDialog(proc, slot, sp.getComponent()); });
+                        else if (r == 2) juce::Timer::callAfterDelay(150, [&proc, slot] { chooseToneFile(proc, slot); });
+                        else if (r == 3) { AmpsurdProcessor::getToneFolder().createDirectory(); AmpsurdProcessor::getToneFolder().revealToUser(); }
+                    });
+}
 } // namespace
 
 // =============================================================================================
@@ -502,12 +568,14 @@ void SlotComponent::refresh(bool isSelected, bool irEditorOpen)
 void SlotComponent::chooseFile()
 {
     auto start = juce::File(status.path).getParentDirectory();
-    chooser = std::make_unique<juce::FileChooser>("Load NAM capture into slot " + juce::String(slot + 1),
-                                                  start.isDirectory() ? start : juce::File(), "*.nam");
+    chooser = std::make_unique<juce::FileChooser>("Load a NAM capture or an AMPSURD tone into slot " + juce::String(slot + 1),
+                                                  start.isDirectory() ? start : juce::File(), "*.nam;*.ampsurdtone");
     chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                          [this](const juce::FileChooser& fc) {
                              const auto f = fc.getResult();
-                             if (f.existsAsFile()) proc.loadCapture(slot, f);
+                             if (!f.existsAsFile()) return;
+                             if (f.hasFileExtension(".ampsurdtone")) loadToneInto(proc, slot, f);
+                             else proc.loadCapture(slot, f);
                          });
 }
 
@@ -542,7 +610,12 @@ void SlotComponent::mouseUp(const juce::MouseEvent& e)
     m.addItem(1, "Load NAM...");
     m.addItem(2, "Remove NAM", status.state != AmpsurdProcessor::SlotState::empty);
     m.addItem(3, "Show file location", juce::File(status.path).exists());
+    m.addSeparator();
+    m.addItem(4, "Tones...");
     m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this), [this](int r) {
+        if (r == 4) juce::Timer::callAfterDelay(150, [sp = juce::Component::SafePointer<SlotComponent>(this)] {
+            if (sp != nullptr) showToneMenu(sp->proc, sp->slot, sp.getComponent());
+        });
         if (r == 1) // after the menu has closed (macOS: see HeaderBar::showPresetMenu)
             juce::Timer::callAfterDelay(150, [sp = juce::Component::SafePointer<SlotComponent>(this)] { if (sp != nullptr) sp->chooseFile(); });
         if (r == 2) proc.unloadCapture(slot);
@@ -554,7 +627,7 @@ bool SlotComponent::isInterestedInFileDrag(const juce::StringArray& files)
 {
     if (files.size() != 1) return false;
     const juce::File f(files[0]);
-    return f.hasFileExtension(".nam")
+    return f.hasFileExtension(".nam;.ampsurdtone")
         || (f.hasFileExtension(".wav;.aif;.aiff;.flac") && proc.getSlotStatus(slot).state != AmpsurdProcessor::SlotState::empty);
 }
 
@@ -565,6 +638,7 @@ void SlotComponent::filesDropped(const juce::StringArray& files, int, int)
     {
         const juce::File f(files[0]);
         if (f.hasFileExtension(".nam")) proc.loadCapture(slot, f);
+        else if (f.hasFileExtension(".ampsurdtone")) loadToneInto(proc, slot, f);
         else proc.loadIr(slot, f); // an audio file dropped on a slot = its cabinet IR
     }
     repaint();
@@ -1253,6 +1327,10 @@ EditPanel::EditPanel(AmpsurdProcessor& p) : proc(p), graph(p), align(p), level(p
     for (auto* b : { &eqOnButton, &flatButton, &removeButton, &closeButton })
         addAndMakeVisible(*b);
     addAndMakeVisible(copyButton);
+    addAndMakeVisible(toneButton);
+    toneButton.setTooltip("TONES: save this amp's whole sound (capture, pedals, IR, EQs, INPUT / OUTPUT) under a name, "
+                          "or load a saved tone into this amp");
+    toneButton.onClick = [this] { if (slot >= 0) showToneMenu(proc, slot, &toneButton); };
     closeButton.onClick = [this] { if (onClose) onClose(); };
     closeButton.setTooltip("Close EDIT and return to the gate and tuner");
     eqOnButton.setClickingTogglesState(true);
@@ -1284,7 +1362,7 @@ void EditPanel::setSlot(int s)
     if (s >= 0)
         eqOnAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(proc.params, AmpsurdProcessor::slotParamId(s, "eqOn"), eqOnButton);
     for (juce::Component* c : { (juce::Component*) &graph, (juce::Component*) &align, (juce::Component*) &level, (juce::Component*) &pedals, (juce::Component*) &eqOnButton,
-                                (juce::Component*) &flatButton, (juce::Component*) &removeButton, (juce::Component*) &copyButton,
+                                (juce::Component*) &flatButton, (juce::Component*) &removeButton, (juce::Component*) &copyButton, (juce::Component*) &toneButton,
                                 (juce::Component*) &closeButton })
         c->setVisible(s >= 0);
     refresh();
@@ -1304,6 +1382,8 @@ void EditPanel::resized()
     copyButton.setBounds(header.removeFromRight(100)); // wide enough for CANCEL COPY
     header.removeFromRight(8);
     eqOnButton.setBounds(header.removeFromRight(64));
+    header.removeFromRight(24);
+    toneButton.setBounds(header.removeFromRight(80));
     r.removeFromTop(10);
     auto right = r.removeFromRight(300);
     r.removeFromRight(24);

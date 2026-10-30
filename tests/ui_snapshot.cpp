@@ -923,6 +923,56 @@ int main(int argc, char** argv)
         setP(*proc, "gateOn", 1.0f);
     }
 
+    // AMPSURD TONES (.ampsurdtone, owner 2026-10-30): one amp's sound - capture, pedal, IR, EQs, INPUT / OUTPUT -
+    // saved, then loaded into another slot; the rig (mix, PAN) is not touched
+    if (argc >= 4)
+    {
+        auto run = [&](int ms) { for (int t = 0; t < ms / 20; ++t) { buf.clear(); proc->processBlock(buf, midi); proc->runHousekeeping(); pump(20); } };
+        using AP = AmpsurdProcessor;
+        auto v = [&](const juce::String& id) { return proc->params.getRawParameterValue(id)->load(); };
+        proc->loadPedal(0, 0, juce::File(argv[3]));
+        proc->loadCabIr(0, { 4.5, 52.5 });
+        setP(*proc, AP::slotParamId(0, "drive"), 4.5f);
+        setP(*proc, AP::slotParamId(0, "level"), -3.0f);
+        setP(*proc, AP::slotParamId(0, "ped1Level"), 2.0f);
+        setP(*proc, AP::bandParamId(0, 3, "gain"), 5.5f);
+        setP(*proc, AP::bandParamId(AP::irEqTarget(0), 6, "gain"), -4.0f);
+        setP(*proc, AP::slotParamId(AP::irEqTarget(0), "eqOn"), 1.0f);
+        run(2500);
+        const auto toneFile = out.getChildFile("ui_snapshot test tone.ampsurdtone");
+        juce::String err;
+        const bool saved = proc->saveTone(0, toneFile, err);
+        // into slot 3 (empty), whose PAN / mix must stay
+        setP(*proc, AP::slotParamId(2, "pan"), 40.0f);
+        const float pan3 = v(AP::slotParamId(2, "pan"));
+        const bool loaded = proc->loadTone(2, toneFile, err);
+        for (int t = 0; t < 300 && proc->getSlotStatus(2).state != AP::SlotState::loaded; ++t) run(20);
+        run(3000);
+        ampsurd::CabPoint cp;
+        const bool same = proc->getSlotStatus(2).path == proc->getSlotStatus(0).path
+                          && proc->getPedalStatus(2, 0).path == proc->getPedalStatus(0, 0).path
+                          && proc->getCabIrPoint(2, cp) && std::abs(cp.row - 4.5) < 1e-6 && std::abs(cp.mm - 52.5) < 1e-6
+                          && std::abs(v(AP::slotParamId(2, "drive")) - 4.5f) < 0.01f && std::abs(v(AP::slotParamId(2, "level")) + 3.0f) < 0.01f
+                          && std::abs(v(AP::slotParamId(2, "ped1Level")) - 2.0f) < 0.01f
+                          && std::abs(v(AP::bandParamId(2, 3, "gain")) - 5.5f) < 0.01f
+                          && std::abs(v(AP::bandParamId(AP::irEqTarget(2), 6, "gain")) + 4.0f) < 0.01f
+                          && v(AP::slotParamId(AP::irEqTarget(2), "eqOn")) > 0.5f;
+        const bool rigKept = v(AP::slotParamId(2, "pan")) == pan3;
+        juce::String badErr;
+        const bool rejects = !proc->loadTone(2, out.getChildFile("not a tone.ampsurdtone"), badErr) && badErr.isNotEmpty();
+        std::cout << (saved && loaded && same && rigKept && rejects ? "[PASS]" : "[FAIL]") << " TONES: amp 1 saved as a tone (" << saved
+                  << "), loaded into amp 3 (" << loaded << ") = the same capture, pedal, AMPSURD IR, EQs, INPUT / OUTPUT (" << same
+                  << "), amp 3's PAN kept (" << rigKept << "), a wrong file is refused (" << rejects << ") " << err << "\n";
+        toneFile.deleteFile();
+        proc->unloadCapture(2);
+        proc->removePedal(0, 0);
+        proc->removeIr(0);
+        for (const char* id : { "drive", "level", "ped1Level" }) setP(*proc, AP::slotParamId(0, id), 0.0f);
+        setP(*proc, AP::bandParamId(0, 3, "gain"), 0.0f);
+        setP(*proc, AP::slotParamId(2, "pan"), 0.0f);
+        run(1500);
+    }
+
     // Cabinet IR (file given in AMPSURD_TEST_IR)
     const juce::File irFile(juce::SystemStats::getEnvironmentVariable("AMPSURD_TEST_IR", ""));
     if (irFile.existsAsFile())

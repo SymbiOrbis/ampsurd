@@ -315,6 +315,16 @@ public:
     bool loadEqPreset(int target, const juce::File& file);
     bool loadFactoryEqPreset(int target, const juce::String& name);
 
+    // --- AMPSURD tones (.ampsurdtone, owner 2026-10-30): ONE amp as a sound of its own - the capture, its pedals,
+    //     cabinet IR (file or AMPSURD IR), ECO, INPUT / OUTPUT, the amp's EQ and the IR's EQ, pedal ON / LEVEL.
+    //     Nothing of the rig (mix share, PAN, MUTE / SOLO, alignment, global EQ / effects). The files are referred
+    //     to by path (found again by name next to the tone file or in the AMPSURD folders, like presets).
+    //     Loading is one undo step. Message thread. ---
+    static juce::File getToneFolder();                 // Documents/AMPSURD/Tones
+    static juce::Array<juce::File> listTones();        // by name
+    bool saveTone(int slot, const juce::File& file, juce::String& error) const;
+    bool loadTone(int slot, const juce::File& file, juce::String& error);
+
     // --- move an amp to another slot by mouse (message thread): the two slots swap everything (capture, IR,
     //     mix share, mute / solo, EQs, alignment, pan, levels, ECO); Frankenstein sections follow the amps ---
     void swapSlots(int a, int b);

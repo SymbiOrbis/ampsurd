@@ -275,7 +275,8 @@ private:
     AlignPanel align;
     LevelPanel level;
     PedalChain pedals;
-    juce::TextButton eqOnButton { "EQ ON" }, flatButton { "FLAT" }, removeButton { "REMOVE" }, closeButton { "CLOSE" };
+    juce::TextButton eqOnButton { "EQ ON" }, flatButton { "FLAT" }, removeButton { "REMOVE" }, closeButton { "CLOSE" },
+                     toneButton { "TONES" };
     EqCopyButton copyButton;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> eqOnAtt;
     juce::String title;

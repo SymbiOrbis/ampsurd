@@ -129,6 +129,16 @@ under any name; usable on every EQ (amp, IR, Global). Small files in Documents/A
 loading = one undo step; factory set shipped with the app. Feasible, small to medium job; ties in with 3p
 (the EQ buttons row: COPY / PASTE / a preset menu).
 
+## 3r. AMPSURD tones (.ampsurdtone) - IMPLEMENTED 2026-10-30, awaiting test
+One amp's sound as a file (capture, pedals, IR, EQs, levels; no rig settings). Later: a tone pack that carries the
+files (like .ampsurdpack), tones in the preset menu, MIDI selection of tones.
+
+## 3s. AMPSURD amp profile (gain captures + tone stack) - PLANNED 2026-10-30
+Gain captures every hour from 9 to 3 o'clock (tone at noon) + clean tone-control sweeps (bass / mid / treble);
+AMPSURD morphs between gain captures and applies the measured tone stack as an EQ; .ampsurdamp container with the
+standard .nam files inside. Recording sheet + AMPSURD_tone_sweep_48k.wav sent to the owner 2026-10-30. Later: a
+gain-conditioned model trained from the same recordings.
+
 ## 3j. Bundled cabinet IRs — ON HOLD (owner decision 2026-10-14)
 No IRs ship with AMPSURD until an author gives explicit written consent to redistribution (Jester
 Dyne's packs: pages say "free even for commercial use", no redistribution wording; the site was

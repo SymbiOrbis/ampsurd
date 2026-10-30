@@ -331,6 +331,116 @@ bool AmpsurdProcessor::loadFactoryEqPreset(int target, const juce::String& name)
 }
 
 // =============================================================================================
+// AMPSURD tones (one amp: capture + pedals + IR + its EQs and levels)
+// =============================================================================================
+namespace
+{
+// the amp's own parameters, without what belongs to the rig (its share, place and alignment)
+bool isToneParam(const juce::String& suffix)
+{
+    for (auto* rig : { "mix", "mute", "solo", "pan", "align", "time", "phase" })
+        if (suffix == rig) return false;
+    return true;
+}
+} // namespace
+
+juce::File AmpsurdProcessor::getToneFolder()
+{
+    return juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile("AMPSURD").getChildFile("Tones");
+}
+
+juce::Array<juce::File> AmpsurdProcessor::listTones()
+{
+    auto files = getToneFolder().findChildFiles(juce::File::findFiles, true, "*.ampsurdtone");
+    std::sort(files.begin(), files.end(), [](const juce::File& a, const juce::File& b) {
+        return a.getFileNameWithoutExtension().compareNatural(b.getFileNameWithoutExtension()) < 0;
+    });
+    return files;
+}
+
+bool AmpsurdProcessor::saveTone(int slot, const juce::File& file, juce::String& error) const
+{
+    const auto st = getSlotStatus(slot);
+    if (st.state != SlotState::loaded && st.state != SlotState::loading) { error = "This slot has no capture."; return false; }
+    juce::XmlElement xml("AMPSURD_TONE");
+    xml.setAttribute("version", 1);
+    xml.setAttribute("name", file.getFileNameWithoutExtension());
+    xml.setAttribute("capture", st.path);
+    xml.setAttribute("ir", getIrStatus(slot).path);
+    for (int k = 0; k < kNumPedals; ++k) xml.setAttribute("pedal" + juce::String(k + 1), getPedalStatus(slot, k).path);
+    // the amp's parameters (s1_eco, s1_b3_gain, s1_ir_eqOn, s1_ped1Level ...) without the slot number
+    const juce::String prefix = "s" + juce::String(slot + 1) + "_";
+    for (auto* p : getParameters())
+        if (auto* rp = dynamic_cast<juce::RangedAudioParameter*>(p))
+            if (rp->paramID.startsWith(prefix) && isToneParam(rp->paramID.substring(prefix.length())))
+            {
+                auto* e = xml.createNewChildElement("PARAM");
+                e->setAttribute("id", rp->paramID.substring(prefix.length()));
+                e->setAttribute("value", rp->convertFrom0to1(rp->getValue()));
+            }
+    file.getParentDirectory().createDirectory();
+    if (!xml.writeTo(file)) { error = "Could not write " + file.getFullPathName(); return false; }
+    return true;
+}
+
+bool AmpsurdProcessor::loadTone(int slot, const juce::File& file, juce::String& error)
+{
+    const auto xml = juce::parseXML(file);
+    if (xml == nullptr || !xml->hasTagName("AMPSURD_TONE")) { error = "This is not an AMPSURD tone file."; return false; }
+    const auto captureRef = xml->getStringAttribute("capture");
+    const auto capture = resolveFileRef(captureRef, file);
+    if (!capture.existsAsFile()) { error = "The capture of this tone was not found:\n" + captureRef; return false; }
+
+    // pedals first: the loader thread then measures the amp with them
+    for (int k = 0; k < kNumPedals; ++k)
+    {
+        const auto ref = xml->getStringAttribute("pedal" + juce::String(k + 1));
+        const auto cur = getPedalStatus(slot, k);
+        if (ref.isEmpty()) { if (cur.state != SlotState::empty) removePedal(slot, k); continue; }
+        const auto f = resolveFileRef(ref, file);
+        if (f.existsAsFile())
+        {
+            if (!((cur.state == SlotState::loaded || cur.state == SlotState::loading) && juce::File(cur.path) == f)) loadPedal(slot, k, f);
+        }
+        else
+        {
+            removePedal(slot, k);
+            setPedalStatus(slot, k, { SlotState::missing, ref, fileNameOfRef(ref).upToLastOccurrenceOf(".", false, false), "Pedal file not found:\n" + ref });
+        }
+    }
+    const auto cur = getSlotStatus(slot);
+    if (!((cur.state == SlotState::loaded || cur.state == SlotState::loading) && juce::File(cur.path) == capture))
+        loadCapture(slot, capture);
+
+    // the amp's settings (after loadCapture, which sets ECO to the default for a new file; a changed ECO reloads)
+    const juce::String prefix = "s" + juce::String(slot + 1) + "_";
+    for (auto* e : xml->getChildWithTagNameIterator("PARAM"))
+    {
+        const auto id = e->getStringAttribute("id");
+        if (id.isEmpty() || !isToneParam(id)) continue;
+        if (auto* p = params.getParameter(prefix + id))
+        {
+            p->beginChangeGesture();
+            p->setValueNotifyingHost(p->convertTo0to1((float) e->getDoubleAttribute("value")));
+            p->endChangeGesture();
+        }
+    }
+
+    // cabinet IR: an AMPSURD IR, a file, or none
+    const auto irRef = xml->getStringAttribute("ir");
+    ampsurd::CabPoint cp;
+    if (irRef.isEmpty()) { if (getIrStatus(slot).state != IrState::none) removeIr(slot); }
+    else if (ampsurd::CabIrModel::fromRef(irRef.toStdString(), cp)) loadCabIr(slot, cp);
+    else if (const auto f = resolveFileRef(irRef, file); f.existsAsFile()) loadIr(slot, f);
+    else
+    {
+        removeIr(slot);
+        setIrStatus(slot, { IrState::missing, irRef, fileNameOfRef(irRef).upToLastOccurrenceOf(".", false, false), "IR file not found:\n" + irRef });
+    }
+    return true;
+}
+
+// =============================================================================================
 // Moving amps between slots
 // =============================================================================================
 void AmpsurdProcessor::swapSlots(int a, int b)

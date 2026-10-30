@@ -308,6 +308,10 @@ REAPER picks up the new version.
     harder / softer. After ~1 s the amp is re-measured (alignment, level match). PEDAL 2 likewise. Save a
     preset / export a pack: the pedals come back / are inside. CPU meter: each pedal costs like an amp.
     REMOVE on the amp removes its pedals too.
+50. TONES (.ampsurdtone): EDIT -> TONES -> "Save this amp's tone as..." (a name). Then load it into ANOTHER amp
+    (its EDIT -> TONES -> the name, or right-click the slot -> Tones..., or LOAD NAM -> the .ampsurdtone, or drop
+    the file on the slot): same capture, pedals, IR (also AMPSURD IRs), EQs, INPUT / OUTPUT; that amp's fader and
+    PAN stay. Ctrl+Z takes the load back. Files in Documents\AMPSURD\Tones.
 
 Expected latency shown by REAPER: 104 samples at 48 kHz (2.2 ms), 123 at 44.1 kHz (2.8 ms), 242 at 96 kHz
 (2.5 ms); +5 ms while PITCH is on. Pedals add nothing (unless a pedal capture has another sample rate than

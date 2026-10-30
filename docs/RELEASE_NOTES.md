@@ -19,6 +19,12 @@ notarized (Developer ID: Radovan Glovna): double-click it and install. The first
 access to the audio input: allow it, or AMPSURD hears no guitar (the camera is asked for only when you use
 VIDEO in the player).
 
+## Next beta (in preparation - not released yet)
+
+- TONES (.ampsurdtone): save one amp's whole sound - capture, pedals, cabinet IR (also AMPSURD IRs), its EQ and the
+  IR's EQ, INPUT / OUTPUT - under a name, and load it into any amp with one click (EDIT -> TONES, right-click a
+  slot, LOAD NAM, or drop the file on a slot). The rest of the rig stays as it is.
+
 ## AMPSURD 0.9.3 (beta)
 
 Fourth public beta. **Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the

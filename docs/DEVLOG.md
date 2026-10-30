@@ -6,6 +6,20 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-30 — Session 4c: AMPSURD tones (.ampsurdtone) - Claude (Opus 5.5)
+
+- Owner: a new file format for ONE tone - an amp-only capture + IR + EQs + effects / levels of that amp - without
+  the rig's general settings, to save and open quickly.
+- .ampsurdtone (XML "AMPSURD_TONE" v1): capture, pedal 1 / 2, IR (file or "ampsurd-ir2:" AMPSURD IR) by path (found
+  again by name next to the tone or in the AMPSURD folders, like presets) + every parameter of that amp without its
+  slot number (ECO, INPUT / OUTPUT, the amp's EQ, IR ON and the IR's EQ, pedal ON / LEVEL). Not in it: mix share,
+  PAN, MUTE / SOLO, alignment, Global EQ / effects. AmpsurdProcessor::saveTone / loadTone (pedals first, then the
+  capture, then settings and IR; one undo step), getToneFolder() = Documents/AMPSURD/Tones.
+- UI: EDIT -> TONES (saved tones = one click to load, "Save this amp's tone as..." with a name, load from a file,
+  open the folder); slot right-click -> Tones...; LOAD NAM also opens .ampsurdtone; a tone dropped on a slot loads.
+- ui_snapshot TONES test (save amp 1 with pedal + AMPSURD IR + EQs, load into amp 3: identical, amp 3's PAN kept,
+  wrong file refused). All tests pass with / without the player.
+
 ## 2026-10-29 — Session 4b: loud click vs guitar, video playback, release 0.9.3 - Claude (Opus 5.5)
 
 - Owner (test build): IR map fine (the earlier problems were an older build); "guitar tone and click track on its
