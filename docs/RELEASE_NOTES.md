@@ -19,8 +19,13 @@ notarized (Developer ID: Radovan Glovna): double-click it and install. The first
 access to the audio input: allow it, or AMPSURD hears no guitar (the camera is asked for only when you use
 VIDEO in the player).
 
-## Next beta (in preparation - not released yet)
+## AMPSURD 0.9.5 (beta)
 
+**Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the standalone app.
+**macOS 10.15 or newer:** AMPSURD-macOS.pkg installs the app, the VST3 plugin and the Audio Unit. Installing over an
+older version is fine: presets and recordings (Documents/AMPSURD) stay untouched.
+
+New in 0.9.5:
 - Fix (standalone app, above all on macOS): file dialogs (Save as, Import / Export pack, LOAD NAM ...) could not be
   typed into or browsed - the name could not be changed and only Documents could be used. AMPSURD kept taking the
   keyboard back for its player shortcuts while a dialog was open.
@@ -119,7 +124,8 @@ recorder with punch-in corrections and crossfaded edits, presets.
 Downloads (the same names in every release): AMPSURD-Windows-Setup.exe, AMPSURD-Windows.zip (VST3 + app, no
 installer), AMPSURD-macOS.pkg, AMPSURD-macOS.zip (app, VST3, Audio Unit).
 
-Earlier: 0.9.3 (2026-10-29) - AMPSURD IRs, pedals before an amp, EQ presets, easier EQ COPY, Full A2 by default.
+Earlier: 0.9.4 (2026-10-30) - AMPSURD amps (.ampsurdamp), tones (.ampsurdtone), pedals shown as stacked frames.
+0.9.3 (2026-10-29) - AMPSURD IRs, pedals before an amp, EQ presets, easier EQ COPY, Full A2 by default.
 0.9.2 (2026-10-24) - first macOS release, VIDEO takes, blend tone, DOUBLER, SAVE AS pack, MUTE.
 0.9.1 (2026-10-17) - metronome, moving amps by drag and drop, typed PAN, left / right OUTPUT meter,
 UNDO / REDO arrows.

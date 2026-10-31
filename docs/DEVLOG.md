@@ -6,6 +6,11 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-10-31 — Session 4g: release 0.9.5 - Claude (Opus 5.5)
+
+- Owner: publish the dialog fix. Version 0.9.5, RELEASE_NOTES 0.9.5, release by the workflow. Next: owner signs the
+  Windows files (sign_release.ps1 -Version 0.9.5); the Mac tester checks Save as / Import pack in the standalone app.
+
 ## 2026-10-30 — Session 4f: macOS standalone dialogs could not be typed into / browsed - Claude (Opus 5.5)
 
 - Mac tester (M5, newest macOS, 0.9.2): in Logic (plugin) Save as / renaming works; in the standalone app SAVE AS

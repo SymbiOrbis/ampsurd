@@ -1,5 +1,5 @@
 ﻿; AMPSURD installer (Inno Setup 6). Built by GitHub Actions:
-;   ISCC.exe /DAppVersion=0.9.4 /DSourceDir=<build artefacts> installer\AMPSURD.iss
+;   ISCC.exe /DAppVersion=0.9.5 /DSourceDir=<build artefacts> installer\AMPSURD.iss
 ; Installs the VST3 plugin (C:\Program Files\Common Files\VST3) and the standalone app (Program Files),
 ; Start-menu entry, optional desktop shortcut, uninstaller. Your presets and recordings in
 ; Documents\AMPSURD are never touched (also not by the uninstaller).
