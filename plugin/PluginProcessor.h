@@ -149,6 +149,7 @@ public:
         bool isAmp = false;     // an AMPSURD amp (.ampsurdamp): GAIN knob
         bool hasTone = false;   // ... with BASS / MID / TREBLE
         int toneMask = 0;       // which of them were measured (bit 0 BASS, 1 MID, 2 TREBLE)
+        double gainMin = 0.0, gainMax = 10.0; // the GAIN positions it was recorded at (the knob moves only there)
     };
     // --- pedal captures BEFORE an amp (serial chain, owner 2026-10-28; message thread): e.g. a boost or overdrive
     //     capture driving the amp capture. Measured with the amp (alignment, level match and INPUT curve include

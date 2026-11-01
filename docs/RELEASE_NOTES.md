@@ -19,6 +19,21 @@ notarized (Developer ID: Radovan Glovna): double-click it and install. The first
 access to the audio input: allow it, or AMPSURD hears no guitar (the camera is asked for only when you use
 VIDEO in the player).
 
+## AMPSURD 0.9.8 (beta)
+
+**Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the standalone app.
+**macOS 10.15 or newer:** AMPSURD-macOS.pkg installs the app, the VST3 plugin and the Audio Unit. Installing over an
+older version is fine: presets and recordings (Documents/AMPSURD) stay untouched.
+
+New in 0.9.8:
+- AMPSURD IR map: every box shows its mic position (mm). Rows can be slid left / right (drag a row's name sideways
+  or use its < > arrows) and moved up / down (drag the name) - e.g. a bright V30 + SM57 next to a darker
+  V30 + R121 at another position. A row runs 25 -> 100 -> 25 mm, so it can be slid endlessly without a jump. The
+  centre of a box = that IR alone, anywhere else = the boxes around it blended. RESET ROWS = the normal map. Presets
+  keep the map; older presets sound exactly as before.
+- AMPSURD amps: the GAIN knob turns only over the recorded positions (e.g. 9:00 to 3:00), no dead travel.
+- AMPSURD amps: hovering the amp's name shows the whole name (the knobs hid part of it).
+
 ## AMPSURD 0.9.7 (beta)
 
 **Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the standalone app.

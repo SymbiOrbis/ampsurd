@@ -6,6 +6,13 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-01 — Session 4o: GAIN only over the recorded range; release 0.9.8 - Claude (Opus 5.5)
+
+- Owner: GAIN of an AMPSURD amp turns only 9:00 .. 3:00 (the recorded range); amps recorded wider later get the
+  wider travel automatically (the range comes from each file's steps: CaptureModel::getMorphMin / Max ->
+  SlotStatus gainMin / gainMax -> the knob's range; a value outside is pulled in). ui_snapshot: all pass.
+- Release 0.9.8 (IR map rows, full name on hover, GAIN range).
+
 ## 2026-11-01 — Session 4n: IR map with sliding / movable rows; full amp name on hover - Claude (Opus 5.5)
 
 - Owner: rows of the AMPSURD IR map slide left / right (endless) and move up / down; mm number in every box; boxes

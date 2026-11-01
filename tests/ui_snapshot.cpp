@@ -1093,8 +1093,13 @@ int main(int argc, char** argv)
         auto* e = dynamic_cast<AmpsurdEditor*>(ed.get());
         e->refreshAll();
         int knobsShown = 0;
+        bool gainRange = false;
         std::function<void(juce::Component&)> count = [&](juce::Component& c) {
-            if (auto* sl = dynamic_cast<juce::Slider*>(&c)) if (sl->isVisible() && sl->getSliderStyle() == juce::Slider::RotaryHorizontalVerticalDrag) ++knobsShown;
+            if (auto* sl = dynamic_cast<juce::Slider*>(&c)) if (sl->isVisible() && sl->getSliderStyle() == juce::Slider::RotaryHorizontalVerticalDrag)
+            {
+                ++knobsShown;
+                if (sl->getMinimum() == 2.0 && sl->getMaximum() == 8.0) gainRange = true; // GAIN turns only 9:00 .. 3:00
+            }
             for (auto* ch : c.getChildren()) count(*ch);
         };
         count(*ed);
@@ -1112,7 +1117,7 @@ int main(int argc, char** argv)
                               && proc->getSlotStatus(3).path == ampFile.getFullPathName();
         pf.deleteFile();
         const bool soundOk = std::abs((bassUp - noon) - bassMax60) < 1.5 && bassMax60 > 7.0 && std::abs(g2 - g8) > 0.05;
-        const bool ok = built && readOk && loaded && soundOk && knobsShown == 3 && presetOk; // GAIN, BASS, TREBLE (no MID measured)
+        const bool ok = built && readOk && loaded && soundOk && knobsShown == 3 && presetOk && gainRange; // GAIN, BASS, TREBLE (no MID measured)
         std::cout << (ok ? "[PASS]" : "[FAIL]") << " AMPSURD AMP: built from recordings (" << built << "), read back (" << readOk
                   << ": 2 gain steps, bass 5 / treble 3 positions), loaded as an amp with tone (" << loaded << "), knobs on the slot: GAIN + the measured BASS, TREBLE ("
                   << knobsShown << "), BASS max at 80 Hz " << juce::String(bassUp - noon, 1) << " dB (measured curve " << juce::String(bassMax60, 1)

@@ -295,7 +295,7 @@ SlotComponent::SlotComponent(AmpsurdProcessor& p, int s) : proc(p), slot(s), fad
 {
     {
         const char* ids[4] { "ampGain", "ampBass", "ampMid", "ampTreble" };
-        const char* tips[4] { "GAIN of this AMPSURD amp: moves between its gain captures, like the amp's own knob (0-10, noon = 5). Double-click: 5",
+        const char* tips[4] { "GAIN of this AMPSURD amp: moves between its gain captures, like the amp's own knob (0-10 scale, noon = 5) - it turns only over the recorded positions (e.g. 9:00 to 3:00). Double-click: 5",
                               "BASS of this AMPSURD amp: the amp's own tone control, measured (0-10, noon = 5). Double-click: 5",
                               "MID of this AMPSURD amp: the amp's own tone control, measured (0-10, noon = 5). Double-click: 5",
                               "TREBLE of this AMPSURD amp: the amp's own tone control, measured (0-10, noon = 5). Double-click: 5" };
@@ -606,6 +606,15 @@ void SlotComponent::refresh(bool isSelected, bool irEditorOpen)
     {
         const bool amp = st.state == AmpsurdProcessor::SlotState::loaded && st.isAmp;
         const int mask = amp ? st.toneMask : 0;
+        // GAIN only moves over the recorded positions (e.g. 9:00 .. 3:00); a value outside is pulled in
+        const double gMin = amp ? st.gainMin : 0.0, gMax = amp ? std::max(st.gainMax, st.gainMin + 0.01) : 10.0;
+        if (gMin != gainMinShown || gMax != gainMaxShown)
+        {
+            gainMinShown = gMin;
+            gainMaxShown = gMax;
+            ampKnobs[0].setNormalisableRange({ gMin, gMax, 0.01 });
+            ampKnobs[0].setValue(juce::jlimit(gMin, gMax, ampKnobs[0].getValue()), juce::sendNotificationSync);
+        }
         if (amp != ampShown || mask != toneMaskShown)
         {
             ampShown = amp;

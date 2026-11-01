@@ -984,6 +984,7 @@ void AmpsurdProcessor::loadJob(int slot, juce::File file, int gen, bool /*adjust
     captureDbu[(size_t) slot].store(newDbu);
     const bool canEco = mi.slimmable, ecoActive = mi.ecoActive;
     const bool isAmp = result.model->isMorph();
+    const double gainMin = result.model->getMorphMin(), gainMax = result.model->getMorphMax();
     lastEco[(size_t) slot] = eco;
     engine.getSlot(slot).submit(std::move(result.model));
     {
@@ -993,6 +994,8 @@ void AmpsurdProcessor::loadJob(int slot, juce::File file, int gen, bool /*adjust
     }
     SlotStatus newStatus { SlotState::loaded, file.getFullPathName(), isAmp ? juce::String(mi.displayName) : file.getFileNameWithoutExtension(), info, canEco, ecoActive };
     newStatus.isAmp = isAmp;
+    newStatus.gainMin = gainMin;
+    newStatus.gainMax = gainMax;
     newStatus.hasTone = tone != nullptr && !tone->empty();
     for (int k = 0; k < 3 && tone != nullptr; ++k) if (!tone->knobs[(size_t) k].empty()) newStatus.toneMask |= 1 << k;
     setSlotStatus(slot, newStatus);
