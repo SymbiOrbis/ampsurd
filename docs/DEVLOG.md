@@ -6,6 +6,17 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-01 — Session 4p: GAIN as clock, greyscale IR map, rows dragged on the boxes - Claude (Opus 5.5)
+
+- Owner: GAIN reads as the amp's clock position ("9:00" .. "15:00", 5-minute steps; typing "15:00", "3:00" or a
+  0..10 number works) - parameter text, so hosts show it too.
+- IR map boxes in greyscale: light = bright (cap edge), dark = cone, stronger steps; text dark on light boxes.
+- On the boxes: a click chooses; dragging sideways slides that row (whole boxes, the chosen point stays); dragging
+  up / down moves the point. Names still slide / move rows, < > still step.
+- ui_snapshot: all pass (30), incl. mouse drag on the boxes and click, GAIN clock text. DOUBLER test is flaky (failed
+  once with side/total 0.023, passed twice after with 0.23 / 0.31) - its threshold should get a margin.
+- Not released yet. Proposed to the owner: an event log (dropouts with reason, problems) - awaiting his yes.
+
 ## 2026-11-01 — Session 4o: GAIN only over the recorded range; release 0.9.8 - Claude (Opus 5.5)
 
 - Owner: GAIN of an AMPSURD amp turns only 9:00 .. 3:00 (the recorded range); amps recorded wider later get the

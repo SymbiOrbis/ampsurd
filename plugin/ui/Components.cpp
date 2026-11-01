@@ -295,7 +295,7 @@ SlotComponent::SlotComponent(AmpsurdProcessor& p, int s) : proc(p), slot(s), fad
 {
     {
         const char* ids[4] { "ampGain", "ampBass", "ampMid", "ampTreble" };
-        const char* tips[4] { "GAIN of this AMPSURD amp: moves between its gain captures, like the amp's own knob (0-10 scale, noon = 5) - it turns only over the recorded positions (e.g. 9:00 to 3:00). Double-click: 5",
+        const char* tips[4] { "GAIN of this AMPSURD amp: moves between its gain captures, like the amp's own knob, shown as its clock position - it turns only over the recorded positions (e.g. 9:00 to 15:00). Double-click: 12:00",
                               "BASS of this AMPSURD amp: the amp's own tone control, measured (0-10, noon = 5). Double-click: 5",
                               "MID of this AMPSURD amp: the amp's own tone control, measured (0-10, noon = 5). Double-click: 5",
                               "TREBLE of this AMPSURD amp: the amp's own tone control, measured (0-10, noon = 5). Double-click: 5" };

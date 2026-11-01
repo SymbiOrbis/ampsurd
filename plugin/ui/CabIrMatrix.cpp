@@ -332,8 +332,12 @@ void CabIrMatrix::mouseDown(const juce::MouseEvent& e)
         return;
     }
     if (!map.contains(pos)) return;
-    dragging = true;
-    choose(pointAt(pos));
+    // on the boxes: a click chooses the point; dragging sideways slides that row (whole boxes, owner 2026-11-01);
+    // dragging up / down moves the chosen point (between the rows)
+    mapDrag = RowDrag::undecided;
+    dragRow = rowAtY(pos.y);
+    dragStart = pos;
+    dragStartOffset = offsets[(size_t) dragRow];
 }
 
 void CabIrMatrix::mouseDrag(const juce::MouseEvent& e)
@@ -357,11 +361,30 @@ void CabIrMatrix::mouseDrag(const juce::MouseEvent& e)
         }
         return;
     }
+    if (mapDrag != RowDrag::none)
+    {
+        const auto delta = e.getPosition() - dragStart;
+        if (mapDrag == RowDrag::undecided && std::max(std::abs(delta.x), std::abs(delta.y)) > 5)
+        {
+            mapDrag = std::abs(delta.x) >= std::abs(delta.y) ? RowDrag::slide : RowDrag::move;
+            if (mapDrag == RowDrag::move) { dragging = true; endPreview(); }
+        }
+        if (mapDrag == RowDrag::slide)
+        {
+            const double cw = map.getWidth() / (double) M::kColumns;
+            const int want = (((dragStartOffset + (int) std::lround(delta.x / cw)) % 30) + 30) % 30;
+            if (want != offsets[(size_t) dragRow]) { offsets[(size_t) dragRow] = want; layoutChanged(); }
+        }
+        else if (mapDrag == RowDrag::move) choose(pointAt(e.getPosition()));
+        return;
+    }
     if (dragging) choose(pointAt(e.getPosition()));
 }
 
-void CabIrMatrix::mouseUp(const juce::MouseEvent&)
+void CabIrMatrix::mouseUp(const juce::MouseEvent& e)
 {
+    if (mapDrag == RowDrag::undecided) choose(pointAt(e.getMouseDownPosition())); // a click on the boxes
+    mapDrag = RowDrag::none;
     rowDrag = RowDrag::none;
     dragRow = -1;
     dragging = false;
@@ -425,7 +448,7 @@ void CabIrMatrix::paint(juce::Graphics& g)
                header.withTrimmedRight(90), juce::Justification::centredLeft, true);
 
     const float cw = (float) map.getWidth() / (float) M::kColumns, rh = (float) map.getHeight() / (float) M::kRows;
-    label(g, "MIC POSITION IN EACH BOX (MM FROM THE CENTRE: 25 = CAP EDGE, 100 = CONE).  DRAG A ROW'S NAME SIDEWAYS TO SLIDE IT, UP / DOWN TO MOVE IT.",
+    label(g, "MM FROM THE CENTRE (25 = CAP EDGE, 100 = CONE).   CLICK = CHOOSE.   DRAG A ROW SIDEWAYS = SLIDE IT.   DRAG A NAME UP / DOWN = MOVE THE ROW.",
           axis.withTrimmedTop(16), textDim, juce::Justification::centredLeft, 10.5f);
     label(g, "SPEAKER / MIC", labels.withY(axis.getY()).withHeight(30), textDim, juce::Justification::bottomLeft, 10.5f);
 
@@ -440,7 +463,7 @@ void CabIrMatrix::paint(juce::Graphics& g)
             g.drawHorizontalLine((int) y, (float) labels.getX(), (float) map.getRight());
         }
         const auto lr = rowLabel(d);
-        const bool grabbed = dragRow == d && rowDrag != RowDrag::none;
+        const bool grabbed = dragRow == d && (rowDrag != RowDrag::none || mapDrag == RowDrag::slide);
         if (grabbed || (isMouseOver(true) && lr.contains(getMouseXYRelative())))
         {
             g.setColour(text.withAlpha(0.06f));
@@ -459,10 +482,11 @@ void CabIrMatrix::paint(juce::Graphics& g)
         {
             const double mm = M::mmOnMap(offsets[(size_t) d], c);
             const auto box = juce::Rectangle<float>((float) map.getX() + cw * c, y, cw, rh).reduced(1.5f);
+            // greyscale (owner 2026-11-01): light = bright (cap edge), dark = dark (cone), a clear step from box to box
             const float bright = (float) (1.0 - (mm - M::kMinMm) / (M::kMaxMm - M::kMinMm));
-            g.setColour(accent.withAlpha(0.05f + 0.20f * bright));
+            g.setColour(juce::Colour::greyLevel(0.07f + 0.43f * bright));
             g.fillRoundedRectangle(box, 2.0f);
-            g.setColour(text.withAlpha(0.55f + 0.35f * bright));
+            g.setColour(juce::Colour::greyLevel(bright > 0.55f ? 0.05f : 0.92f).withAlpha(0.9f));
             g.setFont(Fonts::get().regular(juce::jmin(12.0f, rh * 0.45f)));
             g.drawText(juce::String((int) std::lround(mm)), box, juce::Justification::centred, false);
         }

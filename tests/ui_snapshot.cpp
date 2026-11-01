@@ -863,7 +863,28 @@ int main(int argc, char** argv)
             settleIr(1500);
             const bool kept = proc->getCabIrPoint(0, d) && d == b;
             pf2.deleteFile();
-            rowsOk = slid && moved && reset && kept;
+            // with the mouse on the boxes: dragging sideways slides that row, a click chooses
+            auto mev = [&](juce::Point<int> p, juce::Point<int> down, bool dragged) {
+                return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), p.toFloat(), juce::ModifierKeys(),
+                                        0.0f, 0.0f, 0.0f, 0.0f, 0.0f, &mx, &mx, juce::Time::getCurrentTime(), down.toFloat(),
+                                        juce::Time::getCurrentTime(), 1, dragged);
+            };
+            const auto area = mx.getMapArea();
+            const int cw = area.getWidth() / 16, rh = area.getHeight() / 9;
+            const juce::Point<int> start { area.getX() + cw * 3 + cw / 2, area.getY() + rh / 2 }; // display row 0, box 3
+            const auto before = mx.getChosen();
+            mx.mouseDown(mev(start, start, false));
+            mx.mouseDrag(mev(start + juce::Point<int> { cw, 2 }, start, true));
+            mx.mouseDrag(mev(start + juce::Point<int> { 2 * cw, 3 }, start, true));
+            mx.mouseUp(mev(start + juce::Point<int> { 2 * cw, 3 }, start, true));
+            const bool mouseSlide = mx.getOffsets()[0] == 2 && mx.getChosen().x == before.x && mx.getChosen().y == before.y;
+            const juce::Point<int> clickAt { area.getX() + cw * 10 + cw / 2, area.getY() + rh * 6 + rh / 2 }; // box 10, row 6
+            mx.mouseDown(mev(clickAt, clickAt, false));
+            mx.mouseUp(mev(clickAt, clickAt, false));
+            const bool mouseClick = std::abs(mx.getChosen().x - 10.0) < 0.05 && std::abs(mx.getChosen().y - 6.0) < 0.05;
+            mx.resetRows();
+            std::cout << "  rows with the mouse: drag sideways slides the row " << mouseSlide << ", a click chooses " << mouseClick << "\n";
+            rowsOk = slid && moved && reset && kept && mouseSlide && mouseClick;
             std::cout << "  rows: slid " << slid << ", moved " << moved << " (" << ampsurd::CabIrModel::describe(b) << "), reset " << reset
                       << ", preset keeps the map " << kept << "\n";
         }
@@ -1098,7 +1119,8 @@ int main(int argc, char** argv)
             if (auto* sl = dynamic_cast<juce::Slider*>(&c)) if (sl->isVisible() && sl->getSliderStyle() == juce::Slider::RotaryHorizontalVerticalDrag)
             {
                 ++knobsShown;
-                if (sl->getMinimum() == 2.0 && sl->getMaximum() == 8.0) gainRange = true; // GAIN turns only 9:00 .. 3:00
+                if (sl->getMinimum() == 2.0 && sl->getMaximum() == 8.0) // GAIN turns only 9:00 .. 15:00 and reads as the clock
+                    gainRange = sl->getTextFromValue(2.0) == "9:00" && sl->getTextFromValue(8.0) == "15:00" && sl->getTextFromValue(5.5) == "12:30";
             }
             for (auto* ch : c.getChildren()) count(*ch);
         };

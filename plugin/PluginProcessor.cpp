@@ -187,6 +187,23 @@ static void addEqBandParams(juce::AudioProcessorParameterGroup& group, int targe
     }
 }
 
+// AMPSURD amp GAIN on the amp's clock: 0 = 7:00, 5 = 12:00, 10 = 17:00 (24 h, like the recordings' names), 5-minute steps
+static juce::String gainClockText(float knob)
+{
+    int minutes = juce::roundToInt(juce::jlimit(0.0f, 10.0f, knob) * 60.0f / 5.0f) * 5 + 7 * 60;
+    return juce::String(minutes / 60) + ":" + juce::String(minutes % 60).paddedLeft('0', 2);
+}
+
+static float gainFromClockText(const juce::String& raw)
+{
+    const auto t = raw.trim();
+    if (!t.containsChar(':')) return juce::jlimit(0.0f, 10.0f, t.getFloatValue()); // a plain 0..10 number
+    int h = t.upToFirstOccurrenceOf(":", false, false).getIntValue();
+    const int m = t.fromFirstOccurrenceOf(":", false, false).getIntValue();
+    if (h < 7) h += 12; // 3:00 = 15:00 (a knob never points to 3 am)
+    return juce::jlimit(0.0f, 10.0f, (float) (h - 7) + (float) m / 60.0f);
+}
+
 juce::AudioProcessorValueTreeState::ParameterLayout AmpsurdProcessor::createLayout()
 {
     using namespace juce;
@@ -269,9 +286,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout AmpsurdProcessor::createLayo
         for (const char* k : { "ampGain", "ampBass", "ampMid", "ampTreble" })
         {
             const String label = juce::String(k).substring(3);
+            // GAIN reads as the amp knob's clock position (owner 2026-11-01: "9:00" .. "15:00", as the recordings are named)
+            auto attr = juce::String(k) == "ampGain"
+                            ? AudioParameterFloatAttributes()
+                                  .withStringFromValueFunction([](float v, int) { return gainClockText(v); })
+                                  .withValueFromStringFunction([](const String& t) { return gainFromClockText(t); })
+                            : AudioParameterFloatAttributes().withStringFromValueFunction([](float v, int) { return juce::String(v, 1); });
             group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { slotParamId(s, k), 1 }, n + "Amp " + label,
-                                                                  NormalisableRange<float>(0.0f, 10.0f, 0.01f), 5.0f,
-                                                                  AudioParameterFloatAttributes().withStringFromValueFunction([](float v, int) { return juce::String(v, 1); })));
+                                                                  NormalisableRange<float>(0.0f, 10.0f, 0.01f), 5.0f, attr));
         }
         // pedal captures before the amp (serial chain, owner 2026-10-28): on / bypass and output level each
         for (int k = 0; k < kNumPedals; ++k)

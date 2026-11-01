@@ -82,7 +82,7 @@ private:
     juce::TextButton closeButton { "CLOSE" }, hoverButton { "HOVER TO LISTEN" }, snapButton { "SNAP TO GRID" },
                      saveButton { "SAVE IR" }, exportButton { "EXPORT ALL 144" }, resetButton { "RESET ROWS" };
     std::array<int, 9> order { 0, 1, 2, 3, 4, 5, 6, 7, 8 }, offsets {};
-    enum class RowDrag { none, undecided, slide, move } rowDrag = RowDrag::none;
+    enum class RowDrag { none, undecided, slide, move } rowDrag = RowDrag::none, mapDrag = RowDrag::none;
     int dragRow = -1, dragStartOffset = 0;
     juce::Point<int> dragStart;
     CabPoint chosen, hover, pending, sent;
