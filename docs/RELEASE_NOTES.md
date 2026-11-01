@@ -19,6 +19,17 @@ notarized (Developer ID: Radovan Glovna): double-click it and install. The first
 access to the audio input: allow it, or AMPSURD hears no guitar (the camera is asked for only when you use
 VIDEO in the player).
 
+## AMPSURD 0.9.6 (beta)
+
+**Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the standalone app.
+**macOS 10.15 or newer:** AMPSURD-macOS.pkg installs the app, the VST3 plugin and the Audio Unit. Installing over an
+older version is fine: presets and recordings (Documents/AMPSURD) stay untouched.
+
+New in 0.9.6:
+- AMPSURD amps (.ampsurdamp): the amp's INPUT in EDIT now keeps the amp's loudness at any GAIN setting. Before, this
+  was measured only at the GAIN the amp had when it loaded, so after a big GAIN move turning INPUT could change the
+  volume slightly. Now it is measured again in the background shortly after GAIN stops moving.
+
 ## AMPSURD 0.9.5 (beta)
 
 **Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the standalone app.

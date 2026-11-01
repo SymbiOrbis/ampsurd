@@ -6,6 +6,11 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-01 — Session 4j: release 0.9.6 - Claude (Opus 5.5)
+
+- Owner: publish. Version 0.9.6 (CMakeLists, AMPSURD.iss, build_pkg.sh), RELEASE_NOTES 0.9.6, release by the
+  workflow. Next: owner signs the Windows files (sign_release.ps1 -Version 0.9.6).
+
 ## 2026-11-01 — Session 4i: amp INPUT compensation follows GAIN (AMPSURD amps) - Claude (Opus 5.5)
 
 - Owner approved. The per-amp INPUT keeps the amp's loudness through an INPUT -> loudness curve. For an AMPSURD amp
