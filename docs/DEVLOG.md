@@ -6,6 +6,21 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-01 — Session 4l: first real AMPSURD amps - Framus Cobra + Gerhat Screamer, 3 channels - Claude (Opus 5.5)
+
+- Owner's recordings (7z): NAMs named G*_gain_HHMM-00n (n = channel; NAM's own gain estimate rises with n), 42
+  rendered sweeps CH1..3_T00..T13. G2 (10:00) only for CH2 -> CH1 / CH3 have 6 gain steps (9, 11-15).
+- New dev tools (option AMPSURD_BUILD_AMP_CLI, off by default, juce_core / audio_formats only - no GUI libraries
+  needed): ampsurd_amp_build (the plugin's builder from the command line) and ampsurd_amp_check (loads an amp like
+  AMPSURD: each capture, level / timing / polarity calibration, loudness across GAIN, tone filters).
+- Findings: CH2 / CH3 saturate even at gain minimum (quiet sweep only ~5 dB below the loud one instead of 20) - the
+  curves are valid if the amp's EQ sits after its distortion (usual). CH3_T00 was 4 dB quieter than T13 and all other
+  CH3 sweeps (same shape): left out, CH3 uses T13 alone. CH1 / CH2 references agree within 0.9 dB.
+- Check: all captures load and play, filters fine. Loudness across GAIN after calibration: CH1 within 0.2 dB; CH2 /
+  CH3 dip up to ~1 dB at some in-between positions (blend of two differently distorted captures + whole-sample
+  delays). Possible improvement (owner to decide): fractional-sample alignment / loudness-compensated blend.
+- Not yet heard by ear. Amps sent to the owner (not committed).
+
 ## 2026-11-01 — Session 4k: channel number in recording track names - Claude (Opus 5.5)
 
 - Owner: both REAPER projects get the channel in front of each track name (CH1_G1_gain_0900, CH1_T00_ref_all_noon)

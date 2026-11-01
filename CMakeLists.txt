@@ -49,6 +49,19 @@ if(AMPSURD_BUILD_HOST_TEST AND AMPSURD_BUILD_PLUGIN)
   add_dependencies(plugin_host_test Ampsurd_VST3)
 endif()
 
+# Developer-only: builds an .ampsurdamp from a folder of recordings (no GUI, same code as the plugin's builder).
+option(AMPSURD_BUILD_AMP_CLI "Build the command-line AMPSURD amp builder" OFF)
+if(AMPSURD_BUILD_AMP_CLI AND AMPSURD_BUILD_PLUGIN)
+  add_executable(ampsurd_amp_build tools/amp_build_cli.cpp plugin/AmpProfileFile.cpp)
+  target_include_directories(ampsurd_amp_build PRIVATE plugin)
+  target_compile_definitions(ampsurd_amp_build PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_STANDALONE_APPLICATION=1)
+  target_link_libraries(ampsurd_amp_build PRIVATE ampsurd_core juce::juce_audio_formats juce::juce_recommended_config_flags)
+  add_executable(ampsurd_amp_check tools/amp_check_cli.cpp plugin/AmpProfileFile.cpp)
+  target_include_directories(ampsurd_amp_check PRIVATE plugin)
+  target_compile_definitions(ampsurd_amp_check PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_STANDALONE_APPLICATION=1)
+  target_link_libraries(ampsurd_amp_check PRIVATE ampsurd_core juce::juce_audio_formats juce::juce_recommended_config_flags)
+endif()
+
 # Developer-only: renders the editor to PNG and exercises loading / linked faders / presets.
 option(AMPSURD_BUILD_UI_SNAPSHOT "Build the UI snapshot test" OFF)
 if(AMPSURD_BUILD_UI_SNAPSHOT AND AMPSURD_BUILD_PLUGIN)
