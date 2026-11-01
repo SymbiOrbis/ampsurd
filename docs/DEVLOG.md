@@ -6,6 +6,15 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-01 — Session 4h: recording kit for AMPSURD amps - Claude (Opus 5.5)
+
+- Owner plans 7 gain captures per channel (9-15 o'clock, boosted by a screamer), 3 channels. Tone sweeps: screamer
+  off, gain at minimum, per channel (5150 III: one EQ per channel) - 7 NAMs + 14 WAVs per channel, 63 files.
+- Sent a REAPER project (AMPSURD_amp_recording.zip): 63 recording tracks named like the files (folders CH1-CH3), a
+  REAMP OUT track with the NAM test file / sweep under each region, 63 named regions saying what to set, notes.
+- Builder: sweep file names may carry REAPER take numbers ("-001", " (2)"). CI green.
+- Open (owner to decide): Farina deconvolution (distortion separated) + a third, quieter sweep for hot channels.
+
 ## 2026-10-31 — Session 4g: release 0.9.5 - Claude (Opus 5.5)
 
 - Owner: publish the dialog fix. Version 0.9.5, RELEASE_NOTES 0.9.5, release by the workflow. Next: owner signs the
