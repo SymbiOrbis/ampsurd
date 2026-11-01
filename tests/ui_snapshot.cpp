@@ -752,7 +752,10 @@ int main(int argc, char** argv)
         mx.setSnap(false);
         // the map's corners are the set's corners
         const auto tl = mx.pointAt(mx.positionOf({ 0, 25 }).toInt()), br = mx.pointAt(mx.positionOf({ 8, 100 }).toInt());
-        const bool mapOk = std::abs(tl.row) < 0.05 && std::abs(tl.mm - 25) < 0.3 && std::abs(br.row - 8) < 0.05 && std::abs(br.mm - 100) < 0.3;
+        // (0.9.8: a point is the pair form on the map - check its place and what is heard there)
+        const bool mapOk = std::abs(tl.y) < 0.05 && std::abs(tl.x) < 0.05 && tl.row == 0.0 && std::abs(tl.mm - 25) < 0.3 && tl.t < 0.05
+                           && std::abs(br.y - 8) < 0.05 && std::abs(br.x - 15) < 0.05 && br.rowB == 8 && br.t > 0.95 && std::abs(br.mmB - 100) < 0.3;
+        if (!mapOk) std::cout << "  map corners: " << ampsurd::CabIrModel::toRef(tl) << " / " << ampsurd::CabIrModel::toRef(br) << "\n";
         mx.choose({ 3.0, 45.0 }); // DV77 + SM57, 45 mm
         mx.flush();
         settleIr(900);
@@ -763,7 +766,7 @@ int main(int argc, char** argv)
         mx.preview({ 7.5, 80.0 });
         mx.flush();
         settleIr(900);
-        const bool previewHeard = proc->getCabIrPoint(0, got) && got.row == 7.5;
+        const bool previewHeard = proc->getCabIrPoint(0, got) && got.row == 7.0 && got.rowB == 8 && std::abs(got.t - 0.5) < 1e-6 && got.mm == 80.0;
         mx.endPreview();
         settleIr(900);
         const bool back = proc->getCabIrPoint(0, got) && got.row == 3.0 && got.mm == 45.0;
@@ -829,14 +832,49 @@ int main(int argc, char** argv)
             proc->processBlock(b, midi);
             if (k > 50) peak = juce::jmax(peak, b.getMagnitude(0, 0, 256));
         }
+        // SLIDING / MOVING ROWS (owner 2026-11-01): the chosen point stays on the screen, the rows move under it
+        bool rowsOk = false;
+        {
+            mx.choose({ 3.0, 45.0 }); // display row 3 = DV77 + SM57, box 4 = 45 mm
+            mx.flush();
+            settleIr(600);
+            mx.slideRow(3, 2); // DV77 SM57 two boxes right: box 4 now shows 35 mm
+            mx.flush();
+            settleIr(900);
+            ampsurd::CabPoint a, b;
+            const bool slid = proc->getCabIrPoint(0, a) && a.row == 3.0 && a.mm == 35.0 && a.hasLayout && a.offset[3] == 2;
+            mx.moveRow(5, 4); // DV77 MD421 (display row 5) up above DV77 R121
+            mx.choose(ampsurd::CabIrModel::atMap(mx.getOrder(), mx.getOffsets(), 4.0, 3.5)); // between DV77 SM57 and DV77 MD421
+            mx.flush();
+            settleIr(900);
+            const bool moved = proc->getCabIrPoint(0, b) && mx.getOrder()[4] == ampsurd::CabIrModel::rowOf(1, 1) && b.row == 3.0
+                               && b.mm == 35.0 && b.rowB == ampsurd::CabIrModel::rowOf(1, 1) && b.mmB == 45.0 && std::abs(b.t - 0.5) < 1e-6;
+            e->showAmpsurdIrs(0);
+            save(*ed, out.getChildFile("22b_ampsurd_irs_rows.png"));
+            // a preset keeps the map; RESET ROWS = the default map again
+            const auto pf2 = out.getChildFile("ampsurd_ir_rows.ampsurd");
+            proc->savePreset(pf2);
+            mx.resetRows();
+            mx.flush();
+            settleIr(900);
+            ampsurd::CabPoint c, d;
+            const bool reset = proc->getCabIrPoint(0, c) && c.offset == std::array<int, 9> {} && c.order[4] == 4;
+            proc->loadPreset(pf2);
+            settleIr(1500);
+            const bool kept = proc->getCabIrPoint(0, d) && d == b;
+            pf2.deleteFile();
+            rowsOk = slid && moved && reset && kept;
+            std::cout << "  rows: slid " << slid << ", moved " << moved << " (" << ampsurd::CabIrModel::describe(b) << "), reset " << reset
+                      << ", preset keeps the map " << kept << "\n";
+        }
         e->showAmpsurdIrs(-1);
         const bool closed = !mx.isVisible();
         const bool ok = shown && mapOk && chosen && previewHeard && back && undoOk && redoOk && presetOk && packOk && !packHasWav
-                        && (fileOk || !ref.existsAsFile()) && peak > 0.001f && peak < 0.9f && closed;
+                        && (fileOk || !ref.existsAsFile()) && peak > 0.001f && peak < 0.9f && closed && rowsOk;
         std::cout << (ok ? "[PASS]" : "[FAIL]") << " AMPSURD IRs: map " << shown << mapOk << ", choose " << chosen << ", hover heard "
                   << previewHeard << " and back " << back << ", one undo step (undo " << undoOk << " redo " << redoOk << "), preset "
                   << presetOk << ", pack without files " << (packOk && !packHasWav) << ", SAVE IR = owner's file " << fileOk
-                  << ", sound peak " << peak << ", closes " << closed << "\n";
+                  << ", sound peak " << peak << ", closes " << closed << ", rows " << rowsOk << "\n";
         proc->removeIr(0);
         settleIr(300);
     }
@@ -998,16 +1036,19 @@ int main(int argc, char** argv)
         run(1500);
         const auto st = proc->getSlotStatus(3);
         const bool loaded = st.state == AP::SlotState::loaded && st.isAmp && st.hasTone && st.toneMask == 5 && st.fileName == "Test amp";
-        // solo amp 4 and listen to an 80 Hz tone: BASS max is about +8 dB louder there than noon
+        // solo amp 4 and listen to an 80 Hz tone: BASS max is about +8 dB louder there than noon (quiet enough that
+        // the output limiter stays out of it: GAIN 5 is a blend of two very different captures, made up to +2.8 dB)
         setP(*proc, AP::slotParamId(3, "solo"), 1.0f);
         setP(*proc, "gateOn", 0.0f);
+        float peak80 = 0.0f;
         auto level80 = [&] {
             double re = 0, im = 0;
             for (int k = 0; k < 140; ++k)
             {
                 juce::AudioBuffer<float> b(2, 256);
-                for (int i = 0; i < 256; ++i) { const double t = (k * 256 + i) / 48000.0; b.setSample(0, i, (float) (0.02 * std::sin(2 * juce::MathConstants<double>::pi * 80.0 * t))); b.setSample(1, i, 0.0f); }
+                for (int i = 0; i < 256; ++i) { const double t = (k * 256 + i) / 48000.0; b.setSample(0, i, (float) (0.005 * std::sin(2 * juce::MathConstants<double>::pi * 80.0 * t))); b.setSample(1, i, 0.0f); }
                 proc->processBlock(b, midi);
+                if (k >= 60) peak80 = juce::jmax(peak80, b.getMagnitude(0, 0, 256));
                 if (k >= 60) for (int i = 0; i < 256; ++i) { const double t = (k * 256 + i) / 48000.0; re += b.getSample(0, i) * std::cos(2 * juce::MathConstants<double>::pi * 80.0 * t); im += b.getSample(0, i) * std::sin(2 * juce::MathConstants<double>::pi * 80.0 * t); }
             }
             return 20.0 * std::log10(std::sqrt(re * re + im * im) + 1e-12);
@@ -1018,6 +1059,7 @@ int main(int argc, char** argv)
         proc->runHousekeeping();
         run(100);
         const double bassUp = level80();
+        std::cout << "  amp test: output peak at 80 Hz with BASS max " << peak80 << "\n";
         setP(*proc, AP::slotParamId(3, "ampBass"), 5.0f);
         proc->runHousekeeping();
         run(100);

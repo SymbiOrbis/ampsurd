@@ -397,9 +397,28 @@ SlotComponent::~SlotComponent() = default;
 // Slot layout (300 px high): number + % / filename (+ IR line) and fader / PAN / two button rows.
 juce::Rectangle<int> SlotComponent::nameArea() const
 {
-    if (ampShown) return { 14, 40, getWidth() - 14 - 14 - 44, 52 }; // an AMPSURD amp: the knobs are under the name
+    if (ampShown && !nameExpanded) return { 14, 40, getWidth() - 14 - 14 - 44, 52 }; // an AMPSURD amp: the knobs are under the name
     return { 14, 40, getWidth() - 14 - 14 - 44, 128 };
 }
+
+void SlotComponent::setNameExpanded(bool on)
+{
+    on = on && ampShown;
+    if (on == nameExpanded) return;
+    nameExpanded = on;
+    ampKnobs[0].setVisible(ampShown && !on);
+    for (int k = 1; k < 4; ++k) ampKnobs[(size_t) k].setVisible(ampShown && !on && (toneMaskShown & (1 << (k - 1))) != 0);
+    repaint();
+}
+
+void SlotComponent::mouseMove(const juce::MouseEvent& e)
+{
+    // the short name's own area opens it; moving off it (e.g. down to the knobs) closes it again
+    const juce::Rectangle<int> shortName { 14, 40, getWidth() - 14 - 14 - 44, 52 };
+    setNameExpanded(shortName.contains(e.getPosition()));
+}
+
+void SlotComponent::mouseExit(const juce::MouseEvent&) { setNameExpanded(false); }
 
 juce::Rectangle<int> SlotComponent::ampKnobArea() const
 {
@@ -591,6 +610,7 @@ void SlotComponent::refresh(bool isSelected, bool irEditorOpen)
         {
             ampShown = amp;
             toneMaskShown = mask;
+            nameExpanded = false;
             ampKnobs[0].setVisible(amp);
             for (int k = 1; k < 4; ++k) ampKnobs[(size_t) k].setVisible(amp && (mask & (1 << (k - 1))) != 0); // only measured knobs
             resized();

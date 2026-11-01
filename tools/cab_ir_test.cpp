@@ -114,6 +114,46 @@ int main(int argc, char** argv)
                   && CabIrModel::fromRef("ampsurd-ir:1.0000,40.000", p) && p.row == 2.0, // old ref: V30 MD421 -> its new row
               "preset reference and names");
     }
+    // the map with sliding rows (0.9.8)
+    {
+        using L = std::array<int, 9>;
+        const L ident { 0, 1, 2, 3, 4, 5, 6, 7, 8 };
+        // a row runs there and back: 25 .. 100 .. 25, linear between box centres
+        const bool tri = CabIrModel::mmOnMap(0, 0) == 25.0 && CabIrModel::mmOnMap(0, 15) == 100.0 && CabIrModel::mmOnMap(0, 16) == 95.0
+                         && CabIrModel::mmOnMap(3, 3) == 25.0 && CabIrModel::mmOnMap(3, 2) == 30.0 && CabIrModel::mmOnMap(-2, 0) == 35.0
+                         && CabIrModel::mmOnMap(0, 2.5) == 37.5 && CabIrModel::mmOnMap(30, 4) == CabIrModel::mmOnMap(0, 4);
+        check(tri, "MAP: a slid row runs there and back (25 .. 100 .. 25), positions in between are in between");
+        // on the default map every point sounds exactly like the old simple point
+        double worst = 0.0;
+        for (const CabPoint sp : { CabPoint { 0, 25 }, CabPoint { 3.0, 45.0 }, CabPoint { 4.3, 66.0 }, CabPoint { 7.5, 80 } })
+        {
+            const auto m = CabIrModel::onDefaultMap(sp);
+            const auto a = CabIrModel::make(sp, 48000.0), b = CabIrModel::make(m, 48000.0);
+            for (size_t i = 0; i < a.size(); ++i) worst = std::max(worst, std::abs(a[i] - b[i]));
+        }
+        check(worst < 1e-9, "MAP: old presets on the default map sound the same (difference " + std::to_string(worst) + ")");
+        // a box centre = that IR alone; rows reordered and slid
+        L order { 0, 2, 1, 3, 4, 5, 6, 7, 8 }, off {};
+        off[1] = 4; // V30 + MD421 slid 4 boxes right
+        const auto centre = CabIrModel::atMap(order, off, 6.0, 1.0); // display row 1 = V30 MD421, box 6 -> index 2 = 35 mm
+        const auto pure = CabIrModel::make({ (double) CabIrModel::rowOf(0, 1), 35.0 }, 48000.0), got = CabIrModel::make(centre, 48000.0);
+        double dc = 0.0;
+        for (size_t i = 0; i < pure.size(); ++i) dc = std::max(dc, std::abs(pure[i] - got[i]));
+        // between rows: V30 SM57 at 55 mm (box 6, not slid) with V30 MD421 at 35 mm
+        const auto mid = CabIrModel::atMap(order, off, 6.0, 0.5);
+        const bool midOk = mid.row == 0 && mid.mm == 55.0 && mid.rowB == 2 && mid.mmB == 35.0 && std::abs(mid.t - 0.5) < 1e-12;
+        std::printf("  %s | %s\n", CabIrModel::describe(mid).c_str(), CabIrModel::fileName(mid).c_str());
+        check(dc < 1e-9 && midOk && CabIrModel::describe(mid) == "50 % V30 + SM57 55 mm / 50 % V30 + MD421 35 mm",
+              "MAP: a box centre = that IR alone; between rows = each row at its own position, blended");
+        // the reference keeps the sound and the map; old references still load
+        CabPoint back;
+        const bool refOk = CabIrModel::fromRef(CabIrModel::toRef(mid), back) && back == mid
+                           && CabIrModel::toRef(CabPoint { 3.25, 47.5 }).rfind("ampsurd-ir2:", 0) == 0
+                           && !CabIrModel::fromRef("ampsurd-ir3:1,2,3", back);
+        L bad { 0, 0, 1, 2, 3, 4, 5, 6, 7 };
+        const auto fixed = CabIrModel::atMap(bad, off, 0, 0);
+        check(refOk && fixed.order == ident, "MAP: the preset reference keeps the point and the map; a broken row order is reset");
+    }
     // speed (a new point while dragging must be quick)
     {
         CabIrModel::make({ 0, 25 }, 48000.0); // cache

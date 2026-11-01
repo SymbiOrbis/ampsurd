@@ -6,6 +6,23 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-01 — Session 4n: IR map with sliding / movable rows; full amp name on hover - Claude (Opus 5.5)
+
+- Owner: rows of the AMPSURD IR map slide left / right (endless) and move up / down; mm number in every box; boxes
+  stay aligned; a box's centre = the pure IR, anywhere else = blended.
+- core CabIrModel: CabPoint pair form (row at mm + rowB at mmB, weight t, blended in dB) and the map layout (order,
+  offset per row, point x / y in box units). A row runs there and back (25..100..25, period 30 boxes) so sliding never
+  jumps from bright to dark. Ref "ampsurd-ir3:...;x,y;order;offsets"; old "ampsurd-ir2" refs load on the default map
+  and sound bit-identical. cab_ir_test: 4 new checks.
+- CabIrMatrix: boxes with the mm number (shaded brighter towards the cap edge), row names with < > arrows; dragging a
+  name sideways slides the row in whole boxes, up / down moves it; RESET ROWS; the chosen point stays on the screen
+  and its sound follows the rows; presets keep the map.
+- Slot: hovering the (short) name of an AMPSURD amp shows the whole name over the knobs; moving off it shows the knobs.
+- Local GUI builds work again in this container (missing X11 headers taken from GitHub mirrors into
+  ~/tools/xh/inc, -isystem). ui_snapshot: all pass (30). Two old checks adapted: the map-corner check (pair form) and
+  the amp BASS check (test tone 12 dB lower: the compensated GAIN blend of the two very different test captures put
+  it into the output limiter).
+
 ## 2026-11-01 — Session 4m: steady GAIN between steps (sub-sample alignment + compensated blend), release 0.9.7 - Claude (Opus 5.5)
 
 - Owner approved the fix for the ~1 dB dips between gain steps (session 4l).

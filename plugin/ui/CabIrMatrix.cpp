@@ -73,7 +73,7 @@ bool CabIrMatrix::writeIrFile(CabPoint p, double rate, const juce::File& f, juce
 CabIrMatrix::CabIrMatrix(AmpsurdProcessor& p) : proc(p)
 {
     setOpaque(true);
-    for (auto* b : { &closeButton, &hoverButton, &snapButton, &saveButton, &exportButton })
+    for (auto* b : { &closeButton, &hoverButton, &snapButton, &saveButton, &exportButton, &resetButton })
     {
         addAndMakeVisible(*b);
         b->setWantsKeyboardFocus(false);
@@ -85,10 +85,12 @@ CabIrMatrix::CabIrMatrix(AmpsurdProcessor& p) : proc(p)
     hoverButton.onClick = [this] { if (!hoverButton.getToggleState()) endPreview(); };
     saveButton.onClick = [this] { saveChosen(); };
     exportButton.onClick = [this] { exportAll(); };
+    resetButton.onClick = [this] { resetRows(); };
+    resetButton.setTooltip("All rows back in their order and not slid (the default map)");
     closeButton.setTooltip("Back to the IR editor (Esc)");
     hoverButton.setTooltip("On: moving the mouse over the map lets you hear each point. Leaving the map returns to the "
                            "point you clicked. Off: only clicking / dragging changes the IR");
-    snapButton.setTooltip("On: only the 144 points of the set (the dots). Off: anything in between, too");
+    snapButton.setTooltip("On: only the centres of the boxes (one IR, not blended). Off: anything in between, too");
     saveButton.setTooltip("Saves the chosen IR as a WAV into Documents / AMPSURD / IRs (to use it anywhere)");
     exportButton.setTooltip("Saves the whole set - 3 speakers x 3 mics x 16 positions - as WAVs into Documents / AMPSURD / IRs");
 }
@@ -104,6 +106,12 @@ void CabIrMatrix::open(int s)
     slot = s;
     original = proc.getIrStatus(s);
     chosenValid = proc.getCabIrPoint(s, chosen);
+    if (chosenValid)
+    {
+        chosen = M::onDefaultMap(chosen); // a map of its own, or an old point on the default map
+        order = chosen.order;
+        offsets = chosen.offset;
+    }
     hovering = dragging = hasPending = false;
     status = chosenValid ? juce::String() : juce::String("Click or drag on the map to choose an IR (this replaces the amp's current IR).");
     setVisible(true);
@@ -133,42 +141,104 @@ void CabIrMatrix::resized()
         hoverButton.setBounds(b.removeFromLeft(150));
         b.removeFromLeft(8);
         snapButton.setBounds(b.removeFromLeft(130));
+        b.removeFromLeft(8);
+        resetButton.setBounds(b.removeFromLeft(110));
         exportButton.setBounds(b.removeFromRight(140));
         b.removeFromRight(8);
         saveButton.setBounds(b.removeFromRight(90));
     }
     r.removeFromBottom(10);
-    labels = r.removeFromLeft(150);
+    labels = r.removeFromLeft(176);
     axis = r.removeFromTop(34);
     labels.removeFromTop(34);
     map = r.reduced(0, 2);
     labels = labels.withHeight(map.getHeight()).withY(map.getY());
 }
 
+CabPoint CabIrMatrix::onMap(CabPoint p) const
+{
+    if (p.hasLayout) return M::clamp(p);
+    p = M::clamp(p);
+    return M::atMap(order, offsets, (p.mm - M::kMinMm) / M::kStepMm, p.row);
+}
+
 juce::Point<float> CabIrMatrix::positionOf(CabPoint p) const
 {
-    // cell centres: column c (0..15) at x of mm = 25 + 5c, row r at its row centre
-    const float cw = (float) map.getWidth() / 16.0f, rh = (float) map.getHeight() / (float) M::kRows;
-    const float x = (float) map.getX() + cw * (0.5f + (float) ((p.mm - M::kMinMm) / M::kStepMm));
-    const float y = (float) map.getY() + rh * (0.5f + (float) p.row);
-    return { x, y };
+    // box centres: x = 0..15, y = 0..8 (box units); a simple point = where it sits on the default map
+    p = p.hasLayout ? M::clamp(p) : M::onDefaultMap(p);
+    const float cw = (float) map.getWidth() / (float) M::kColumns, rh = (float) map.getHeight() / (float) M::kRows;
+    return { (float) map.getX() + cw * (0.5f + (float) p.x), (float) map.getY() + rh * (0.5f + (float) p.y) };
 }
 
 CabPoint CabIrMatrix::pointAt(juce::Point<int> pt) const
 {
-    const double cw = map.getWidth() / 16.0, rh = map.getHeight() / (double) M::kRows;
-    CabPoint p;
-    p.mm = M::kMinMm + M::kStepMm * ((pt.x - map.getX()) / cw - 0.5);
-    p.row = (pt.y - map.getY()) / rh - 0.5;
-    return snapped(M::clamp(p));
+    const double cw = map.getWidth() / (double) M::kColumns, rh = map.getHeight() / (double) M::kRows;
+    const double x = (pt.x - map.getX()) / cw - 0.5, y = (pt.y - map.getY()) / rh - 0.5;
+    return snapped(M::atMap(order, offsets, x, y));
 }
 
 CabPoint CabIrMatrix::snapped(CabPoint p) const
 {
     if (!snapButton.getToggleState()) return p;
-    p.row = std::round(p.row);
-    p.mm = M::kMinMm + M::kStepMm * std::round((p.mm - M::kMinMm) / M::kStepMm);
-    return p;
+    return M::atMap(p.order, p.offset, std::round(p.x), std::round(p.y));
+}
+
+int CabIrMatrix::rowAtY(int y) const
+{
+    const double rh = map.getHeight() / (double) M::kRows;
+    return juce::jlimit(0, M::kRows - 1, (int) std::floor((y - map.getY()) / rh));
+}
+
+juce::Rectangle<int> CabIrMatrix::rowLabel(int d) const
+{
+    const float rh = (float) map.getHeight() / (float) M::kRows;
+    return { labels.getX(), map.getY() + (int) std::round(rh * d), labels.getWidth() - 6, (int) std::round(rh) };
+}
+
+juce::Rectangle<int> CabIrMatrix::leftArrow(int d) const { auto r = rowLabel(d); return r.withX(r.getRight() - 40).withWidth(18).reduced(0, 2); }
+juce::Rectangle<int> CabIrMatrix::rightArrow(int d) const { auto r = rowLabel(d); return r.withX(r.getRight() - 20).withWidth(18).reduced(0, 2); }
+
+void CabIrMatrix::slideRow(int d, int boxes)
+{
+    if (d < 0 || d >= M::kRows || boxes == 0) return;
+    offsets[(size_t) d] = (((offsets[(size_t) d] + boxes) % 30) + 30) % 30;
+    layoutChanged();
+}
+
+void CabIrMatrix::moveRow(int from, int to)
+{
+    from = juce::jlimit(0, M::kRows - 1, from);
+    to = juce::jlimit(0, M::kRows - 1, to);
+    if (from == to) return;
+    auto moveIn = [from, to](std::array<int, 9>& a) {
+        const int v = a[(size_t) from];
+        if (from < to) for (int i = from; i < to; ++i) a[(size_t) i] = a[(size_t) i + 1];
+        else for (int i = from; i > to; --i) a[(size_t) i] = a[(size_t) i - 1];
+        a[(size_t) to] = v;
+    };
+    moveIn(order);
+    moveIn(offsets);
+    layoutChanged();
+}
+
+void CabIrMatrix::resetRows()
+{
+    order = { 0, 1, 2, 3, 4, 5, 6, 7, 8 };
+    offsets = {};
+    layoutChanged();
+}
+
+void CabIrMatrix::layoutChanged()
+{
+    // the points stay where they are on the screen; what lies under them now is heard
+    if (hovering) { hover = M::atMap(order, offsets, hover.x, hover.y); request(hover); }
+    if (chosenValid)
+    {
+        chosen = M::atMap(order, offsets, chosen.x, chosen.y);
+        if (!hovering) request(chosen);
+    }
+    else hover = M::atMap(order, offsets, hover.x, hover.y);
+    repaint();
 }
 
 void CabIrMatrix::request(CabPoint p)
@@ -191,7 +261,7 @@ void CabIrMatrix::timerCallback()
 
 void CabIrMatrix::choose(CabPoint p)
 {
-    p = snapped(M::clamp(p));
+    p = snapped(onMap(p));
     hovering = false;
     proc.setIrPreview(false);
     chosen = p;
@@ -203,7 +273,7 @@ void CabIrMatrix::choose(CabPoint p)
 
 void CabIrMatrix::preview(CabPoint p)
 {
-    p = snapped(M::clamp(p));
+    p = snapped(onMap(p));
     hover = p;
     if (!hovering) proc.setIrPreview(true); // hovering is listening, not a change: no undo steps
     hovering = true;
@@ -233,6 +303,9 @@ void CabIrMatrix::endPreview()
 void CabIrMatrix::mouseMove(const juce::MouseEvent& e)
 {
     if (slot < 0 || dragging) return;
+    const bool onLabel = labels.contains(e.getPosition());
+    setMouseCursor(onLabel ? juce::MouseCursor::DraggingHandCursor : juce::MouseCursor::NormalCursor);
+    if (onLabel) repaint(labels);
     if (map.contains(e.getPosition()))
     {
         if (hoverButton.getToggleState()) preview(pointAt(e.getPosition()));
@@ -245,18 +318,52 @@ void CabIrMatrix::mouseExit(const juce::MouseEvent&) { endPreview(); }
 
 void CabIrMatrix::mouseDown(const juce::MouseEvent& e)
 {
-    if (slot < 0 || !map.contains(e.getPosition())) return;
+    if (slot < 0) return;
+    const auto pos = e.getPosition();
+    if (labels.contains(pos))
+    {
+        const int d = rowAtY(pos.y);
+        if (leftArrow(d).contains(pos)) { slideRow(d, -1); return; }
+        if (rightArrow(d).contains(pos)) { slideRow(d, 1); return; }
+        rowDrag = RowDrag::undecided;
+        dragRow = d;
+        dragStart = pos;
+        dragStartOffset = offsets[(size_t) d];
+        return;
+    }
+    if (!map.contains(pos)) return;
     dragging = true;
-    choose(pointAt(e.getPosition()));
+    choose(pointAt(pos));
 }
 
 void CabIrMatrix::mouseDrag(const juce::MouseEvent& e)
 {
+    if (rowDrag != RowDrag::none)
+    {
+        const auto delta = e.getPosition() - dragStart;
+        if (rowDrag == RowDrag::undecided && std::max(std::abs(delta.x), std::abs(delta.y)) > 5)
+            rowDrag = std::abs(delta.x) >= std::abs(delta.y) ? RowDrag::slide : RowDrag::move;
+        if (rowDrag == RowDrag::slide)
+        {
+            // the row follows the mouse in whole boxes, so the boxes stay below each other
+            const double cw = map.getWidth() / (double) M::kColumns;
+            const int want = (((dragStartOffset + (int) std::lround(delta.x / cw)) % 30) + 30) % 30;
+            if (want != offsets[(size_t) dragRow]) { offsets[(size_t) dragRow] = want; layoutChanged(); }
+        }
+        else if (rowDrag == RowDrag::move)
+        {
+            const int to = rowAtY(e.getPosition().y);
+            if (to != dragRow) { moveRow(dragRow, to); dragRow = to; }
+        }
+        return;
+    }
     if (dragging) choose(pointAt(e.getPosition()));
 }
 
 void CabIrMatrix::mouseUp(const juce::MouseEvent&)
 {
+    rowDrag = RowDrag::none;
+    dragRow = -1;
     dragging = false;
     timerCallback();
 }
@@ -314,51 +421,55 @@ void CabIrMatrix::paint(juce::Graphics& g)
     label(g, "AMPSURD IRs" + (slot >= 0 ? "  /  AMP " + juce::String(slot + 1) : juce::String()), header.removeFromLeft(190), accent);
     g.setColour(textDim);
     g.setFont(Fonts::get().regular(12.5f));
-    g.drawText("Calculated 4x12 cabinet IRs. Click, drag or hover anywhere - between the dots you hear the sound in between.",
+    g.drawText("Calculated 4x12 cabinet IRs. A box's centre = that IR alone; anywhere else = the boxes around it blended.",
                header.withTrimmedRight(90), juce::Justification::centredLeft, true);
 
-    // axis: mic position
-    const float cw = (float) map.getWidth() / 16.0f, rh = (float) map.getHeight() / (float) M::kRows;
-    g.setFont(Fonts::get().regular(11.5f));
-    for (int c = 0; c < 16; ++c)
-    {
-        const int mm = 25 + 5 * c;
-        const float x = (float) map.getX() + cw * (c + 0.5f);
-        g.setColour(c % 3 == 0 || c == 15 ? textDim : textFaint);
-        g.drawText(juce::String(mm), juce::Rectangle<float>(x - 20.0f, (float) axis.getY() + 16.0f, 40.0f, 16.0f), juce::Justification::centred, false);
-    }
-    label(g, "MIC POSITION (MM FROM THE CENTRE)", axis.withHeight(14), textDim, juce::Justification::centred, 10.5f);
-    label(g, "CENTRE / CAP EDGE", axis.withHeight(14).withWidth(160), textFaint, juce::Justification::centredLeft, 10.0f);
-    label(g, "CONE", axis.withHeight(14), textFaint, juce::Justification::centredRight, 10.0f);
+    const float cw = (float) map.getWidth() / (float) M::kColumns, rh = (float) map.getHeight() / (float) M::kRows;
+    label(g, "MIC POSITION IN EACH BOX (MM FROM THE CENTRE: 25 = CAP EDGE, 100 = CONE).  DRAG A ROW'S NAME SIDEWAYS TO SLIDE IT, UP / DOWN TO MOVE IT.",
+          axis.withTrimmedTop(16), textDim, juce::Justification::centredLeft, 10.5f);
     label(g, "SPEAKER / MIC", labels.withY(axis.getY()).withHeight(30), textDim, juce::Justification::bottomLeft, 10.5f);
 
-    // rows: speaker groups and mics
-    for (int row = 0; row < M::kRows; ++row)
+    for (int d = 0; d < M::kRows; ++d)
     {
-        const float y = (float) map.getY() + rh * row;
-        if (row % M::kMics == 0)
+        const int row = order[(size_t) d];
+        const float y = (float) map.getY() + rh * d;
+        // a line where the speaker changes
+        if (d == 0 || M::speakerOfRow(order[(size_t) d - 1]) != M::speakerOfRow(row))
         {
             g.setColour(line);
             g.drawHorizontalLine((int) y, (float) labels.getX(), (float) map.getRight());
-            label(g, M::speakerName(M::speakerOfRow(row)), juce::Rectangle<int>(labels.getX(), (int) y, 70, (int) (rh * M::kMics)), text,
-                  juce::Justification::centredLeft, 12.0f);
         }
+        const auto lr = rowLabel(d);
+        const bool grabbed = dragRow == d && rowDrag != RowDrag::none;
+        if (grabbed || (isMouseOver(true) && lr.contains(getMouseXYRelative())))
+        {
+            g.setColour(text.withAlpha(0.06f));
+            g.fillRect(lr);
+        }
+        label(g, M::speakerName(M::speakerOfRow(row)), lr.withWidth(58).withTrimmedLeft(4), text, juce::Justification::centredLeft, 12.0f);
         g.setColour(textDim);
         g.setFont(Fonts::get().regular(12.0f));
-        g.drawText(M::micName(M::micOfRow(row)), juce::Rectangle<float>((float) labels.getX() + 72.0f, y, 76.0f, rh), juce::Justification::centredLeft, false);
+        g.drawText(M::micName(M::micOfRow(row)), lr.withTrimmedLeft(62).withTrimmedRight(42), juce::Justification::centredLeft, false);
+        g.setFont(Fonts::get().regular(13.0f));
+        g.setColour(textDim);
+        g.drawText("<", leftArrow(d), juce::Justification::centred, false);
+        g.drawText(">", rightArrow(d), juce::Justification::centred, false);
+        // the boxes: the position number in the middle (= that IR alone); darker = further out on the cone
+        for (int c = 0; c < M::kColumns; ++c)
+        {
+            const double mm = M::mmOnMap(offsets[(size_t) d], c);
+            const auto box = juce::Rectangle<float>((float) map.getX() + cw * c, y, cw, rh).reduced(1.5f);
+            const float bright = (float) (1.0 - (mm - M::kMinMm) / (M::kMaxMm - M::kMinMm));
+            g.setColour(accent.withAlpha(0.05f + 0.20f * bright));
+            g.fillRoundedRectangle(box, 2.0f);
+            g.setColour(text.withAlpha(0.55f + 0.35f * bright));
+            g.setFont(Fonts::get().regular(juce::jmin(12.0f, rh * 0.45f)));
+            g.drawText(juce::String((int) std::lround(mm)), box, juce::Justification::centred, false);
+        }
     }
     g.setColour(line);
     g.drawHorizontalLine(map.getBottom(), (float) labels.getX(), (float) map.getRight());
     g.drawRect(map);
-
-    // the set's 144 points
-    for (int row = 0; row < M::kRows; ++row)
-        for (int c = 0; c < 16; ++c)
-        {
-            const auto pt = positionOf({ (double) row, 25.0 + 5.0 * c });
-            g.setColour(lineStrong);
-            g.fillEllipse(pt.x - 2.0f, pt.y - 2.0f, 4.0f, 4.0f);
-        }
 
     // hovered point (ring) and the chosen one (filled, with cross lines)
     if (hovering || (isMouseOver(true) && map.contains(getMouseXYRelative())))
@@ -374,13 +485,11 @@ void CabIrMatrix::paint(juce::Graphics& g)
         g.drawHorizontalLine((int) c.y, (float) map.getX(), (float) map.getRight());
         g.drawVerticalLine((int) c.x, (float) map.getY(), (float) map.getBottom());
         g.setColour(accent);
-        g.fillEllipse(c.x - 7.0f, c.y - 7.0f, 14.0f, 14.0f);
-        g.setColour(text);
-        g.drawEllipse(c.x - 7.0f, c.y - 7.0f, 14.0f, 14.0f, 1.5f);
+        g.drawEllipse(c.x - 11.0f, c.y - 11.0f, 22.0f, 22.0f, 2.5f);
     }
 
     // what is heard, and messages
-    auto info = bottom.withTrimmedLeft(300).withTrimmedRight(250);
+    auto info = bottom.withTrimmedLeft(415).withTrimmedRight(250);
     g.setFont(Fonts::get().regular(13.0f));
     g.setColour(text);
     const juce::String now = hovering ? "Listening: " + juce::String(M::describe(hover))

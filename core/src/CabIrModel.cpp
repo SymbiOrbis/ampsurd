@@ -154,12 +154,88 @@ CabPoint CabIrModel::clamp(CabPoint p)
     if (!std::isfinite(p.mm)) p.mm = kMinMm;
     p.row = std::clamp(p.row, 0.0, (double) (kRows - 1));
     p.mm = std::clamp(p.mm, kMinMm, kMaxMm);
+    if (p.rowB >= 0)
+    {
+        p.row = std::round(p.row);
+        p.rowB = std::clamp(p.rowB, 0, kRows - 1);
+        p.mmB = std::isfinite(p.mmB) ? std::clamp(p.mmB, kMinMm, kMaxMm) : p.mm;
+        p.t = std::isfinite(p.t) ? std::clamp(p.t, 0.0, 1.0) : 0.0;
+    }
+    if (p.hasLayout)
+    {
+        if (!isValidOrder(p.order)) p.order = { 0, 1, 2, 3, 4, 5, 6, 7, 8 };
+        for (auto& o : p.offset) o = ((o % 30) + 30) % 30; // a row repeats every 30 boxes (there and back)
+        p.x = std::isfinite(p.x) ? std::clamp(p.x, 0.0, (double) (kColumns - 1)) : 0.0;
+        p.y = std::isfinite(p.y) ? std::clamp(p.y, 0.0, (double) (kRows - 1)) : 0.0;
+    }
     return p;
+}
+
+bool CabIrModel::isValidOrder(const std::array<int, 9>& order)
+{
+    std::array<bool, 9> seen {};
+    for (int r : order)
+    {
+        if (r < 0 || r >= kRows || seen[(size_t) r]) return false;
+        seen[(size_t) r] = true;
+    }
+    return true;
+}
+
+double CabIrModel::mmOnMap(int offset, double x)
+{
+    // position index along the row: 0..15..0.. (period 30), linear between box centres
+    double q = std::fmod(x - offset, 30.0);
+    if (q < 0.0) q += 30.0;
+    const double idx = q <= 15.0 ? q : 30.0 - q;
+    return kMinMm + kStepMm * idx;
+}
+
+CabPoint CabIrModel::atMap(const std::array<int, 9>& order, const std::array<int, 9>& offset, double x, double y)
+{
+    CabPoint p;
+    p.hasLayout = true;
+    p.order = order;
+    p.offset = offset;
+    p.x = x;
+    p.y = y;
+    p = clamp(p);
+    const int d0 = std::min((int) std::floor(p.y), kRows - 1), d1 = std::min(d0 + 1, kRows - 1);
+    double t = p.y - d0;
+    if (t < 1e-9 || d0 == d1) t = 0.0;
+    p.row = p.order[(size_t) d0];
+    p.mm = mmOnMap(p.offset[(size_t) d0], p.x);
+    p.rowB = p.order[(size_t) d1];
+    p.mmB = mmOnMap(p.offset[(size_t) d1], p.x);
+    p.t = t;
+    return p;
+}
+
+CabPoint CabIrModel::onDefaultMap(CabPoint simple)
+{
+    simple = clamp(simple);
+    if (simple.hasLayout) return simple;
+    return atMap({ 0, 1, 2, 3, 4, 5, 6, 7, 8 }, {}, (simple.mm - kMinMm) / kStepMm, simple.row);
 }
 
 std::string CabIrModel::describe(CabPoint p)
 {
     p = clamp(p);
+    if (p.rowB >= 0)
+    {
+        auto combo = [](int r) { return std::string(speakerName(speakerOfRow(r))) + " + " + micName(micOfRow(r)); };
+        const int ra = (int) p.row;
+        if (p.t < 0.005 || (ra == p.rowB && std::abs(p.mm - p.mmB) < 0.05)) return combo(ra) + ", " + mmText(p.mm) + " mm";
+        if (p.t > 0.995) return combo(p.rowB) + ", " + mmText(p.mmB) + " mm";
+        const int pa = (int) std::lround((1.0 - p.t) * 100.0), pb = 100 - pa;
+        if (std::abs(p.mm - p.mmB) < 0.05 && speakerOfRow(ra) == speakerOfRow(p.rowB))
+            return std::string(speakerName(speakerOfRow(ra))) + " + " + std::to_string(pa) + " % " + micName(micOfRow(ra)) + " / "
+                 + std::to_string(pb) + " % " + micName(micOfRow(p.rowB)) + ", " + mmText(p.mm) + " mm";
+        if (std::abs(p.mm - p.mmB) < 0.05)
+            return std::to_string(pa) + " % " + combo(ra) + " / " + std::to_string(pb) + " % " + combo(p.rowB) + ", " + mmText(p.mm) + " mm";
+        return std::to_string(pa) + " % " + combo(ra) + " " + mmText(p.mm) + " mm / " + std::to_string(pb) + " % " + combo(p.rowB) + " "
+             + mmText(p.mmB) + " mm";
+    }
     const int r0 = (int) std::floor(p.row), r1 = std::min(r0 + 1, kRows - 1);
     const double t = p.row - r0;
     auto combo = [](int r) { return std::string(speakerName(speakerOfRow(r))) + " + " + micName(micOfRow(r)); };
@@ -181,6 +257,22 @@ std::string CabIrModel::describe(CabPoint p)
 std::string CabIrModel::fileName(CabPoint p)
 {
     p = clamp(p);
+    if (p.rowB >= 0)
+    {
+        auto tag = [](int r) { return std::string(speakerFileTag(speakerOfRow(r))) + "-" + micFileTag(micOfRow(r)); };
+        auto pos = [](double mm) {
+            const double r = std::round(mm * 10.0) / 10.0;
+            std::string s = std::abs(r - std::round(r)) < 1e-9 ? num(r, 0) : num(r, 1);
+            if (r < 100.0) s = (r < 10.0 ? "00" : "0") + s;
+            return "P" + s + "mm";
+        };
+        const int ra = (int) p.row;
+        if (p.t < 0.005 || (ra == p.rowB && std::abs(p.mm - p.mmB) < 0.05)) return "AMPSURD-412-" + tag(ra) + "-" + pos(p.mm);
+        if (p.t > 0.995) return "AMPSURD-412-" + tag(p.rowB) + "-" + pos(p.mmB);
+        if (std::abs(p.mm - p.mmB) < 0.05) // as the simple form between rows
+            return "AMPSURD-412-" + tag(ra) + "+" + tag(p.rowB) + "-" + std::to_string((int) std::lround(p.t * 100.0)) + "-" + pos(p.mm);
+        return "AMPSURD-412-" + tag(ra) + "-" + pos(p.mm) + "+" + tag(p.rowB) + "-" + pos(p.mmB) + "-" + std::to_string((int) std::lround(p.t * 100.0));
+    }
     const int r0 = (int) std::floor(p.row), r1 = std::min(r0 + 1, kRows - 1);
     const double t = p.row - r0;
     auto tag = [](int r) { return std::string(speakerFileTag(speakerOfRow(r))) + "-" + micFileTag(micOfRow(r)); };
@@ -194,11 +286,87 @@ std::string CabIrModel::fileName(CabPoint p)
 std::string CabIrModel::toRef(CabPoint p)
 {
     p = clamp(p);
-    return "ampsurd-ir2:" + num(p.row, 4) + "," + num(p.mm, 3);
+    if (p.rowB < 0 && !p.hasLayout) return "ampsurd-ir2:" + num(p.row, 4) + "," + num(p.mm, 3);
+    if (p.rowB < 0) // a simple point with a map: written as the equal pair
+    {
+        const int r0 = (int) std::floor(p.row), r1 = std::min(r0 + 1, kRows - 1);
+        p.t = p.row - r0;
+        p.row = r0;
+        p.rowB = r1;
+        p.mmB = p.mm;
+    }
+    std::string s = "ampsurd-ir3:" + num(p.row, 0) + "," + num(p.mm, 3) + "," + std::to_string(p.rowB) + "," + num(p.mmB, 3) + "," + num(p.t, 4);
+    if (p.hasLayout)
+    {
+        s += ";" + num(p.x, 4) + "," + num(p.y, 4) + ";";
+        for (int i = 0; i < kRows; ++i) s += (i ? "," : "") + std::to_string(p.order[(size_t) i]);
+        s += ";";
+        for (int i = 0; i < kRows; ++i) s += (i ? "," : "") + std::to_string(p.offset[(size_t) i]);
+    }
+    return s;
 }
+
+namespace
+{
+std::vector<double> numbers(const std::string& s)
+{
+    std::vector<double> v;
+    size_t i = 0;
+    while (i <= s.size())
+    {
+        const size_t j = s.find(',', i);
+        const auto part = s.substr(i, j == std::string::npos ? std::string::npos : j - i);
+        char* end = nullptr;
+        const double d = std::strtod(part.c_str(), &end);
+        if (part.empty() || end == part.c_str() || !std::isfinite(d)) return {};
+        v.push_back(d);
+        if (j == std::string::npos) break;
+        i = j + 1;
+    }
+    return v;
+}
+} // namespace
 
 bool CabIrModel::fromRef(const std::string& ref, CabPoint& p)
 {
+    static const std::string prefix3 = "ampsurd-ir3:";
+    if (ref.compare(0, prefix3.size(), prefix3) == 0)
+    {
+        std::vector<std::string> parts;
+        auto rest = ref.substr(prefix3.size());
+        for (size_t i = 0;;)
+        {
+            const size_t j = rest.find(';', i);
+            parts.push_back(rest.substr(i, j == std::string::npos ? std::string::npos : j - i));
+            if (j == std::string::npos) break;
+            i = j + 1;
+        }
+        const auto pair = numbers(parts[0]);
+        if (pair.size() != 5) return false;
+        CabPoint q;
+        q.row = std::round(pair[0]);
+        q.mm = pair[1];
+        q.rowB = (int) std::lround(pair[2]);
+        q.mmB = pair[3];
+        q.t = pair[4];
+        if (parts.size() == 4)
+        {
+            const auto xy = numbers(parts[1]), ord = numbers(parts[2]), off = numbers(parts[3]);
+            if (xy.size() == 2 && ord.size() == (size_t) kRows && off.size() == (size_t) kRows)
+            {
+                q.hasLayout = true;
+                q.x = xy[0];
+                q.y = xy[1];
+                for (int i = 0; i < kRows; ++i)
+                {
+                    q.order[(size_t) i] = (int) std::lround(ord[(size_t) i]);
+                    q.offset[(size_t) i] = (int) std::lround(off[(size_t) i]);
+                }
+            }
+        }
+        p = clamp(q);
+        return true;
+    }
     static const std::string prefix = "ampsurd-ir2:", oldPrefix = "ampsurd-ir:";
     const bool old = ref.compare(0, oldPrefix.size(), oldPrefix) == 0;
     if (!old && ref.compare(0, prefix.size(), prefix) != 0) return false;
@@ -259,10 +427,17 @@ std::vector<double> CabIrModel::make(CabPoint p, double fs)
     p = clamp(p);
     const auto c = cacheFor(fs);
     const int bins = kFftSize / 2 + 1;
-    const int r0 = (int) std::floor(p.row), r1 = std::min(r0 + 1, kRows - 1);
-    const double t = p.row - r0;
+    const bool pair = p.rowB >= 0;
+    const int r0 = pair ? (int) p.row : (int) std::floor(p.row), r1 = pair ? p.rowB : std::min(r0 + 1, kRows - 1);
+    const double t = pair ? p.t : p.row - r0;
     std::vector<double> db((size_t) bins, 0.0);
     addResponseDb(positionStages(p.mm), c->freqs, fs, db);
+    if (pair && p.mmB != p.mm) // two positions: each row at its own one, blended in dB
+    {
+        std::vector<double> dbB((size_t) bins, 0.0);
+        addResponseDb(positionStages(p.mmB), c->freqs, fs, dbB);
+        for (int i = 0; i < bins; ++i) db[(size_t) i] = (1.0 - t) * db[(size_t) i] + t * dbB[(size_t) i];
+    }
     for (int i = 0; i < bins; ++i)
     {
         const auto k = (size_t) i;

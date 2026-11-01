@@ -105,6 +105,14 @@ private:
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>, 4> ampKnobAtt;
     bool ampShown = false;
     int toneMaskShown = 0;
+    // AMPSURD amp: the name is short above the knobs - hovering it shows the whole name over the knobs (owner 2026-11-01)
+    bool nameExpanded = false;
+    void setNameExpanded(bool on);
+public:
+    void mouseMove(const juce::MouseEvent&) override;
+    void mouseExit(const juce::MouseEvent&) override;
+    bool isNameExpanded() const { return nameExpanded; }
+private:
     juce::Rectangle<int> ampKnobArea() const;
     juce::Label panValue;     // C / L35 / R20 - click and type a value
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> soloAtt, muteAtt;
