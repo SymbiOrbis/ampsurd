@@ -218,6 +218,53 @@ void CaptureModel::morphPair(const std::vector<double>& knobs, double pos, int& 
     weightUpper = span > 0.0 ? (pos - knobs[(size_t) lower]) / span : 0.0;
 }
 
+namespace
+{
+// `delay` = whole samples + a fraction realised by a first-order Thiran allpass (D in (0, 1.5); D >= 0.5 is the
+// accurate range, used whenever there is a whole sample to borrow). Integer delays stay exact (no allpass).
+struct DelaySplit { int whole = 0; double frac = 0.0; bool fractional = false; };
+DelaySplit splitDelay(double delay)
+{
+    DelaySplit d;
+    delay = std::max(0.0, delay);
+    d.whole = (int) std::floor(delay);
+    d.frac = delay - d.whole;
+    if (d.frac < 1e-6) { d.frac = 0.0; return d; }
+    if (d.frac > 1.0 - 1e-6) { ++d.whole; d.frac = 0.0; return d; }
+    d.fractional = true;
+    if (d.frac < 0.5 && d.whole >= 1) { --d.whole; d.frac += 1.0; }
+    return d;
+}
+double thiranCoef(double D) { return (1.0 - D) / (1.0 + D); }
+} // namespace
+
+void CaptureModel::delayInPlace(std::vector<Sample>& x, double delay)
+{
+    const auto d = splitDelay(delay);
+    if (d.whole > 0)
+    {
+        x.insert(x.begin(), (size_t) d.whole, 0.0);
+        x.resize(x.size() - (size_t) d.whole);
+    }
+    if (!d.fractional) return;
+    const double a = thiranCoef(d.frac);
+    double x1 = 0.0, y1 = 0.0;
+    for (auto& v : x)
+    {
+        const double y = a * v + x1 - a * y1;
+        x1 = v;
+        y1 = y;
+        v = y;
+    }
+}
+
+double CaptureModel::blendGain(double w, double pairLoss) noexcept
+{
+    if (pairLoss <= 0.0) return 1.0;
+    const double p = 1.0 - 2.0 * w * (1.0 - w) * std::min(pairLoss, 1.0); // blend power / step power, rho = 1 - pairLoss
+    return 1.0 / std::sqrt(std::max(0.25, p));
+}
+
 void CaptureModel::prepare(double hostSampleRate, int maxBlockSize)
 {
     preparedSampleRate = hostSampleRate;
@@ -230,12 +277,19 @@ void CaptureModel::prepare(double hostSampleRate, int maxBlockSize)
         for (auto& st : steps)
         {
             st.model->prepare(hostSampleRate, preparedBlockSize);
-            maxLatency = std::max(maxLatency, st.model->getLatencySamples() + st.delay);
+            maxLatency = std::max(maxLatency, st.model->getLatencySamples() + (int) std::lround(st.delay));
         }
         stepDelayLines.assign(steps.size(), {});
         stepDelayPos.assign(steps.size(), 0);
+        stepFrac.assign(steps.size(), {});
         // `delay` aligns the steps as they sound (it was measured from their outputs, resampling latency included)
-        for (size_t i = 0; i < steps.size(); ++i) stepDelayLines[i].assign((size_t) std::max(0, steps[i].delay) + 1, 0.0);
+        for (size_t i = 0; i < steps.size(); ++i)
+        {
+            const auto d = splitDelay(steps[i].delay);
+            stepDelayLines[i].assign((size_t) d.whole + 1, 0.0);
+            stepFrac[i].on = d.fractional;
+            stepFrac[i].a = d.fractional ? thiranCoef(d.frac) : 0.0;
+        }
         latencySamples = maxLatency;
         morphA.assign((size_t) preparedBlockSize, 0.0);
         morphB.assign((size_t) preparedBlockSize, 0.0);
@@ -281,11 +335,20 @@ void CaptureModel::runStep(size_t i, const Sample* in, Sample* out, int n) noexc
     const int d = (int) line.size();
     int& pos = stepDelayPos[i];
     const double g = st.gain * st.polarity;
+    auto& fr = stepFrac[i];
     for (int k = 0; k < n; ++k)
     {
         line[(size_t) pos] = out[k];
         if (++pos >= d) pos = 0;
-        out[k] = line[(size_t) pos] * g; // `delay` samples old (d = delay + 1)
+        double v = line[(size_t) pos]; // the whole part of `delay` old (d = whole + 1)
+        if (fr.on)
+        {
+            const double y = fr.a * v + fr.x1 - fr.a * fr.y1;
+            fr.x1 = v;
+            fr.y1 = y;
+            v = y;
+        }
+        out[k] = v * g;
     }
 }
 
@@ -312,10 +375,12 @@ void CaptureModel::processMorph(const Sample* in, Sample* out, int n) noexcept
     const bool needLower = w0 < 1.0 || w1 < 1.0, needUpper = w0 > 0.0 || w1 > 0.0;
     if (needLower) runStep((size_t) lower, in, morphA.data(), n);
     if (needUpper) runStep((size_t) lower + 1, in, morphB.data(), n);
+    const double loss = steps[(size_t) lower].pairLoss;
     for (int k = 0; k < n; ++k)
     {
         const double w = w0 + (w1 - w0) * (n > 1 ? (double) k / (double) (n - 1) : 1.0);
-        out[k] = (needLower ? (1.0 - w) * morphA[(size_t) k] : 0.0) + (needUpper ? w * morphB[(size_t) k] : 0.0);
+        const double g = blendGain(w, loss);
+        out[k] = g * ((needLower ? (1.0 - w) * morphA[(size_t) k] : 0.0) + (needUpper ? w * morphB[(size_t) k] : 0.0));
     }
 }
 

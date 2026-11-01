@@ -66,7 +66,9 @@ public:
     {
         std::unique_ptr<CaptureModel> model;
         double knob = 5.0, gain = 1.0, polarity = 1.0;
-        int delay = 0;
+        double delay = 0.0;    // samples, may be fractional (0.9.7: sub-sample alignment, first-order allpass)
+        double pairLoss = 0.0; // power lost when this step and the next are blended 50/50 (partly different
+                               // distortion cancels): the blend is made louder by 1/sqrt(1 - 2w(1-w)·pairLoss)
     };
     static std::unique_ptr<CaptureModel> makeMorph(std::vector<MorphStep> steps, const CaptureInfo& info, double hostSampleRate, int maxBlockSize);
     bool isMorph() const noexcept { return !steps.empty(); }
@@ -75,6 +77,11 @@ public:
     void setMorphPosition(double knob) noexcept { morphTarget.store(knob, std::memory_order_relaxed); }
     // which steps play at a knob position and how loud the upper one is (pure, for tests / the UI)
     static void morphPair(const std::vector<double>& knobs, double pos, int& lower, double& weightUpper) noexcept;
+    // Delays a signal by `delay` samples (fractional: whole samples + a first-order Thiran allpass), exactly as a
+    // morph step is delayed while playing - for measuring blends offline.
+    static void delayInPlace(std::vector<Sample>& x, double delay);
+    // The blend gain between two steps at weight w (0..1) for a pair that loses `pairLoss` of its power at 50/50.
+    static double blendGain(double w, double pairLoss) noexcept;
 
     ~CaptureModel();
 
@@ -121,8 +128,10 @@ private:
     // morph (AMPSURD amp)
     std::vector<MorphStep> steps;
     std::vector<double> stepKnobs;
-    std::vector<std::vector<Sample>> stepDelayLines; // per step: its output delayed by its `delay`
+    std::vector<std::vector<Sample>> stepDelayLines; // per step: its output delayed by the whole part of its `delay`
     std::vector<int> stepDelayPos;
+    struct FracState { double a = 0.0, x1 = 0.0, y1 = 0.0; bool on = false; };
+    std::vector<FracState> stepFrac;                 // per step: the fractional part (first-order Thiran allpass)
     std::vector<Sample> morphA, morphB;
     std::atomic<double> morphTarget { 5.0 };
     double morphNow = -1.0, morphCoef = 0.0;

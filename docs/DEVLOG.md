@@ -6,6 +6,19 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-01 — Session 4m: steady GAIN between steps (sub-sample alignment + compensated blend), release 0.9.7 - Claude (Opus 5.5)
+
+- Owner approved the fix for the ~1 dB dips between gain steps (session 4l).
+- core: MorphStep::delay is fractional (whole samples + first-order Thiran allpass; integer delays stay exact) and
+  MorphStep::pairLoss = 1 - rho of the step and the next, measured at 50/50; the blend gain 1/sqrt(1 - 2w(1-w)·
+  pairLoss) restores the power at every weight. The calibration moved from the plugin into
+  CaptureAnalyzer::calibrateMorph (plugin cache key "|v2", 4 values per step; ampsurd_amp_check uses it too).
+- First try used 4w(1-w) and overshot (+1.5 dB) - the measured losses matched the uncompensated dips exactly
+  (0.454 -> -1.05 dB predicted vs -1.1 dB), so the formula was fixed to 2w(1-w).
+- Result on the Framus Cobra amps: CH1 / CH2 / CH3 within 0.1 dB from GAIN 2 to 8 in 0.5 steps (before: up to
+  0.4 / 1.1 / 1.0 dB dips). amp_profile_test: sub-sample delay, blend gain, calibrated morph keeps the loudness.
+- Release 0.9.7 (also contains the CH-prefix builder fix). Not yet heard by ear.
+
 ## 2026-11-01 — Session 4l: first real AMPSURD amps - Framus Cobra + Gerhat Screamer, 3 channels - Claude (Opus 5.5)
 
 - Owner's recordings (7z): NAMs named G*_gain_HHMM-00n (n = channel; NAM's own gain estimate rises with n), 42

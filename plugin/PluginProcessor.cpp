@@ -1575,10 +1575,10 @@ CaptureModel::LoadResult AmpsurdProcessor::loadSlotModel(int slot, const juce::F
         if (!r.model) { res.error = (st.nam.getFileName() + ": ").toStdString() + r.error; return res; }
         steps.push_back({ std::move(r.model), st.knob, 1.0, 1.0, 0 });
     }
-    // the steps' level, polarity and timing relative to the one nearest noon - measured once per file, rate and ECO
+    // the steps' level, polarity, timing (sub-sample) and blend loss - measured once per file, rate and ECO
     const juce::String key = file.getFullPathName() + "|" + juce::String(file.getLastModificationTime().toMilliseconds()) + "|"
-                           + juce::String(sr) + "|" + (eco ? "eco" : "full");
-    std::vector<std::array<double, 3>> cal;
+                           + juce::String(sr) + "|" + (eco ? "eco" : "full") + "|v2";
+    std::vector<std::array<double, 4>> cal;
     {
         std::lock_guard<std::mutex> l(morphCacheMutex);
         if (auto it = morphCache.find(key); it != morphCache.end()) cal = it->second;
@@ -1588,36 +1588,9 @@ CaptureModel::LoadResult AmpsurdProcessor::loadSlotModel(int slot, const juce::F
         if (std::abs(steps[i].knob - 5.0) < std::abs(steps[ref].knob - 5.0)) ref = i;
     if (cal.size() != steps.size())
     {
-        auto test = CaptureAnalyzer::makeTestSignal(sr);
-        const double g = std::pow(10.0, inputParam->load() / 20.0);
-        for (double& v : test) v *= g;
-        std::vector<std::shared_ptr<const CaptureAnalyzer::Measurement>> meas;
-        std::vector<double> loud;
-        for (auto& st : steps)
-        {
-            auto m = CaptureAnalyzer::measure(CaptureAnalyzer::render(*st.model, test, false), sr);
-            loud.push_back(CaptureAnalyzer::loudnessDb(*m));
-            meas.push_back(m);
-            st.model->prepare(sr, block);
-        }
-        std::vector<double> rel(steps.size(), 0.0), pol(steps.size(), 1.0);
-        for (size_t i = 0; i < steps.size(); ++i)
-        {
-            if (i == ref) continue;
-            std::array<std::shared_ptr<const CaptureAnalyzer::Measurement>, kNumSlots> pair {};
-            pair[0] = meas[ref];
-            pair[1] = meas[i];
-            const auto rig = CaptureAnalyzer::analyseRig(pair);
-            if (rig != nullptr && rig->align[1].reliable)
-            {
-                rel[i] = rig->autoDelay[1] - rig->autoDelay[0];
-                pol[i] = rig->align[1].polarity * rig->align[0].polarity;
-            }
-        }
-        const double minRel = *std::min_element(rel.begin(), rel.end());
+        CaptureAnalyzer::calibrateMorph(steps, sr, block, std::pow(10.0, inputParam->load() / 20.0));
         cal.clear();
-        for (size_t i = 0; i < steps.size(); ++i)
-            cal.push_back({ std::pow(10.0, (loud[ref] - loud[i]) / 20.0), pol[i], std::round(rel[i] - minRel) });
+        for (auto& st : steps) cal.push_back({ st.gain, st.polarity, st.delay, st.pairLoss });
         std::lock_guard<std::mutex> l(morphCacheMutex);
         morphCache[key] = cal;
     }
@@ -1625,7 +1598,8 @@ CaptureModel::LoadResult AmpsurdProcessor::loadSlotModel(int slot, const juce::F
     {
         steps[i].gain = cal[i][0];
         steps[i].polarity = cal[i][1];
-        steps[i].delay = (int) cal[i][2];
+        steps[i].delay = cal[i][2];
+        steps[i].pairLoss = cal[i][3];
     }
     auto info = steps[ref].model->getInfo();
     info.filePath = toStdPath(file).string();

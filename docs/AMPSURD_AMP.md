@@ -16,8 +16,11 @@ A zip file:
 - GAIN (0-10, the amp's scale: 7 o'clock = 0, noon = 5, 5 o'clock = 10): the two captures around the knob position
   are played and blended (core: `CaptureModel::makeMorph`); on a captured position only that capture runs. When it
   loads, AMPSURD measures every capture once: loudness, polarity and timing relative to the one nearest noon, so
-  GAIN changes the character, not the level (like AMPSURD's per-amp INPUT). Between two steps the amp costs twice
-  the CPU of one capture.
+  GAIN changes the character, not the level (like AMPSURD's per-amp INPUT). Since 0.9.7 the timing is sub-sample
+  (whole samples + a first-order allpass) and the blend of two steps is made louder by exactly what partly different
+  distortion cancels in the sum (measured per pair at 50/50, `pairLoss`; gain 1/sqrt(1 - 2w(1-w)·pairLoss)) - the
+  Framus Cobra amps (2026-11-01) stay within 0.1 dB across GAIN (before: dips up to 1.1 dB). Code:
+  `CaptureAnalyzer::calibrateMorph`. Between two steps the amp costs twice the CPU of one capture.
 - BASS / MID / TREBLE: the measured curves are interpolated between the measured positions, added (the knobs are
   treated as independent) and applied as a short minimum-phase filter after the amp and before the cabinet IR
   (core: `ToneStack`). All at noon = no filter at all (bit-identical). Only measured knobs are shown on the slot.

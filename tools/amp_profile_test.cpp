@@ -13,6 +13,7 @@
 
 #include "ToolUtils.h"
 #include "ampsurd/AmpProfile.h"
+#include "ampsurd/CaptureAnalyzer.h"
 #include "ampsurd/CaptureModel.h"
 
 using namespace ampsurd;
@@ -195,6 +196,52 @@ int main(int argc, char** argv)
         }
         check(maxStep < 1.5 * ref, "MORPH: turning GAIN across all steps while playing: no jumps (largest step " + std::to_string(maxStep)
                                        + " vs " + std::to_string(ref) + " held)");
+    }
+    // 5. sub-sample alignment and the loudness-compensated blend (0.9.7)
+    {
+        // a 1 kHz tone delayed by 2.3 samples: the same as the tone 2.3 samples later
+        std::vector<double> x(4800), want(4800);
+        const double d = 2.3;
+        for (size_t i = 0; i < x.size(); ++i) { x[i] = std::sin(2 * M_PI * 1000 * i / fs); want[i] = std::sin(2 * M_PI * 1000 * (i - d) / fs); }
+        auto y = x;
+        CaptureModel::delayInPlace(y, d);
+        double err = 0;
+        for (size_t i = 200; i < x.size(); ++i) err = std::max(err, std::abs(y[i] - want[i]));
+        auto yi = x;
+        CaptureModel::delayInPlace(yi, 3.0);
+        double errI = 0;
+        for (size_t i = 3; i < x.size(); ++i) errI = std::max(errI, std::abs(yi[i] - x[i - 3]));
+        check(err < 0.01 && errI == 0.0, "MORPH: sub-sample delay (2.3 samples at 1 kHz, error " + std::to_string(err) + "); whole samples stay exact");
+        // a pair that loses a third of its power at 50/50: the blend gain brings it back at every weight
+        bool gainOk = std::abs(CaptureModel::blendGain(0.0, 0.33) - 1.0) < 1e-12 && std::abs(CaptureModel::blendGain(1.0, 0.33) - 1.0) < 1e-12;
+        for (double w : { 0.25, 0.5, 0.75 })
+        {
+            const double p = (1 - w) * (1 - w) + w * w + 2 * w * (1 - w) * (1 - 0.33); // rho = 0.67
+            gainOk = gainOk && std::abs(p * std::pow(CaptureModel::blendGain(w, 0.33), 2) - 1.0) < 1e-9;
+        }
+        check(gainOk, "MORPH: blend gain = 1 on the steps, restores the power of a partly decorrelated pair in between");
+    }
+    if (argc >= 3)
+    {
+        // two different captures as GAIN 2 / 8, calibrated like AMPSURD does: the loudness stays put across GAIN
+        std::vector<CaptureModel::MorphStep> steps;
+        steps.push_back({ std::move(CaptureModel::load(argv[1], fs, 256).model), 2.0 });
+        steps.push_back({ std::move(CaptureModel::load(argv[2], fs, 256).model), 8.0 });
+        CaptureAnalyzer::calibrateMorph(steps, fs, 256, 1.0);
+        const double loss = steps[0].pairLoss;
+        CaptureInfo info;
+        auto m = CaptureModel::makeMorph(std::move(steps), info, fs, 256);
+        const auto test = CaptureAnalyzer::makeTestSignal(fs);
+        double lo = 1e9, hi = -1e9;
+        for (double pos : { 2.0, 3.5, 5.0, 6.5, 8.0 })
+        {
+            m->prepare(fs, 256);
+            m->setMorphPosition(pos);
+            const double l = CaptureAnalyzer::loudnessDb(*CaptureAnalyzer::measure(CaptureAnalyzer::render(*m, test, false), fs));
+            lo = std::min(lo, l);
+            hi = std::max(hi, l);
+        }
+        check(hi - lo < 0.2, "MORPH: calibrated GAIN keeps the loudness (spread " + std::to_string(hi - lo) + " dB, blend loss " + std::to_string(loss) + ")");
     }
     std::printf(failures == 0 ? "ALL PASS\n" : "%d FAILED\n", failures);
     return failures == 0 ? 0 : 1;

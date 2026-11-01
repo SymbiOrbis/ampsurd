@@ -447,3 +447,60 @@ void CaptureAnalyzer::kWeightInPlace(std::vector<double>& x, double sampleRate)
 }
 
 } // namespace ampsurd
+
+namespace ampsurd
+{
+void CaptureAnalyzer::calibrateMorph(std::vector<CaptureModel::MorphStep>& steps, double sr, int block, double inputGain)
+{
+    if (steps.empty()) return;
+    auto test = makeTestSignal(sr);
+    for (double& v : test) v *= inputGain;
+    std::vector<std::vector<double>> ys;
+    std::vector<std::shared_ptr<const Measurement>> meas;
+    std::vector<double> loud;
+    for (auto& st : steps)
+    {
+        ys.push_back(render(*st.model, test, false));
+        meas.push_back(measure(ys.back(), sr));
+        loud.push_back(loudnessDb(*meas.back()));
+        st.model->prepare(sr, block);
+    }
+    size_t ref = 0;
+    for (size_t i = 0; i < steps.size(); ++i)
+        if (std::abs(steps[i].knob - 5.0) < std::abs(steps[ref].knob - 5.0)) ref = i;
+    std::vector<double> rel(steps.size(), 0.0), pol(steps.size(), 1.0);
+    for (size_t i = 0; i < steps.size(); ++i)
+    {
+        if (i == ref) continue;
+        std::array<std::shared_ptr<const Measurement>, kNumSlots> pair {};
+        pair[0] = meas[ref];
+        pair[1] = meas[i];
+        const auto rig = analyseRig(pair);
+        if (rig != nullptr && rig->align[1].reliable)
+        {
+            rel[i] = rig->autoDelay[1] - rig->autoDelay[0];
+            pol[i] = rig->align[1].polarity * rig->align[0].polarity;
+        }
+    }
+    const double minRel = *std::min_element(rel.begin(), rel.end());
+    for (size_t i = 0; i < steps.size(); ++i)
+    {
+        steps[i].gain = std::pow(10.0, (loud[ref] - loud[i]) / 20.0);
+        steps[i].polarity = pol[i];
+        steps[i].delay = rel[i] - minRel; // sub-sample (0.9.7)
+        steps[i].pairLoss = 0.0;
+        CaptureModel::delayInPlace(ys[i], steps[i].delay);
+        for (double& v : ys[i]) v *= steps[i].gain * steps[i].polarity;
+    }
+    // blend loss of each neighbouring pair at 50/50 (partly different distortion cancels in the sum)
+    for (size_t i = 0; i + 1 < steps.size(); ++i)
+    {
+        std::vector<double> mid(ys[i].size());
+        for (size_t k = 0; k < mid.size(); ++k) mid[k] = 0.5 * (ys[i][k] + ys[i + 1][k]);
+        const double pEnds = 0.5 * (std::pow(10.0, loudnessDb(*measure(ys[i], sr)) / 10.0) + std::pow(10.0, loudnessDb(*measure(ys[i + 1], sr)) / 10.0));
+        const double pMid = std::pow(10.0, loudnessDb(*measure(mid, sr)) / 10.0);
+        // pMid / pEnds = 1 - (1 - rho) / 2  ->  pairLoss = 1 - rho
+        steps[i].pairLoss = pEnds > 0.0 ? std::clamp(2.0 * (1.0 - pMid / pEnds), 0.0, 1.0) : 0.0;
+    }
+}
+} // namespace ampsurd

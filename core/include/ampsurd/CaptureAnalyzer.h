@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "ampsurd/BlendToneEq.h"
+#include "ampsurd/CaptureModel.h"
 #include "ampsurd/Engine.h"
 
 namespace ampsurd
@@ -131,6 +132,11 @@ public:
         std::vector<double> kWeights;
     };
     static std::shared_ptr<const RigAnalysis> analyseRig(const std::array<std::shared_ptr<const Measurement>, kNumSlots>& meas);
+
+    // AMPSURD amp: measures the GAIN steps once (with the test signal at `inputGain`) and fills in each step's level
+    // (to the step nearest noon), polarity, sub-sample delay and its blend loss to the next step. The models are
+    // prepared again afterwards (fresh state).
+    static void calibrateMorph(std::vector<CaptureModel::MorphStep>& steps, double sampleRate, int blockSize, double inputGain);
 
     // Covariance for the Engine from a rig analysis and the delays / polarities / phases / level
     // gains that are actually applied (loudness-weighted).

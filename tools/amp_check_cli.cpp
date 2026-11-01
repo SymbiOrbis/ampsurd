@@ -20,8 +20,6 @@ int main(int argc, char** argv)
     const int block = 512;
     auto test = CaptureAnalyzer::makeTestSignal(sr);
     std::vector<CaptureModel::MorphStep> steps;
-    std::vector<double> loud;
-    std::vector<std::shared_ptr<const CaptureAnalyzer::Measurement>> meas;
     for (auto& st : prof.steps)
     {
         auto r = CaptureModel::load(st.nam.getFullPathName().toStdString(), sr, block, false);
@@ -29,40 +27,20 @@ int main(int argc, char** argv)
         const auto out = CaptureAnalyzer::render(*r.model, test, false);
         bool finite = true;
         for (double v : out) finite = finite && std::isfinite(v);
-        const auto m = CaptureAnalyzer::measure(out, sr);
-        meas.push_back(m);
-        const double l = CaptureAnalyzer::loudnessDb(*m);
-        loud.push_back(l);
-        std::cout << "step knob " << st.knob << "  " << st.nam.getFileName() << "  loudness " << juce::String(l, 1) << " dB"
-                  << (finite ? "" : "  NOT FINITE") << "\n";
+        std::cout << "step knob " << st.knob << "  " << st.nam.getFileName() << "  loudness "
+                  << juce::String(CaptureAnalyzer::loudnessDb(*CaptureAnalyzer::measure(out, sr)), 1) << " dB" << (finite ? "" : "  NOT FINITE") << "\n";
         r.model->prepare(sr, block);
-        steps.push_back({ std::move(r.model), st.knob, 1.0, 1.0, 0 });
+        steps.push_back({ std::move(r.model), st.knob, 1.0, 1.0, 0.0 });
     }
-    // level-match the steps to the one nearest noon (as AMPSURD does), then sweep GAIN
-    size_t ref = 0;
-    for (size_t i = 0; i < steps.size(); ++i) if (std::abs(steps[i].knob - 5.0) < std::abs(steps[ref].knob - 5.0)) ref = i;
-    std::vector<double> rel(steps.size(), 0.0), pol(steps.size(), 1.0);
-    for (size_t i = 0; i < steps.size(); ++i)
+    // calibrated exactly as AMPSURD does when it loads the amp (unless --plain: the blend without compensation)
+    CaptureAnalyzer::calibrateMorph(steps, sr, block, 1.0);
+    const bool plain = argc > 2 && juce::String(argv[2]) == "--plain";
+    for (auto& st : steps)
     {
-        if (i == ref) continue;
-        std::array<std::shared_ptr<const CaptureAnalyzer::Measurement>, kNumSlots> pair {};
-        pair[0] = meas[ref];
-        pair[1] = meas[i];
-        const auto rig = CaptureAnalyzer::analyseRig(pair);
-        if (rig != nullptr && rig->align[1].reliable)
-        {
-            rel[i] = rig->autoDelay[1] - rig->autoDelay[0];
-            pol[i] = rig->align[1].polarity * rig->align[0].polarity;
-        }
-        std::cout << "align step " << i << ": delay " << rel[i] << " samples, polarity " << pol[i]
-                  << (rig != nullptr && rig->align[1].reliable ? "" : " (not reliable)") << "\n";
-    }
-    const double minRel = *std::min_element(rel.begin(), rel.end());
-    for (size_t i = 0; i < steps.size(); ++i)
-    {
-        steps[i].gain = std::pow(10.0, (loud[ref] - loud[i]) / 20.0);
-        steps[i].polarity = pol[i];
-        steps[i].delay = (int) std::round(rel[i] - minRel);
+        if (plain) { st.delay = std::round(st.delay); st.pairLoss = 0.0; }
+        if (argc > 2 && juce::String(argv[2]) == "--nocomp") st.pairLoss = 0.0;
+        std::cout << "step knob " << st.knob << ": gain " << juce::String(st.gain, 3) << ", polarity " << st.polarity << ", delay "
+                  << juce::String(st.delay, 2) << " samples, blend loss to the next " << juce::String(st.pairLoss, 3) << "\n";
     }
     CaptureInfo info;
     info.displayName = prof.name.toStdString();

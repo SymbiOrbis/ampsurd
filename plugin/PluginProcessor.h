@@ -552,7 +552,7 @@ private:
     ampsurd::CaptureModel::LoadResult loadSlotModel(int slot, const juce::File& file, double sr, int block, bool eco,
                                            std::shared_ptr<const ampsurd::ToneStack>* tone = nullptr);
     std::mutex morphCacheMutex;
-    std::map<juce::String, std::vector<std::array<double, 3>>> morphCache; // file|rate|ECO -> per step gain, polarity, delay
+    std::map<juce::String, std::vector<std::array<double, 4>>> morphCache; // file|rate|ECO -> per step gain, polarity, delay, blend loss
     std::array<std::shared_ptr<const ampsurd::ToneStack>, kNumSlots> toneStacks {}; // statusLock
     std::array<juce::String, kNumSlots> toneShown;                               // knobs the tone filter was made for
     void updateToneStacks();                                                      // message thread (timer)
