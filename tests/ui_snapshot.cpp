@@ -999,6 +999,52 @@ int main(int argc, char** argv)
         setP(*proc, "gateOn", 1.0f);
     }
 
+    // LOG (owner 2026-11-01): a dropout lists what was going on and the likely cause; problems are listed; the log
+    // opens from DROPOUTS in the footer and shows the entries
+    {
+        auto& lg = proc->getEventLog();
+        lg.clear();
+        const int act = lg.beginActivity("loading Test amp.ampsurdamp into amp 2");
+        ampsurd::EventLog::Drop d;
+        d.atMs = juce::Time::getMillisecondCounterHiRes();
+        d.workMs = 7.5f;
+        d.budgetMs = 2.7f;
+        d.samples = 128;
+        lg.pushDrop(d);
+        lg.endActivity(act);
+        proc->runHousekeeping();
+        const auto t1 = lg.getText();
+        bool dropOk = t1.contains("DROPOUT") && t1.contains("7.5 ms") && t1.contains("loading Test amp.ampsurdamp into amp 2")
+                            && t1.contains("Likely cause: that background work");
+        // a storm: 50 more within the same second are summed up in one line, not listed one by one
+        for (int i = 0; i < 50; ++i) { d.atMs += 5.0; lg.pushDrop(d); }
+        proc->runHousekeeping();
+        const int before = lg.getNumEntries();
+        pump(1100);
+        proc->runHousekeeping();
+        const bool stormOk = before == 1 && lg.getNumEntries() == 2 && lg.getText().contains("50 more dropout(s)");
+        dropOk = dropOk && stormOk;
+        proc->loadIr(4, out.getChildFile("no such ir.wav"));
+        for (int t = 0; t < 100 && !lg.getText().contains("PROBLEM"); ++t) { proc->runHousekeeping(); pump(20); }
+        const bool problemOk = lg.getText().contains("PROBLEM") && lg.getText().contains("IR of amp 5");
+        proc->removeIr(4);
+        std::unique_ptr<juce::AudioProcessorEditor> led(proc->createEditor());
+        auto* le = dynamic_cast<AmpsurdEditor*>(led.get());
+        le->setSize(1200, 800);
+        le->showLog(true);
+        le->refreshAll();
+        pump(300);
+        const bool shownOk = le->getLogPanel().isVisible() && le->getLogPanel().getShownText().contains("loading Test amp");
+        save(*led, out.getChildFile("31_log.png"));
+        le->showLog(false);
+        const bool fileOk = lg.getFile().existsAsFile() && lg.getFile().loadFileAsString().contains("loading Test amp");
+        const bool ok = dropOk && problemOk && shownOk && !le->getLogPanel().isVisible() && fileOk;
+        std::cout << (ok ? "[PASS]" : "[FAIL]") << " LOG: a dropout with what was going on and the likely cause (" << dropOk
+                  << "), a missing IR as a problem (" << problemOk << "), shown in the log panel (" << shownOk << "), written to the file ("
+                  << fileOk << ")\n";
+        if (!ok) std::cout << t1 << "\n";
+    }
+
     // AMPSURD AMP (.ampsurdamp, owner 2026-10-30): built from a folder of "recordings" named as in the recording sheet
     // (two captures as GAIN 9:00 / 3:00, synthetic tone sweeps with known shelves), loaded into slot 4: knobs on the
     // slot, GAIN morphs, BASS / TREBLE change the sound as measured, presets keep the knobs

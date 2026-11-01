@@ -4475,6 +4475,7 @@ void HeaderBar::showSettings()
     m.addItem(20, "Use several CPU cores" + (mc ? " (" + juce::String(proc.getNumWorkerThreads() + 1) + " in use)" : juce::String()), true, mc);
     m.addSeparator();
     m.addItem(2, "Open preset folder");
+    m.addItem(41, "Show log (dropouts, problems)...");
     m.addItem(40, "Check for updates...");
     m.addItem(3, "About AMPSURD");
     m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&settingsButton), [this, lm, cal, dbu](int r) {
@@ -4496,9 +4497,11 @@ void HeaderBar::showSettings()
         if (r == 63) proc.clearMidiAssignments();
         if (r >= 1000 && r - 1000 < (int) AmpsurdProcessor::midiActions().size())
             proc.startMidiLearn(AmpsurdProcessor::midiActions()[(size_t) (r - 1000)].id);
+        if (r == 41 && onShowLog) onShowLog();
         if (r == 40)
-            ampsurd::checkForUpdates([](const ampsurd::UpdateInfo& u) {
+            ampsurd::checkForUpdates([sp = juce::Component::SafePointer<HeaderBar>(this)](const ampsurd::UpdateInfo& u) {
                 const juce::String current = JucePlugin_VersionString;
+                if (!u.ok && sp != nullptr) sp->proc.getEventLog().add("UPDATE", "update check failed: " + u.error);
                 if (!u.ok)
                     juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, "Check for updates", u.error);
                 else if (u.latest.isNotEmpty() && ampsurd::isNewerVersion(u.latest, current))
@@ -4644,6 +4647,16 @@ juce::Rectangle<int> BrandingFooter::logoArea() const
 void BrandingFooter::resized()
 {
     shopButton.setBounds(kFooterMargin, (getHeight() - kLogoBoxH) / 2 + 1, kShopW, kLogoBoxH);
+}
+
+void BrandingFooter::mouseUp(const juce::MouseEvent& e)
+{
+    if (e.getPosition().x > getWidth() - 260 && e.mouseWasClicked() && onCpuClicked) onCpuClicked();
+}
+
+void BrandingFooter::mouseMove(const juce::MouseEvent& e)
+{
+    setMouseCursor(e.getPosition().x > getWidth() - 260 ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
 }
 
 void BrandingFooter::paint(juce::Graphics& g)

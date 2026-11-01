@@ -35,6 +35,7 @@ juce_add_plugin(Ampsurd
 target_sources(Ampsurd PRIVATE
   PluginProcessor.cpp
   RigControl.cpp
+  EventLog.cpp
   PluginEditor.cpp
   ui/Theme.cpp
   ui/Components.cpp
@@ -42,6 +43,7 @@ target_sources(Ampsurd PRIVATE
   ui/DoublerPanel.cpp
   ui/CameraWindow.cpp
   ui/CabIrMatrix.cpp
+  ui/LogPanel.cpp
   AmpProfileFile.cpp
   standalone/StandaloneApp.cpp
   player/PlayerRecorder.cpp

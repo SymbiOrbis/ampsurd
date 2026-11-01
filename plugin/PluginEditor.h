@@ -7,6 +7,7 @@
 
 #include "PluginProcessor.h"
 #include "ui/CabIrMatrix.h"
+#include "ui/LogPanel.h"
 #include "ui/Components.h"
 #include "ui/DoublerPanel.h"
 #include "ui/RootPanel.h"
@@ -33,6 +34,8 @@ public:
     void showGlobalEq(bool show);
     void showIr(int slot);   // -1 closes the IR editor
     void showAmpsurdIrs(int slot); // the AMPSURD IRs map for this amp (-1 closes it)
+    void showLog(bool show);       // the log (DROPOUTS in the footer / settings menu)
+    ampsurd::ui::LogPanel& getLogPanel() { return content.log; } // tests
     ampsurd::ui::CabIrMatrix& getCabIrMatrix() { return content.cabIrs; } // tests
     void showPlayer(bool show);
     void showRoot(bool show); // ROOT panel (experimental module; does nothing without it)
@@ -69,6 +72,7 @@ private:
         ampsurd::ui::BrandingFooter footer;
         ampsurd::ui::DragonLayer dragon;
         ampsurd::ui::CabIrMatrix cabIrs; // over the slots and the centre area while open
+        ampsurd::ui::LogPanel log;       // the log (dropouts, problems), same place
         bool showDragon = true;
     };
 

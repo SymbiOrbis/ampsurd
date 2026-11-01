@@ -6,6 +6,20 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-01 — Session 4q: the LOG (dropouts with reasons, problems); release 0.9.9 - Claude (Opus 5.5)
+
+- Owner approved the log. plugin/EventLog: the audio thread writes a small record per block that took longer than
+  it lasts (lock-free ring, 128); the processor's timer turns them into lines with the background work that
+  overlapped (activities: loading a capture / pedal / IR, measuring, drive curve, AMPSURD IR calculation), amps
+  whose GAIN sits between two recorded steps, CPU, grace (not counted) and a likely cause. Standalone: the driver's
+  own missed buffers get a line (and whether AMPSURD was in time). Dropouts within 1 s of a listed one are summed up.
+  Problems: slot / IR / pedal status becoming missing / error, audio setup changes, update check failure. START
+  line with version, wrapper, host, OS, rate / buffer. File Documents/AMPSURD/Logs/AMPSURD_log.txt (> 1 MB at start
+  -> _old).
+- UI: ui/LogPanel overlay (COPY, SHOW FILE, CLEAR, CLOSE, Esc); footer click on DROPOUTS / CPU; settings menu item 41.
+- ui_snapshot: all pass (31) incl. LOG (dropout text, storm summary, missing IR, panel, file).
+- Release 0.9.9 (+ GAIN clock, greyscale map, rows dragged on the boxes).
+
 ## 2026-11-01 — Session 4p: GAIN as clock, greyscale IR map, rows dragged on the boxes - Claude (Opus 5.5)
 
 - Owner: GAIN reads as the amp's clock position ("9:00" .. "15:00", 5-minute steps; typing "15:00", "3:00" or a

@@ -578,6 +578,7 @@ public:
     void paint(juce::Graphics&) override;
     void resized() override;
     void refresh();
+    std::function<void()> onShowLog; // settings menu -> Show log...
 
     // SAVE AS writes what the chosen file type says: .ampsurd = the preset, .ampsurdpack = a pack (preset +
     // the NAM / IR files it uses + README, the same as PRESET -> Export pack). Public for the tests.
@@ -749,6 +750,9 @@ public:
     void paint(juce::Graphics&) override;
     void resized() override;
     void setCpuText(const juce::String& t) { if (t != cpuText) { cpuText = t; repaint(); } }
+    std::function<void()> onCpuClicked; // DROPOUTS / CPU: opens the log
+    void mouseUp(const juce::MouseEvent&) override;
+    void mouseMove(const juce::MouseEvent&) override;
 
     static constexpr const char* kShopUrl = "https://www.ampsurd.com/";
 

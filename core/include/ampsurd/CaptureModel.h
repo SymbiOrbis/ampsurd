@@ -76,6 +76,7 @@ public:
     // the GAIN range the steps cover (the knob only moves within it, owner 2026-11-01); 0..10 if not a morph
     double getMorphMin() const noexcept { return stepKnobs.empty() ? 0.0 : stepKnobs.front(); }
     double getMorphMax() const noexcept { return stepKnobs.empty() ? 10.0 : stepKnobs.back(); }
+    const std::vector<double>& getMorphKnobs() const noexcept { return stepKnobs; }
     // any thread: the GAIN knob (0..10); the audio thread glides to it
     void setMorphPosition(double knob) noexcept { morphTarget.store(knob, std::memory_order_relaxed); }
     // which steps play at a knob position and how loud the upper one is (pure, for tests / the UI)

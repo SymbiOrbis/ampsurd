@@ -679,6 +679,13 @@ void AmpsurdProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 
     totalLatency.store(-1);
     updateLatency();
+    const auto setup = juce::String(sampleRate / 1000.0, sampleRate == std::round(sampleRate / 1000.0) * 1000.0 ? 0 : 1) + " kHz, "
+                     + juce::String(maxBlock) + " samples (" + juce::String(1000.0 * maxBlock / sampleRate, 1) + " ms)";
+    if (setup != lastAudioSetup)
+    {
+        if (startLogged) eventLog.add("AUDIO", "audio set to " + setup);
+        lastAudioSetup = setup;
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -714,6 +721,28 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
     juce::ScopedNoDenormals noDenormals;
     const int numSamples = buffer.getNumSamples();
     juce::AudioProcessLoadMeasurer::ScopedTimer cpuTimer(loadMeasurer, numSamples);
+    // the log: a block that took longer than it lasts = a dropout (lock-free record, the text is made later)
+    struct DropWatch
+    {
+        AmpsurdProcessor& p;
+        const int n;
+        const double start = juce::Time::getMillisecondCounterHiRes();
+        ~DropWatch()
+        {
+            const double sr = p.currentSampleRate.load();
+            if (n <= 0 || sr <= 0.0) return;
+            const double work = juce::Time::getMillisecondCounterHiRes() - start, budget = 1000.0 * n / sr;
+            if (work > (double) p.recentWorkMs.load(std::memory_order_relaxed)) p.recentWorkMs.store((float) work, std::memory_order_relaxed);
+            if (work <= budget) return;
+            ampsurd::EventLog::Drop d;
+            d.atMs = start;
+            d.workMs = (float) work;
+            d.budgetMs = (float) budget;
+            d.samples = n;
+            d.grace = juce::Time::getMillisecondCounter() < p.dropGraceUntil.load();
+            p.eventLog.pushDrop(d);
+        }
+    } dropWatch { *this, numSamples };
 
     const int numIn = getTotalNumInputChannels();
     const int numOut = getTotalNumOutputChannels();
@@ -917,8 +946,14 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
 // ---------------------------------------------------------------------------------------------
 void AmpsurdProcessor::setSlotStatus(int slot, const SlotStatus& s)
 {
-    const juce::ScopedLock sl(statusLock);
-    slotStatus[(size_t) slot] = s;
+    bool problem = false;
+    {
+        const juce::ScopedLock sl(statusLock);
+        const auto& old = slotStatus[(size_t) slot];
+        problem = (s.state == SlotState::missing || s.state == SlotState::error) && (old.state != s.state || old.path != s.path);
+        slotStatus[(size_t) slot] = s;
+    }
+    if (problem) eventLog.add("PROBLEM", "amp " + juce::String(slot + 1) + ": " + (s.info.isNotEmpty() ? s.info : s.path));
 }
 
 AmpsurdProcessor::SlotStatus AmpsurdProcessor::getSlotStatus(int slot) const
@@ -959,6 +994,7 @@ void AmpsurdProcessor::loadCapture(int slot, const juce::File& file)
 
 void AmpsurdProcessor::loadJob(int slot, juce::File file, int gen, bool /*adjustMix*/)
 {
+    ampsurd::EventLog::Scope busy(eventLog, "loading " + file.getFileName() + " into amp " + juce::String(slot + 1));
     std::lock_guard<std::mutex> lock(configMutex);
     if (gen != slotGeneration[(size_t) slot].load())
         return; // superseded
@@ -1007,6 +1043,7 @@ void AmpsurdProcessor::loadJob(int slot, juce::File file, int gen, bool /*adjust
     const bool canEco = mi.slimmable, ecoActive = mi.ecoActive;
     const bool isAmp = result.model->isMorph();
     const double gainMin = result.model->getMorphMin(), gainMax = result.model->getMorphMax();
+    const auto gainKnobs = result.model->getMorphKnobs();
     lastEco[(size_t) slot] = eco;
     engine.getSlot(slot).submit(std::move(result.model));
     {
@@ -1018,6 +1055,7 @@ void AmpsurdProcessor::loadJob(int slot, juce::File file, int gen, bool /*adjust
     newStatus.isAmp = isAmp;
     newStatus.gainMin = gainMin;
     newStatus.gainMax = gainMax;
+    for (double k : gainKnobs) newStatus.gainSteps.add(k);
     newStatus.hasTone = tone != nullptr && !tone->empty();
     for (int k = 0; k < 3 && tone != nullptr; ++k) if (!tone->knobs[(size_t) k].empty()) newStatus.toneMask |= 1 << k;
     setSlotStatus(slot, newStatus);
@@ -1075,6 +1113,7 @@ void AmpsurdProcessor::unloadCapture(int slot)
 
 void AmpsurdProcessor::remeasureJob(int gen)
 {
+    ampsurd::EventLog::Scope busy(eventLog, "measuring the amps (level match, alignment)");
     std::lock_guard<std::mutex> lock(configMutex);
     const double sr = currentSampleRate.load();
     const double gainDb = inputParam->load();
@@ -1187,6 +1226,7 @@ void AmpsurdProcessor::driveCurveJob(int slot, int gen)
             && std::abs(c.ampGain - ampGain) < 0.25)
             return; // nothing changed
     }
+    ampsurd::EventLog::Scope busy(eventLog, "measuring amp " + juce::String(slot + 1) + "'s INPUT curve");
     auto r = loadSlotModel(slot, juce::File(path), sr, block, eco);
     if (!r.model) return;
     auto test = CaptureAnalyzer::makeTestSignal(sr);
@@ -1365,8 +1405,14 @@ AmpsurdProcessor::IrStatus AmpsurdProcessor::getIrStatus(int slot) const
 
 void AmpsurdProcessor::setIrStatus(int slot, const IrStatus& st)
 {
-    const juce::ScopedLock sl(statusLock);
-    irStatus[(size_t) slot] = st;
+    bool problem = false;
+    {
+        const juce::ScopedLock sl(statusLock);
+        const auto& old = irStatus[(size_t) slot];
+        problem = (st.state == IrState::missing || st.state == IrState::error) && (old.state != st.state || old.path != st.path);
+        irStatus[(size_t) slot] = st;
+    }
+    if (problem) eventLog.add("PROBLEM", "IR of amp " + juce::String(slot + 1) + ": " + (st.info.isNotEmpty() ? st.info : st.path));
 }
 
 void AmpsurdProcessor::loadIr(int slot, const juce::File& file)
@@ -1381,6 +1427,7 @@ void AmpsurdProcessor::loadIr(int slot, const juce::File& file)
 
 void AmpsurdProcessor::irJob(int slot, juce::File file, int gen)
 {
+    ampsurd::EventLog::Scope busy(eventLog, "loading the IR " + file.getFileName() + " for amp " + juce::String(slot + 1));
     std::lock_guard<std::mutex> lock(configMutex);
     if (gen != irGeneration[(size_t) slot].load()) return;
 
@@ -1452,8 +1499,14 @@ AmpsurdProcessor::PedalStatus AmpsurdProcessor::getPedalStatus(int slot, int k) 
 
 void AmpsurdProcessor::setPedalStatus(int slot, int k, const PedalStatus& st)
 {
-    const juce::ScopedLock sl(statusLock);
-    pedalStatus[(size_t) slot][(size_t) k] = st;
+    bool problem = false;
+    {
+        const juce::ScopedLock sl(statusLock);
+        const auto& old = pedalStatus[(size_t) slot][(size_t) k];
+        problem = (st.state == SlotState::missing || st.state == SlotState::error) && (old.state != st.state || old.path != st.path);
+        pedalStatus[(size_t) slot][(size_t) k] = st;
+    }
+    if (problem) eventLog.add("PROBLEM", "pedal " + juce::String(k + 1) + " of amp " + juce::String(slot + 1) + ": " + (st.info.isNotEmpty() ? st.info : st.path));
 }
 
 juce::String AmpsurdProcessor::pedalSignature(int slot) const
@@ -1500,6 +1553,7 @@ void AmpsurdProcessor::loadPedal(int slot, int k, const juce::File& file)
     auto aliveFlag = alive;
     loaderPool.addJob([this, slot, k, file, gen, aliveFlag] {
         if (!aliveFlag->load()) return;
+        ampsurd::EventLog::Scope busy(eventLog, "loading the pedal " + file.getFileName() + " for amp " + juce::String(slot + 1));
         {
             std::lock_guard<std::mutex> lock(configMutex);
             if (gen != pedalGeneration[(size_t) slot][(size_t) k].load()) return;
@@ -1554,6 +1608,7 @@ void AmpsurdProcessor::requestSlotRemeasure(int slot)
 
 void AmpsurdProcessor::slotRemeasureJob(int slot, int gen)
 {
+    ampsurd::EventLog::Scope busy(eventLog, "measuring amp " + juce::String(slot + 1) + " with its pedals");
     std::lock_guard<std::mutex> lock(configMutex);
     if (gen != slotRemeasureGeneration[(size_t) slot].load()) return;
     const auto st = getSlotStatus(slot);
@@ -1683,6 +1738,7 @@ void AmpsurdProcessor::loadCabIr(int slot, ampsurd::CabPoint p)
     auto aliveFlag = alive;
     loaderPool.addJob([this, slot, p, gen, ref, name, aliveFlag] {
         if (!aliveFlag->load() || gen != irGeneration[(size_t) slot].load()) return;
+        ampsurd::EventLog::Scope busy(eventLog, "calculating an AMPSURD IR for amp " + juce::String(slot + 1));
         const double sr = currentSampleRate.load();
         auto src = std::make_shared<IrSource>();
         src->rate = sr;
@@ -2127,6 +2183,7 @@ void AmpsurdProcessor::updateLatency()
 
 void AmpsurdProcessor::timerCallback()
 {
+    drainEventLog();
     if (needsRecovery.exchange(false))
     {
         // NaN / inf inside the signal chain: prepare everything again (fresh amp, filter and effect states)
@@ -2590,4 +2647,68 @@ juce::AudioProcessorEditor* AmpsurdProcessor::createEditor()
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new AmpsurdProcessor();
+}
+
+// ---------------------------------------------------------------------------------------------
+// The log (EventLog.h): dropouts get what was going on at that moment
+// ---------------------------------------------------------------------------------------------
+juce::String AmpsurdProcessor::describeDrop(const ampsurd::EventLog::Drop& d)
+{
+    juce::String t = "AMPSURD needed " + juce::String(d.workMs, 1) + " ms for a block that lasts " + juce::String(d.budgetMs, 1) + " ms ("
+                   + juce::String(d.samples) + " samples)";
+    const auto busy = eventLog.activitiesAround(d.atMs - 50.0, d.atMs + d.workMs + 50.0);
+    if (busy.isNotEmpty()) t << " - at the same time: " << busy;
+    juce::StringArray twoCaptures;
+    for (int s = 0; s < kNumSlots; ++s)
+    {
+        const auto st = getSlotStatus(s);
+        if (!st.isAmp || st.state != SlotState::loaded || st.gainSteps.size() < 2) continue;
+        const double g = slotParams[(size_t) s].ampGain->load();
+        bool onStep = false;
+        for (double k : st.gainSteps) onStep = onStep || std::abs(g - k) < 0.01;
+        if (!onStep) twoCaptures.add("amp " + juce::String(s + 1));
+    }
+    if (!twoCaptures.isEmpty())
+        t << " - GAIN between two recorded positions on " << twoCaptures.joinIntoString(", ") << " (two captures play there)";
+    t << " - CPU " << juce::roundToInt(getCpuLoadPercent()) << " %";
+    if (d.grace) t << " - not counted (right after starting the audio or loading an amp)";
+    else if (busy.isNotEmpty()) t << ". Likely cause: that background work took the CPU from the audio (once it ends, it should stop)";
+    else if (d.budgetMs < 3.0f) t << ". Likely cause: a very small buffer - a larger buffer size (e.g. 256) gives AMPSURD more time";
+    else if (d.workMs > 3.0f * d.budgetMs) t << ". Likely cause: the computer paused AMPSURD (another program, power saving, a driver)";
+    else t << ". Likely cause: too much for this CPU at this buffer size - ECO on the amps, fewer amps or a larger buffer";
+    return t;
+}
+
+void AmpsurdProcessor::drainEventLog()
+{
+    if (!startLogged)
+    {
+        startLogged = true;
+        eventLog.add("START", juce::String("AMPSURD " JucePlugin_VersionString) + " - "
+                                  + (wrapperType == wrapperType_Standalone ? juce::String("standalone app")
+                                                                            : "plugin (" + juce::String(getWrapperTypeDescription(wrapperType)) + ") in "
+                                                                                  + juce::PluginHostType().getHostDescription())
+                                  + " - " + juce::SystemStats::getOperatingSystemName() + " - " + lastAudioSetup);
+    }
+    eventLog.drain([this](const ampsurd::EventLog::Drop& d) { return describeDrop(d); });
+    // the audio driver's own missed buffers (standalone): AMPSURD was in time, the driver / computer was not
+    if (deviceXRuns)
+    {
+        const int n = deviceXRuns();
+        if (lastDriverXRuns >= 0 && n > lastDriverXRuns)
+        {
+            const double sr = currentSampleRate.load();
+            const float worst = recentWorkMs.load();
+            const double budget = sr > 0.0 ? 1000.0 * currentMaxBlock / sr : 0.0;
+            const auto busy = eventLog.activitiesAround(juce::Time::getMillisecondCounterHiRes() - 1500.0, juce::Time::getMillisecondCounterHiRes());
+            juce::String t = "the audio driver missed " + juce::String(n - lastDriverXRuns) + " buffer(s)";
+            if (worst <= budget) t << " - AMPSURD was in time (longest block " << juce::String(worst, 1) << " of " << juce::String(budget, 1) << " ms)";
+            if (busy.isNotEmpty()) t << " - at the same time: " << busy;
+            t << ". Likely cause: the driver or the computer (other programs, power saving, USB), or a buffer that is too small";
+            if (juce::Time::getMillisecondCounter() < dropGraceUntil.load()) t << " - not counted (right after starting / loading)";
+            eventLog.add("DROPOUT", t);
+        }
+        lastDriverXRuns = n;
+    }
+    recentWorkMs.store(0.0f);
 }

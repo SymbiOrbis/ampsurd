@@ -19,6 +19,22 @@ notarized (Developer ID: Radovan Glovna): double-click it and install. The first
 access to the audio input: allow it, or AMPSURD hears no guitar (the camera is asked for only when you use
 VIDEO in the player).
 
+## AMPSURD 0.9.9 (beta)
+
+**Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the standalone app.
+**macOS 10.15 or newer:** AMPSURD-macOS.pkg installs the app, the VST3 plugin and the Audio Unit. Installing over an
+older version is fine: presets and recordings (Documents/AMPSURD) stay untouched.
+
+New in 0.9.9:
+- LOG: click DROPOUTS (or CPU) in the footer, or settings menu -> Show log. Every dropout is listed with what was
+  going on at that moment (loading an amp, measuring, calculating an IR, GAIN between two recorded positions ...),
+  whether AMPSURD or the audio driver was late, and the likely cause. Problems are listed too (files not found,
+  captures / IRs that could not load, audio settings changes, update check errors). COPY, SHOW FILE, CLEAR; the file
+  is Documents / AMPSURD / Logs / AMPSURD_log.txt - easy to send.
+- AMPSURD amps: GAIN shows the amp knob's clock position (9:00 ... 15:00).
+- AMPSURD IR map: greyscale boxes (light = bright, dark = dark) with clearer steps; drag a row sideways right on its
+  boxes to slide it (a click still chooses the point).
+
 ## AMPSURD 0.9.8 (beta)
 
 **Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the standalone app.

@@ -12,6 +12,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "ampsurd/CaptureAnalyzer.h"
+#include "EventLog.h"
 #include "ampsurd/CaptureModel.h"
 #include "ampsurd/Effects.h"
 #if AMPSURD_DOUBLER
@@ -150,6 +151,7 @@ public:
         bool hasTone = false;   // ... with BASS / MID / TREBLE
         int toneMask = 0;       // which of them were measured (bit 0 BASS, 1 MID, 2 TREBLE)
         double gainMin = 0.0, gainMax = 10.0; // the GAIN positions it was recorded at (the knob moves only there)
+        juce::Array<double> gainSteps;         // all recorded GAIN positions (the log: between two = two captures play)
     };
     // --- pedal captures BEFORE an amp (serial chain, owner 2026-10-28; message thread): e.g. a boost or overdrive
     //     capture driving the amp capture. Measured with the amp (alignment, level match and INPUT curve include
@@ -273,7 +275,17 @@ public:
         if (juce::Time::getMillisecondCounter() < dropGraceUntil.load() && n > last) dropBaseline += n - last;
         return juce::jmax(0, n - dropBaseline.load());
     }
-    void startDropoutGrace(juce::uint32 ms) { dropGraceUntil.store(juce::jmax(dropGraceUntil.load(), juce::Time::getMillisecondCounter() + ms)); }
+    // the log of dropouts (with what was going on) and problems - EventLog.h
+    ampsurd::EventLog& getEventLog() { return eventLog; }
+    ampsurd::EventLog eventLog;
+    double lastBlockStartMs = 0.0;                 // audio thread
+    std::atomic<float> recentWorkMs { 0.0f };      // the longest block since the log last looked (ms)
+    int lastDriverXRuns = -1;                      // message thread
+    juce::String lastAudioSetup;                   // "48 kHz, 128 samples" - logged when it changes
+    bool startLogged = false;
+    juce::String describeDrop(const ampsurd::EventLog::Drop& d);
+    void drainEventLog();
+        void startDropoutGrace(juce::uint32 ms) { dropGraceUntil.store(juce::jmax(dropGraceUntil.load(), juce::Time::getMillisecondCounter() + ms)); }
     void setDeviceXRunProvider(std::function<int()> f) { deviceXRuns = std::move(f); } // standalone, message thread
     mutable std::atomic<int> dropLastRaw { 0 }, dropBaseline { 0 };
     std::atomic<juce::uint32> dropGraceUntil { 0 };

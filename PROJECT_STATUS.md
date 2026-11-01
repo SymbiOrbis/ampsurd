@@ -50,6 +50,8 @@ footswitches (program change, MIDI learn), preset packs, undo / redo, A/B, fast 
 (checklist 30-33). Bundled IRs on hold (no IRs without the author's explicit consent).
 **Public beta v0.9.0 released 2026-10-14** (GitHub pre-release, unsigned):
 https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.0
+**Public beta v0.9.9 released 2026-11-01:** LOG (dropouts with what was going on and the likely cause, problems), GAIN as clock, greyscale IR map, rows dragged on the boxes. https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.9 - Windows files to be signed by the owner.
+
 **Public beta v0.9.8 released 2026-11-01:** IR map rows slide / move (mm in every box), AMPSURD amp GAIN only over the recorded range, full amp name on hover. https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.8 - Windows files to be signed by the owner.
 
 **Public beta v0.9.7 released 2026-11-01:** AMPSURD amps - GAIN keeps the volume between recorded positions (sub-sample alignment, compensated blend); builder accepts CH1_ names. https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.7 - Windows files to be signed by the owner.

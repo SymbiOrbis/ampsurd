@@ -10,7 +10,8 @@ AmpsurdEditor::Content::Content(AmpsurdProcessor& p) : header(p), edit(p), ir(p)
       doubler(p),
 #endif
       master(p),
-      cabIrs(p)
+      cabIrs(p),
+      log(p)
 {
     addAndMakeVisible(header);
     for (int s = 0; s < AmpsurdProcessor::kNumSlots; ++s)
@@ -39,6 +40,7 @@ AmpsurdEditor::Content::Content(AmpsurdProcessor& p) : header(p), edit(p), ir(p)
         playerButton.setTooltip("Backing track and recorder");
     }
     addChildComponent(cabIrs); // last: on top of everything while open
+    addChildComponent(log);
 }
 
 void AmpsurdEditor::Content::paint(juce::Graphics& g)
@@ -133,6 +135,7 @@ void AmpsurdEditor::Content::resized()
    #endif
     // AMPSURD IRs map: over the slots and the centre area (between the header and the master row)
     cabIrs.setBounds(24, 56 + 8, getWidth() - 48, r.getBottom() - (56 + 8));
+    log.setBounds(cabIrs.getBounds());
     auto withButton = r;
     globalEqButton.setBounds(withButton.removeFromRight(40));
     withButton.removeFromRight(10);
@@ -155,6 +158,9 @@ AmpsurdEditor::AmpsurdEditor(AmpsurdProcessor& p) : AudioProcessorEditor(&p), pr
     content.ir.onClose = [this] { showIr(-1); };
     content.ir.onAmpsurdIrs = [this](int slot) { showAmpsurdIrs(slot); };
     content.cabIrs.onClose = [this] { timerCallback(); };
+    content.log.onClose = [this] { timerCallback(); };
+    content.footer.onCpuClicked = [this] { showLog(!content.log.isVisible()); };
+    content.header.onShowLog = [this] { showLog(true); };
     if (content.playerPanel)
     {
         content.playerPanel->onClose = [this] { showPlayer(false); };
@@ -205,6 +211,7 @@ bool AmpsurdEditor::keyPressed(const juce::KeyPress& key)
     const auto kc = juce::CharacterFunctions::toLowerCase((juce::juce_wchar) key.getKeyCode());
     if (mods.isCommandDown() && kc == 'z') { if (mods.isShiftDown()) proc.redo(); else proc.undo(); return true; }
     if (mods.isCommandDown() && kc == 'y') { proc.redo(); return true; }
+    if (key == juce::KeyPress::escapeKey && content.log.isVisible()) { content.log.close(); return true; }
     if (key == juce::KeyPress::escapeKey && content.cabIrs.isVisible()) { content.cabIrs.close(); return true; }
     if (key == juce::KeyPress::escapeKey && proc.getEqClipboardSource() >= 0) { proc.clearEqClipboard(); return true; } // cancel a COPY
 
@@ -291,6 +298,13 @@ void AmpsurdEditor::showAmpsurdIrs(int slot)
     if (content.ir.getSlot() != slot) showIr(slot);
     content.cabIrs.toFront(false);
     content.cabIrs.open(slot);
+}
+
+void AmpsurdEditor::showLog(bool show)
+{
+    if (!show) { if (content.log.isVisible()) content.log.close(); return; }
+    content.log.toFront(false);
+    content.log.open();
 }
 
 void AmpsurdEditor::frankensteinPressed()
@@ -453,9 +467,9 @@ void AmpsurdEditor::timerCallback()
         content.footer.setCpuText((drops > 0 ? "DROPOUTS " + juce::String(drops) + "   " : juce::String())
                                   + "CPU " + juce::String(juce::roundToInt(cpuAverage)) + "%");
         content.footer.setTooltip(drops > 0 ? "DROPOUTS: how many times the audio was late since start - each one is a short click "
-                                              "(the computer or the audio driver did not keep up). If it rises while you play: a larger "
-                                              "buffer size (Options), ECO on the amps, or fewer amps."
-                                            : juce::String());
+                                              "(the computer or the audio driver did not keep up). Click: the log - what was going on at each "
+                                              "one and the likely cause."
+                                            : juce::String("Click: the log (dropouts and problems)"));
     }
     content.master.refresh();
     content.header.refresh();
