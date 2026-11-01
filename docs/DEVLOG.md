@@ -6,6 +6,13 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-01 — Session 4k: channel number in recording track names - Claude (Opus 5.5)
+
+- Owner: both REAPER projects get the channel in front of each track name (CH1_G1_gain_0900, CH1_T00_ref_all_noon)
+  and record monitoring off on every track (his files had it on again). Files sent, original names, unzipped.
+- Builder: a leading "CHn_" in a sweep file name is ignored (it already ignored it in NAM names: only "gain_HHMM"
+  is looked for). ui_snapshot uses CH1_ names for one capture and one sweep. In the next release.
+
 ## 2026-11-01 — Session 4j: release 0.9.6 - Claude (Opus 5.5)
 
 - Owner: publish. Version 0.9.6 (CMakeLists, AMPSURD.iss, build_pkg.sh), RELEASE_NOTES 0.9.6, release by the

@@ -951,7 +951,7 @@ int main(int argc, char** argv)
         dir.deleteRecursively();
         dir.createDirectory();
         juce::File(argv[2]).copyFileTo(dir.getChildFile("G1_gain_0900.nam"));
-        juce::File(argv[3]).copyFileTo(dir.getChildFile("G7_gain_1500.nam"));
+        juce::File(argv[3]).copyFileTo(dir.getChildFile("CH1_G7_gain_1500.nam"));
         const auto sweep = ampsurd::ToneSweep::make();
         auto shelf = [](std::vector<double> x, bool low, double gainDb) {
             const double fs = 48000.0, f0 = low ? 150.0 : 3000.0, A = std::pow(10.0, gainDb / 40.0), w = 2 * juce::MathConstants<double>::pi * f0 / fs;
@@ -970,7 +970,7 @@ int main(int argc, char** argv)
             writeWav(dir.getChildFile(name + ".wav"), b, 48000.0);
         };
         writeRec("T00_ref_all_noon", sweep);
-        writeRec("T13_ref_all_noon", sweep);
+        writeRec("CH1_T13_ref_all_noon", sweep); // a channel number in front is ignored
         writeRec("T01_bass_min", shelf(sweep, true, -9.0));
         writeRec("T02_bass_0900", shelf(sweep, true, -5.0));
         writeRec("T03_bass_1500", shelf(sweep, true, 5.0));

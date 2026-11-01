@@ -133,7 +133,9 @@ bool build(const juce::File& folder, const juce::String& name, const juce::Strin
         if (stem.endsWithChar(')') && stem.containsChar('(')) stem = stem.upToLastOccurrenceOf("(", false, false).trim();
         if (stem.lastIndexOfChar('-') > 0 && stem.fromLastOccurrenceOf("-", false, false).containsOnly("0123456789"))
             stem = stem.upToLastOccurrenceOf("-", false, false);
-        const auto parts = juce::StringArray::fromTokens(stem, "_", "");
+        auto parts = juce::StringArray::fromTokens(stem, "_", "");
+        // a channel number in front ("CH1_T00_ref_all_noon", owner 2026-11-01) is ignored
+        if (parts.size() > 2 && parts[0].startsWith("ch") && parts[0].substring(2).containsOnly("0123456789")) parts.remove(0);
         if (parts.size() < 2 || !parts[0].startsWith("t")) continue;
         if (parts.contains("ref"))
         {
