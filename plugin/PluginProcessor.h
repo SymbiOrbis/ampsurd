@@ -199,6 +199,7 @@ public:
     // INPUT -> loudness curve per capture). OUTPUT is the deliberate level change of the amp.
     bool isDriveCompensationReady(int slot) const;
     double getDriveCompensationDb(int slot) const { return derived[(size_t) slot].driveCompDb.load(); }
+    double getDriveCurveAmpGain(int slot) const; // AMPSURD amp: GAIN position the INPUT curve was measured at (-1: none)
 
     // --- input calibration (like the official NAM plugin's "Calibrate input") ---
     // Most captures store the input level (dBu) they were recorded at. With calibration on and the
@@ -514,6 +515,7 @@ private:
         bool valid = false;
         ampsurd::CaptureAnalyzer::DriveCurve curve;
         double baseDb = 0.0;    // INPUT + calibration it was measured at
+        double ampGain = 5.0;   // AMPSURD amp: the GAIN position it was measured at (the curve follows GAIN)
         bool eco = false, ir = false;
         const void* irData = nullptr;
         juce::String path, pedals; // pedals: pedalSignature() it was measured with
@@ -523,6 +525,8 @@ private:
     std::array<float, kNumSlots> lastSeenDrive {};
     std::array<double, kNumSlots> driveChangedAt {};
     std::array<float, kNumSlots> queuedDrive {};
+    std::array<float, kNumSlots> lastSeenAmpGain {}, queuedAmpGain {}; // AMPSURD amp GAIN -> new INPUT curve (debounced)
+    std::array<double, kNumSlots> ampGainChangedAt {};
 
     // cabinet IRs: the file's samples (for sample-rate changes) and the prepared IR at the current
     // rate (for measuring) - guarded by configMutex. Cached raw capture renders (analysisMutex) let an

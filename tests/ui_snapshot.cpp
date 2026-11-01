@@ -1028,6 +1028,24 @@ int main(int argc, char** argv)
         setP(*proc, AP::slotParamId(3, "ampGain"), 8.0f);
         run(200);
         const double g8 = level80();
+        // the amp's INPUT compensation follows GAIN (0.9.6): the INPUT -> loudness curve is made again at the new GAIN
+        setP(*proc, AP::slotParamId(3, "drive"), 6.0f);
+        auto curveAt = [&](double gain) {
+            for (int t = 0; t < 1500 && std::abs(proc->getDriveCurveAmpGain(3) - gain) > 0.01; ++t) run(20);
+            run(200);
+            return std::abs(proc->getDriveCurveAmpGain(3) - gain) < 0.01;
+        };
+        const bool curve8 = curveAt(8.0);
+        const double comp8 = proc->getDriveCompensationDb(3);
+        setP(*proc, AP::slotParamId(3, "ampGain"), 2.0f);
+        const bool curve2 = curveAt(2.0);
+        const double comp2 = proc->getDriveCompensationDb(3);
+        setP(*proc, AP::slotParamId(3, "ampGain"), 8.0f);
+        setP(*proc, AP::slotParamId(3, "drive"), 0.0f);
+        const bool followOk = curve8 && curve2 && std::abs(comp8) < 12.0 && std::abs(comp2) < 12.0;
+        std::cout << (followOk ? "[PASS]" : "[FAIL]") << " AMPSURD AMP INPUT: the loudness compensation follows GAIN (curve at GAIN 8: "
+                  << curve8 << ", at GAIN 2: " << curve2 << "; amp INPUT +6 dB compensated " << juce::String(comp8, 2) << " / "
+                  << juce::String(comp2, 2) << " dB)\n";
         // the knobs on the slot + a screenshot
         std::unique_ptr<juce::AudioProcessorEditor> ed(proc->createEditor());
         auto* e = dynamic_cast<AmpsurdEditor*>(ed.get());

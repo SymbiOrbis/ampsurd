@@ -1117,6 +1117,13 @@ bool AmpsurdProcessor::isDriveCompensationReady(int slot) const
     return driveCurves[(size_t) slot].valid;
 }
 
+double AmpsurdProcessor::getDriveCurveAmpGain(int slot) const
+{
+    std::lock_guard<std::mutex> al(analysisMutex);
+    const auto& c = driveCurves[(size_t) slot];
+    return c.valid ? c.ampGain : -1.0;
+}
+
 void AmpsurdProcessor::requestDriveCurve(int slot)
 {
     const int gen = ++curveGeneration[(size_t) slot];
@@ -1129,7 +1136,7 @@ void AmpsurdProcessor::requestDriveCurve(int slot)
 void AmpsurdProcessor::driveCurveJob(int slot, int gen)
 {
     // what the curve depends on: the capture (and ECO), INPUT + calibration, the cabinet IR
-    double sr = 0.0, baseDb = 0.0;
+    double sr = 0.0, baseDb = 0.0, ampGain = 5.0;
     int block = 0;
     std::shared_ptr<const std::vector<double>> ir;
     bool eco = false;
@@ -1146,11 +1153,13 @@ void AmpsurdProcessor::driveCurveJob(int slot, int gen)
         eco = slotParams[(size_t) slot].eco->load() > 0.5f;
         baseDb = inputParam->load() + getCalibrationTrimDb(slot);
         if (isIrOn(slot)) ir = irPrepared[(size_t) slot];
+        if (st.isAmp) ampGain = slotParams[(size_t) slot].ampGain->load(); // loadSlotModel() sets the morph to it
     }
     {
         std::lock_guard<std::mutex> al(analysisMutex);
         const auto& c = driveCurves[(size_t) slot];
-        if (c.valid && std::abs(c.baseDb - baseDb) < 0.25 && c.eco == eco && c.irData == (const void*) ir.get() && c.pedals == pedals)
+        if (c.valid && std::abs(c.baseDb - baseDb) < 0.25 && c.eco == eco && c.irData == (const void*) ir.get() && c.pedals == pedals
+            && std::abs(c.ampGain - ampGain) < 0.25)
             return; // nothing changed
     }
     auto r = loadSlotModel(slot, juce::File(path), sr, block, eco);
@@ -1174,11 +1183,15 @@ void AmpsurdProcessor::driveCurveJob(int slot, int gen)
     c.valid = true;
     c.curve = curve;
     c.baseDb = baseDb;
+    c.ampGain = ampGain;
     c.eco = eco;
     c.irData = ir.get();
     c.pedals = pedals;
     c.ir = ir != nullptr;
     c.path = path;
+    // GAIN moved while this curve was being made: make it again at the new position
+    if (getSlotStatus(slot).isAmp && std::abs(slotParams[(size_t) slot].ampGain->load() - ampGain) >= 0.25)
+        requestDriveCurve(slot);
 }
 
 void AmpsurdProcessor::updateDriveCompensation()
@@ -2195,6 +2208,27 @@ void AmpsurdProcessor::timerCallback()
         {
             queuedDrive[(size_t) sl] = dv; // queued once
             needsRemeasure.store(true);
+        }
+        // AMPSURD amp: each GAIN position compresses differently, so the INPUT -> loudness curve follows GAIN
+        const auto st = getSlotStatus(sl);
+        const float ag = slotParams[(size_t) sl].ampGain->load();
+        if (std::abs(ag - lastSeenAmpGain[(size_t) sl]) > 0.001f)
+        {
+            lastSeenAmpGain[(size_t) sl] = ag;
+            ampGainChangedAt[(size_t) sl] = now;
+        }
+        if (st.state == SlotState::loaded && st.isAmp && std::abs(ag - queuedAmpGain[(size_t) sl]) > 0.001f
+            && now - ampGainChangedAt[(size_t) sl] > 400.0)
+        {
+            bool stale = false, ready = false;
+            {
+                std::lock_guard<std::mutex> al(analysisMutex);
+                const auto& c = driveCurves[(size_t) sl];
+                ready = c.valid;
+                stale = c.valid && std::abs(c.ampGain - ag) >= 0.25;
+            }
+            if (ready) queuedAmpGain[(size_t) sl] = ag; // not ready: a curve is being made, look again next tick
+            if (stale) requestDriveCurve(sl);
         }
     }
     if (std::abs(g - lastSeenInputGainDb) > 0.01f)

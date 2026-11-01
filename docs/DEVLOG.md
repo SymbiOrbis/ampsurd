@@ -6,6 +6,19 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-01 — Session 4i: amp INPUT compensation follows GAIN (AMPSURD amps) - Claude (Opus 5.5)
+
+- Owner approved. The per-amp INPUT keeps the amp's loudness through an INPUT -> loudness curve. For an AMPSURD amp
+  the curve was measured at the GAIN position at load time, so after a big GAIN move the level while turning INPUT
+  could be a little off (the sound itself was right).
+- Now the curve remembers the GAIN it was made at; 400 ms after GAIN stops moving (by 0.25 or more) it is made again
+  in the background at the new position (loadSlotModel already sets the morph to the current GAIN). A curve that
+  finishes while GAIN moved on is made again. The old curve keeps working meanwhile.
+- Files: plugin/PluginProcessor.h/.cpp (DriveCurveState::ampGain, timer debounce, getDriveCurveAmpGain),
+  tests/ui_snapshot.cpp (AMPSURD AMP INPUT test).
+- Tested: compiles in CI (Windows + macOS). The new ui_snapshot check (AMPSURD AMP INPUT) is written but could not run
+  here (this container has no JUCE Linux libraries); run it on the next local build. Next release: 0.9.6.
+
 ## 2026-11-01 — Session 4h: recording kit for AMPSURD amps - Claude (Opus 5.5)
 
 - Owner plans 7 gain captures per channel (9-15 o'clock, boosted by a screamer), 3 channels. Tone sweeps: screamer
