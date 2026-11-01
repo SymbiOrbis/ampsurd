@@ -128,7 +128,12 @@ bool build(const juce::File& folder, const juce::String& name, const juce::Strin
     std::vector<std::pair<int, std::pair<double, juce::File>>> sweeps;
     for (const auto& f : folder.findChildFiles(juce::File::findFiles, false, "*.wav"))
     {
-        const auto parts = juce::StringArray::fromTokens(f.getFileNameWithoutExtension().toLowerCase(), "_", "");
+        // REAPER's recorded / rendered names may carry a take number ("T06_mid_0900-001", "T06_mid_0900 (2)")
+        auto stem = f.getFileNameWithoutExtension().toLowerCase().trim();
+        if (stem.endsWithChar(')') && stem.containsChar('(')) stem = stem.upToLastOccurrenceOf("(", false, false).trim();
+        if (stem.lastIndexOfChar('-') > 0 && stem.fromLastOccurrenceOf("-", false, false).containsOnly("0123456789"))
+            stem = stem.upToLastOccurrenceOf("-", false, false);
+        const auto parts = juce::StringArray::fromTokens(stem, "_", "");
         if (parts.size() < 2 || !parts[0].startsWith("t")) continue;
         if (parts.contains("ref"))
         {
