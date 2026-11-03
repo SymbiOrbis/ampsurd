@@ -63,7 +63,9 @@ void LogPanel::refresh()
     const auto t = log.getText();
     view.setText(t.isEmpty() ? juce::String("Nothing yet - dropouts and problems will be listed here, with what was going on at that moment.")
                              : t, false);
-    view.moveCaretToEnd(); // the newest at the bottom, in view
+    // a short log from the top; a long one scrolled to the newest entry at the bottom
+    view.setCaretPosition(0);
+    if (view.getTextHeight() > view.getHeight()) view.moveCaretToEnd();
     repaint();
 }
 
@@ -81,6 +83,8 @@ void LogPanel::resized()
     copyButton.setBounds(bottom.removeFromRight(90));
     r.removeFromBottom(10);
     view.setBounds(r);
+    shownVersion = -1; // laid out again: show it from the right place
+    if (isVisible()) refresh();
 }
 
 void LogPanel::paint(juce::Graphics& g)

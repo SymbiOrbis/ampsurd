@@ -294,16 +294,70 @@ static int webShots(const juce::File& out, int argc, char** argv)
     setP(*proc, "dblOn", 0.0f);
    #endif
 
-    // 8b. AMPSURD IRs: the map of the synthetic 4x12 IRs, amp 3 on DV77 + SM57 at 45 mm (between the dots too)
+    // 8b. AMPSURD IRs: the map of the synthetic 4x12 IRs, amp 3 between V30 + SM57 and V30 + R121, the R121 row
+    // slid three boxes (0.9.8 / 0.9.9: rows slide and move, greyscale boxes with the mm in each)
     {
         e->showAmpsurdIrs(2);
         auto& mx = e->getCabIrMatrix();
-        mx.choose({ 3.0, 45.0 });
+        mx.resetRows();
+        mx.slideRow(1, 3);
+        mx.choose(ampsurd::CabIrModel::atMap(mx.getOrder(), mx.getOffsets(), 6.0, 0.4));
         mx.flush();
         settle(0.8);
         shot("18_ampsurd_irs.png", &mx, 2);
         e->showAmpsurdIrs(-1);
         e->showIr(-1);
+    }
+
+    // 8c. a pedal capture before amp 1 (stacked frame behind the slot) and an AMPSURD amp in slot 4 (GAIN / BASS / MID /
+    // TREBLE knobs); the amp file comes from AMPSURD_WEB_AMP (an .ampsurdamp), else this shot is skipped
+    {
+        const auto pedal = tmp.getChildFile("Demo boost pedal.nam");
+        juce::File(argv[3]).copyFileTo(pedal);
+        proc->loadPedal(0, 0, pedal);
+        const juce::File amp(juce::SystemStats::getEnvironmentVariable("AMPSURD_WEB_AMP", ""));
+        if (amp.existsAsFile())
+        {
+            proc->loadCapture(3, amp);
+            for (int t = 0; t < 1500 && proc->getSlotStatus(3).state != AmpsurdProcessor::SlotState::loaded; ++t) { play(0.02); pump(20); }
+            proc->beginMixGesture(3); proc->setMixLinked(3, 25.0f); proc->endMixGesture(3);
+            setP(*proc, AmpsurdProcessor::slotParamId(3, "ampGain"), 6.5f);
+            setP(*proc, AmpsurdProcessor::slotParamId(3, "ampBass"), 6.0f);
+            setP(*proc, AmpsurdProcessor::slotParamId(3, "ampTreble"), 4.0f);
+        }
+        for (int t = 0; t < 300 && proc->getPedalStatus(0, 0).state != AmpsurdProcessor::SlotState::loaded; ++t) { play(0.02); pump(20); }
+        settle(1.5);
+        juce::Rectangle<int> r;
+        std::function<void(juce::Component&)> slots = [&](juce::Component& c) {
+            if (dynamic_cast<ampsurd::ui::SlotComponent*>(&c) != nullptr) r = r.isEmpty() ? ed->getLocalArea(&c, c.getLocalBounds()) : r.getUnion(ed->getLocalArea(&c, c.getLocalBounds()));
+            for (auto* ch : c.getChildren()) slots(*ch);
+        };
+        slots(*ed);
+        shotUnion("19_slots_pedal_and_amp.png", r.expanded(14));
+        e->selectSlot(0);
+        settle(0.4);
+        shot("20_pedals_edit.png", findVisible<ampsurd::ui::EditPanel>(*ed), 2);
+        e->selectSlot(-1);
+    }
+
+    // 8d. the log: a dropout with what was going on and the likely cause, a problem
+    {
+        auto& lg = proc->getEventLog();
+        lg.clear();
+        const int act = lg.beginActivity("loading Demo AMPSURD amp.ampsurdamp into amp 4");
+        ampsurd::EventLog::Drop d;
+        d.atMs = juce::Time::getMillisecondCounterHiRes();
+        d.workMs = 6.8f;
+        d.budgetMs = 2.7f;
+        d.samples = 128;
+        lg.pushDrop(d);
+        lg.endActivity(act);
+        proc->runHousekeeping();
+        lg.add("PROBLEM", "IR of amp 5: IR file not found: D:/IRs/My cab 412.wav");
+        e->showLog(true);
+        settle(0.4);
+        shot("21_log.png", &e->getLogPanel(), 2);
+        e->showLog(false);
     }
 
     // 9. player / recorder with metronome: a backing track, a recorded guitar take

@@ -124,6 +124,8 @@ void EventLog::clear()
 {
     std::lock_guard<std::mutex> l(mutex);
     lines.clear();
+    notListed = 0; // (message thread, like drain)
+    notListedWorst = 0.0;
     ++version;
 }
 } // namespace ampsurd

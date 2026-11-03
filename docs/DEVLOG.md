@@ -6,6 +6,16 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-03 — Session 4r: website update; two log fixes - Claude (Opus 5.5)
+
+- Owner: update the website (single-file index.html). New sections: AMPSURD amps, the AMPSURD IR map, pedals before
+  every amp, TONES, the log, MIDI footswitches; specs (AMPSURD amps, calculated IRs, ~2-3 ms latency, log), macOS
+  10.15+, old "New" tags removed. All screenshots rendered again (AMPSURD_WEB_SHOTS; new: 18 IR map with a slid row,
+  19 pedal + AMPSURD amp in the slots - AMPSURD_WEB_AMP = a demo .ampsurdamp, 20 pedals in EDIT, 21 log), WebP.
+- Log fixes found while making the shots: the log window scrolled a short log to its last line (now: a short log
+  from the top, a long one to the newest entry; again after a resize); CLEAR also forgets dropouts still being
+  counted for the "N more" line. ui_snapshot: all pass. In the next release.
+
 ## 2026-11-01 — Session 4q: the LOG (dropouts with reasons, problems); release 0.9.9 - Claude (Opus 5.5)
 
 - Owner approved the log. plugin/EventLog: the audio thread writes a small record per block that took longer than
