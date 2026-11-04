@@ -6,6 +6,16 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-04 — Session 4s: six EVH 5150 III AMPSURD amps - Claude (Opus 5.5)
+
+- Owner's recordings: 3 channels x 7 gain captures, once clean and once with the Gerhat Screamer; one set of 14
+  tone sweeps per channel (screamer off, gain minimum) used for both versions (the tone stack sits after the boost).
+- Checks: NAM gain metadata rises with every step and is higher with the boost (no swapped files); all sweeps
+  48 kHz / 27 s / 24-bit, peaks <= -0.7 dBFS; T00 vs T13 within 0.15-0.38 dB; CH3 saturates at gain minimum
+  (quiet sweep only ~5 dB below the loud one).
+- Built with ampsurd_amp_build, checked with ampsurd_amp_check: every capture loads, loudness across GAIN 2..8 within
+  0.05 dB (0.9.7 compensation), all tone filters fine. Sent to the owner (not committed). Not heard by ear yet.
+
 ## 2026-11-03 — Session 4r: website update; two log fixes - Claude (Opus 5.5)
 
 - Owner: update the website (single-file index.html). New sections: AMPSURD amps, the AMPSURD IR map, pedals before
