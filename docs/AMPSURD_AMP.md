@@ -58,3 +58,22 @@ the references, so the load box and interface cancel out.
 detected, interpolation, minimum-phase filter, GAIN morph (on a step = that capture, halfway = average, no jumps
 while turning). `tests/ui_snapshot` (local): builds an amp from synthetic recordings, loads it, knobs on the slot,
 BASS / GAIN change the sound as measured, presets keep the knobs.
+
+
+## The capture check (since 2026-11-05)
+
+Before anything is written, the builder loads every gain capture, plays AMPSURD's test signal through it and
+compares each one with its neighbours. **The build stops - no file is written - when any of them is faulty**, and the
+message names the file and the reason:
+
+- it does not load, plays invalid numbers or (almost) silence;
+- it is more than 1 ms early or late against its neighbours (a timing fault, typically from training), or sounds unlike
+  both neighbours (similarity below 0.6; real neighbours are mostly above 0.85) - with 3 or more captures;
+- it is the same capture as another one (same weights hash, or the same file content);
+- it has less gain than the capture before it (NAM's own gain estimate falls by more than 0.05: files named wrong?);
+- a tone sweep clips (reaches 0 dBFS): its tone curve would be wrong.
+
+Two captures for the same GAIN position stop the build too. Found on the owner's EVH 5150 III recordings: the boosted
+CH2 13:00 capture was 3.5 ms early (TONE3000 training) - the only one in nine amps (EVH x 6, Framus Cobra x 3).
+Code: plugin/AmpProfileFile.cpp (checkCaptures); test: ui_snapshot "AMP BUILDER CAPTURE CHECK" (NAM Linear captures
+with known faults).

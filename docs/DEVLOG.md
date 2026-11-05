@@ -6,6 +6,22 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-05 — Session 4t: the amp builder checks every capture and stops on a faulty one - Claude (Opus 5.5)
+
+- Owner asked whether 0, 2, 4, 6, 8, 10 would be enough for a full-range GAIN. Leave-one-out test on the EVH
+  recordings (amps from 9/11/13/15 only, blended 10/12/14 vs the real captures): tone within ~0.05-0.4 dB, the
+  largest differences where the sound changes fastest (low gain on clean channels, top of CH3). Advice: denser at the
+  low end (0,1,2,3,4,6,8,10), 2-hour steps enough for high-gain / boosted channels. ampsurd_amp_check got
+  --render <knob> <out.wav> [<capture.nam> <out2.wav>] for such comparisons.
+- The test exposed a faulty capture in a delivered amp: EVH CH2 + Gerhat 13:00 is 3.5 ms early (170 samples) and only
+  0.4 similar to its neighbours (others 0.85-0.98) -> the calibration delayed it, its blends lost 64 % power.
+- Owner: "always check the integrity and quality of the provided NAMs" + "if there is a faulty capture, just stop
+  building". Builder: checkCaptures() (load, finite, not silent, timing / similarity vs neighbours with >= 3 captures,
+  the same capture twice by hash or content, falling NAM gain estimate) + clipped sweeps + duplicate positions -> the
+  build stops with the files and reasons. All nine real amps: only that capture flagged. docs/AMPSURD_AMP.md section.
+  ui_snapshot: all pass (32) incl. the new CAPTURE CHECK test. In the next release (the app's builder); the
+  delivered EVH CH2 + Gerhat amp should be rebuilt once that capture is re-trained.
+
 ## 2026-11-04 — Session 4s: six EVH 5150 III AMPSURD amps - Claude (Opus 5.5)
 
 - Owner's recordings: 3 channels x 7 gain captures, once clean and once with the Gerhat Screamer; one set of 14

@@ -5,6 +5,9 @@
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
+#include "ampsurd/CaptureAnalyzer.h"
+#include "ampsurd/CaptureModel.h"
+
 namespace ampsurd::amp
 {
 namespace
@@ -30,6 +33,139 @@ juce::File cacheFolderFor(const juce::File& f)
     const auto key = juce::String::toHexString((juce::int64) (f.getFullPathName() + "|" + juce::String(f.getLastModificationTime().toMilliseconds())
                                                                  + "|" + juce::String(f.getSize())).hashCode64());
     return juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("AMPSURD amps").getChildFile(f.getFileNameWithoutExtension() + " " + key);
+}
+// The capture check (owner 2026-11-05: "always check the integrity and quality of the provided NAMs"; "if there is a
+// faulty capture, just stop building"). Every gain capture is loaded and played with AMPSURD's test signal. The
+// build STOPS (no file is written) when one does not load, plays silence or garbage, does not match its neighbours
+// (late by more than 1 ms, or unlike both: correlation below 0.6; compared only with 3 or more captures - with two,
+// neither can be blamed), is the same capture as another one, or has less gain than the one before it (NAM's own
+// gain estimate falls: files named wrong?).
+struct CaptureCheck
+{
+    double knob = 0.0;
+    juce::File file;
+    std::vector<double> out;   // the test signal through it
+    double namGain = -1.0;     // NAM's own gain estimate (metadata), -1 = none
+    juce::String hash;         // metadata weights hash ("" = none)
+    juce::String problem;      // why it is left out ("" = fine)
+};
+
+// normalised cross-correlation of a against b at the best lag within +-maxLag (lag > 0: a is later)
+std::pair<int, double> bestLag(const std::vector<double>& a, const std::vector<double>& b, int maxLag)
+{
+    const size_t n = std::min(a.size(), b.size());
+    size_t size = 1;
+    while (size < 2 * n) size <<= 1;
+    std::vector<std::complex<double>> fa(size), fb(size);
+    for (size_t i = 0; i < n; ++i) { fa[i] = a[i]; fb[i] = b[i]; }
+    CaptureAnalyzer::fft(fa, false);
+    CaptureAnalyzer::fft(fb, false);
+    for (size_t i = 0; i < size; ++i) fa[i] *= std::conj(fb[i]);
+    CaptureAnalyzer::fft(fa, true);
+    double ea = 0.0, eb = 0.0;
+    for (size_t i = 0; i < n; ++i) { ea += a[i] * a[i]; eb += b[i] * b[i]; }
+    const double norm = std::sqrt(ea * eb) + 1e-30;
+    // the inverse FFT may or may not be scaled: normalise by the zero-lag value's scale
+    double scale = 1.0;
+    {
+        double direct = 0.0;
+        for (size_t i = 0; i < n; ++i) direct += a[i] * b[i];
+        if (std::abs(fa[0].real()) > 1e-30) scale = direct / fa[0].real();
+    }
+    int best = 0;
+    double bestV = -1e300;
+    for (int lag = -maxLag; lag <= maxLag; ++lag)
+    {
+        const double v = fa[(size_t) (lag >= 0 ? lag : (int) size + lag)].real() * scale;
+        if (v > bestV) { bestV = v; best = lag; }
+    }
+    return { best, bestV / norm };
+}
+
+void checkCaptures(std::vector<CaptureCheck>& caps, juce::String& report)
+{
+    const double sr = 48000.0;
+    const int block = 512;
+    const auto test = CaptureAnalyzer::makeTestSignal(sr);
+    std::map<juce::String, juce::String> byHash;
+    for (auto& c : caps)
+    {
+        // metadata: NAM's gain estimate and the weights hash (both optional)
+        const auto json = juce::JSON::parse(c.file);
+        if (auto* meta = json.getProperty("metadata", {}).getDynamicObject())
+        {
+            if (meta->hasProperty("gain")) c.namGain = (double) meta->getProperty("gain");
+            c.hash = meta->getProperty("weights_hash").toString();
+        }
+        auto r = CaptureModel::load(c.file.getFullPathName().toStdString(), sr, block, false);
+        if (!r.model) { c.problem = "it does not load (" + juce::String(r.error) + ")"; continue; }
+        c.out = CaptureAnalyzer::render(*r.model, test, false);
+        double e = 0.0;
+        bool finite = true;
+        for (double v : c.out) { finite = finite && std::isfinite(v); e += v * v; }
+        const double rmsDb = 10.0 * std::log10(e / (double) std::max<size_t>(1, c.out.size()) + 1e-30);
+        if (!finite) c.problem = "it plays invalid numbers (a broken capture)";
+        else if (rmsDb < -80.0) c.problem = "it plays (almost) silence";
+        if (c.hash.isEmpty()) // no hash in the file: its content
+            c.hash = "file:" + juce::String(c.file.getSize()) + ":" + juce::String::toHexString(c.file.loadFileAsString().hashCode64());
+        if (c.hash.isNotEmpty())
+        {
+            if (byHash.count(c.hash) && c.problem.isEmpty()) c.problem = "it is the same capture as " + byHash[c.hash] + " (copied under two names?)";
+            else byHash[c.hash] = c.file.getFileName();
+        }
+    }
+    // neighbours: repeatedly leave out the capture that matches its neighbours worst, while one does not match
+    const int maxLag = (int) (0.020 * sr), lagLimit = (int) (0.001 * sr);
+    for (;;)
+    {
+        std::vector<size_t> ok;
+        for (size_t i = 0; i < caps.size(); ++i) if (caps[i].problem.isEmpty()) ok.push_back(i);
+        if (ok.size() < 3) break;
+        double worstScore = 1e9;
+        size_t worst = 0;
+        juce::String worstWhy;
+        for (size_t k = 0; k < ok.size(); ++k)
+        {
+            // the better match of its two neighbours (one at the ends)
+            double bestCorr = -1.0;
+            int lagOfBest = 0;
+            for (int dk : { -1, 1 })
+            {
+                const int j = (int) k + dk;
+                if (j < 0 || j >= (int) ok.size()) continue;
+                const auto [lag, corr] = bestLag(caps[ok[k]].out, caps[ok[(size_t) j]].out, maxLag);
+                if (corr > bestCorr) { bestCorr = corr; lagOfBest = lag; }
+            }
+            const bool late = std::abs(lagOfBest) > lagLimit, unlike = bestCorr < 0.6;
+            if (!late && !unlike) continue;
+            const double score = bestCorr - (late ? 1.0 : 0.0);
+            if (score < worstScore)
+            {
+                worstScore = score;
+                worst = ok[k];
+                worstWhy = late ? "it is " + juce::String(1000.0 * std::abs(lagOfBest) / sr, 1) + " ms " + (lagOfBest > 0 ? "late" : "early")
+                                      + " compared with its neighbours (a timing fault, often from training)"
+                                : "it sounds unlike its neighbours (similarity " + juce::String(bestCorr, 2) + ", the others are mostly above 0.85)";
+            }
+        }
+        if (worstScore > 1e8) break;
+        caps[worst].problem = worstWhy;
+    }
+    // gain order: NAM's own gain estimate should rise with the knob
+    double lastGain = -1.0;
+    juce::String lastName;
+    for (auto& c : caps)
+    {
+        if (!c.problem.isEmpty() || c.namGain < 0.0) continue;
+        if (lastGain >= 0.0 && c.namGain < lastGain - 0.05)
+        {
+            c.problem = "it has less gain than " + lastName + " (NAM's estimate " + juce::String(c.namGain, 2) + " vs " + juce::String(lastGain, 2)
+                      + ") - are the files named right?";
+            continue;
+        }
+        lastGain = c.namGain;
+        lastName = c.file.getFileName();
+    }
 }
 } // namespace
 
@@ -108,9 +244,33 @@ bool build(const juce::File& folder, const juce::String& name, const juce::Strin
     std::sort(gains.begin(), gains.end(), [](auto& a, auto& b) { return a.first < b.first; });
     if (gains.empty()) { error = "No gain captures found: the .nam files need \"gain_HHMM\" in their names (e.g. G1_gain_0900.nam)."; return false; }
 
+    // every capture is checked before it goes into the amp (left out with the reason when it is faulty)
+    {
+        for (size_t i = 1; i < gains.size(); ++i)
+            if (std::abs(gains[i].first - gains[i - 1].first) < 1e-6)
+            {
+                error = "Two captures for the same GAIN position: " + gains[i - 1].second.getFileName() + " and " + gains[i].second.getFileName() + ".";
+                return false;
+            }
+        std::vector<CaptureCheck> caps;
+        for (auto& g : gains) caps.push_back({ g.first, g.second });
+        checkCaptures(caps, report);
+        juce::StringArray faulty;
+        for (auto& c : caps)
+            if (c.problem.isNotEmpty()) faulty.add(c.file.getFileName() + ": " + c.problem);
+        if (!faulty.isEmpty())
+        {
+            error = "The amp was NOT built - " + juce::String(faulty.size()) + " faulty capture" + (faulty.size() > 1 ? "s" : "") + ":\n\n"
+                  + faulty.joinIntoString("\n") + "\n\nRe-train or re-record " + (faulty.size() > 1 ? "them" : "it") + ", then build again.";
+            return false;
+        }
+        report << "capture check: all " << (int) caps.size() << " captures fine\n";
+    }
+
     // tone sweeps
     juce::AudioFormatManager fm;
     fm.registerBasicFormats();
+    juce::StringArray clipped; // sweeps that reach 0 dBFS: the build stops (their tone curve would be wrong)
     auto analyse = [&](const juce::File& f, ToneSweep::Response& r) {
         std::unique_ptr<juce::AudioFormatReader> rd(fm.createReaderFor(f));
         if (rd == nullptr) { report << "cannot read: " << f.getFileName() << "\n"; return false; }
@@ -118,6 +278,9 @@ bool build(const juce::File& folder, const juce::String& name, const juce::Strin
         rd->read(&b, 0, b.getNumSamples(), 0, true, false);
         std::vector<double> x((size_t) b.getNumSamples());
         for (int i = 0; i < b.getNumSamples(); ++i) x[(size_t) i] = b.getSample(0, i);
+        double peak = 0.0;
+        for (double v : x) peak = std::max(peak, std::abs(v));
+        if (peak >= 0.999) clipped.add(f.getFileName());
         std::string e;
         if (!ToneSweep::analyse(x, rd->sampleRate, r, e)) { report << f.getFileName() << ": " << e << "\n"; return false; }
         if (r.usedQuiet) report << f.getFileName() << ": the loud sweep distorted - the quiet one was used\n";
@@ -182,6 +345,14 @@ bool build(const juce::File& folder, const juce::String& name, const juce::Strin
         }
     }
     else report << "no tone sweeps: the amp gets a GAIN knob only\n";
+
+    if (!clipped.isEmpty())
+    {
+        error = "The amp was NOT built - " + juce::String(clipped.size()) + " tone sweep" + (clipped.size() > 1 ? "s clip" : " clips")
+              + " (reach 0 dBFS), so the tone curves would be wrong:\n\n" + clipped.joinIntoString("\n")
+              + "\n\nRecord " + (clipped.size() > 1 ? "them" : "it") + " a little quieter, then build again.";
+        return false;
+    }
 
     // amp.xml + the captures
     juce::XmlElement xml("AMPSURD_AMP");

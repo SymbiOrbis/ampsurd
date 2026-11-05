@@ -1136,6 +1136,59 @@ int main(int argc, char** argv)
         writeRec("T04_bass_max", shelf(sweep, true, 9.0));
         writeRec("T09_treble_min", shelf(sweep, false, -8.0));
         writeRec("T12_treble_max", shelf(sweep, false, 8.0));
+        // THE CAPTURE CHECK (owner 2026-11-05): a faulty capture stops the build - tiny NAM "Linear" captures with known
+        // faults: one 4 ms late, a duplicate, a swapped gain order, a broken file, a clipped sweep; a clean set builds
+        bool checkOk = false;
+        juce::String checkWhy;
+        {
+            auto linearNam = [](const juce::File& f, int impulseAt, double gain) {
+                juce::String w;
+                for (int i = 0; i < 256; ++i) w << (i ? "," : "") << (i == impulseAt ? "1.0" : "0.0");
+                f.replaceWithText("{\"version\":\"0.5.4\",\"architecture\":\"Linear\",\"sample_rate\":48000,"
+                                  "\"config\":{\"receptive_field\":256,\"bias\":false,\"in_channels\":1,\"out_channels\":1},"
+                                  "\"metadata\":{\"gain\":" + juce::String(gain, 2) + "},\"weights\":[" + w + "]}");
+            };
+            const auto cdir = out.getChildFile("amp check");
+            auto fresh = [&] { cdir.deleteRecursively(); cdir.createDirectory(); };
+            auto tryBuild = [&](juce::String& err) {
+                juce::String rep;
+                return ampsurd::amp::build(cdir, "Check", "ui_snapshot", out.getChildFile("check.ampsurdamp"), rep, err);
+            };
+            juce::String e1, e2, e3, e4, e5, e6;
+            fresh(); // 1. clean: three captures, rising gain -> builds
+            linearNam(cdir.getChildFile("G1_gain_0900.nam"), 10, 0.2); linearNam(cdir.getChildFile("G2_gain_1100.nam"), 10, 0.4);
+            linearNam(cdir.getChildFile("G3_gain_1300.nam"), 10, 0.6);
+            const bool clean = tryBuild(e1);
+            linearNam(cdir.getChildFile("G4_gain_1500.nam"), 210, 0.8); // 2. + one 200 samples (4.2 ms) off -> stops
+            const bool late = !tryBuild(e2) && e2.contains("NOT built") && e2.contains("G4_gain_1500") && e2.contains("ms");
+            fresh(); // 3. the same capture twice
+            linearNam(cdir.getChildFile("G1_gain_0900.nam"), 10, 0.2); linearNam(cdir.getChildFile("G2_gain_1100.nam"), 10, 0.4);
+            cdir.getChildFile("G1_gain_0900.nam").copyFileTo(cdir.getChildFile("G3_gain_1300.nam"));
+            const bool dup = !tryBuild(e3) && e3.contains("same capture");
+            fresh(); // 4. gain falls: files named wrong
+            linearNam(cdir.getChildFile("G1_gain_0900.nam"), 10, 0.2); linearNam(cdir.getChildFile("G2_gain_1100.nam"), 10, 0.6);
+            linearNam(cdir.getChildFile("G3_gain_1300.nam"), 10, 0.4);
+            const bool order = !tryBuild(e4) && e4.contains("less gain");
+            fresh(); // 5. a broken file
+            linearNam(cdir.getChildFile("G1_gain_0900.nam"), 10, 0.2); linearNam(cdir.getChildFile("G2_gain_1100.nam"), 10, 0.4);
+            cdir.getChildFile("G3_gain_1300.nam").replaceWithText("{ not a capture");
+            const bool broken = !tryBuild(e5) && e5.contains("does not load");
+            fresh(); // 6. good captures, but a tone sweep clips
+            linearNam(cdir.getChildFile("G1_gain_0900.nam"), 10, 0.2); linearNam(cdir.getChildFile("G2_gain_1100.nam"), 10, 0.4);
+            auto clip = sweep;
+            for (auto& v : clip) v = juce::jlimit(-1.0, 1.0, v * 8.0);
+            juce::AudioBuffer<float> cb(1, (int) clip.size());
+            for (size_t i = 0; i < clip.size(); ++i) cb.setSample(0, (int) i, (float) clip[i]);
+            writeWav(cdir.getChildFile("T00_ref_all_noon.wav"), cb, 48000.0);
+            const bool clipStops = !tryBuild(e6) && e6.contains("clip");
+            cdir.deleteRecursively();
+            out.getChildFile("check.ampsurdamp").deleteFile();
+            checkOk = clean && late && dup && order && broken && clipStops;
+            checkWhy << "clean builds " << (int) clean << " (" << e1 << "), 4 ms off stops " << (int) late << ", duplicate stops " << (int) dup
+                     << ", swapped gain stops " << (int) order << ", broken file stops " << (int) broken << ", clipped sweep stops " << (int) clipStops;
+            if (!checkOk) checkWhy << "\n" << e2 << "\n" << e3 << "\n" << e4 << "\n" << e5 << "\n" << e6;
+        }
+        std::cout << (checkOk ? "[PASS]" : "[FAIL]") << " AMP BUILDER CAPTURE CHECK: " << checkWhy << "\n";
         const auto ampFile = out.getChildFile("Test amp.ampsurdamp");
         juce::String report, err;
         const bool built = ampsurd::amp::build(dir, "Test amp", "ui_snapshot", ampFile, report, err);

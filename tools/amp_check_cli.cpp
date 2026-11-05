@@ -3,6 +3,7 @@
 #include <cmath>
 #include <iostream>
 #include <juce_core/juce_core.h>
+#include <juce_audio_formats/juce_audio_formats.h>
 #include "AmpProfileFile.h"
 #include "ampsurd/CaptureAnalyzer.h"
 #include "ampsurd/CaptureModel.h"
@@ -55,6 +56,32 @@ int main(int argc, char** argv)
         std::cout << "GAIN " << g << ": loudness " << juce::String(CaptureAnalyzer::loudnessDb(*CaptureAnalyzer::measure(out, sr)), 1)
                   << " dB" << (finite ? "" : "  NOT FINITE") << "\n";
     }
+    // --render <knob> <out.wav> [<capture.nam> <out2.wav>]: the morph at that GAIN (and a single capture) on the test
+    // signal, for comparing a blended position with a real capture there
+    if (argc >= 5 && juce::String(argv[2]) == "--render")
+        {
+            const int i = 2;
+            auto writeWav = [&](const std::vector<double>& y, const char* path) {
+                juce::File f(juce::String::fromUTF8(path));
+                f.deleteFile();
+                std::unique_ptr<juce::OutputStream> os = f.createOutputStream();
+                juce::WavAudioFormat wav;
+                auto w = wav.createWriterFor(os, juce::AudioFormatWriterOptions {}.withSampleRate(sr).withNumChannels(1).withBitsPerSample(32));
+                juce::AudioBuffer<float> b(1, (int) y.size());
+                for (size_t k = 0; k < y.size(); ++k) b.setSample(0, (int) k, (float) y[k]);
+                w->writeFromAudioSampleBuffer(b, 0, b.getNumSamples());
+            };
+            morph->prepare(sr, block);
+            morph->setMorphPosition(std::atof(argv[i + 1]));
+            CaptureAnalyzer::render(*morph, std::vector<double>((size_t) sr, 0.0), false);
+            writeWav(CaptureAnalyzer::render(*morph, test, false), argv[i + 2]);
+            if (argc >= 7)
+            {
+                auto r = CaptureModel::load(argv[i + 3], sr, block, false);
+                if (r.model) writeWav(CaptureAnalyzer::render(*r.model, test, false), argv[i + 4]);
+            }
+            return 0;
+        }
     if (prof.tone)
     {
         for (auto k : { std::array<double, 3> { 5, 5, 5 }, std::array<double, 3> { 0, 5, 5 }, std::array<double, 3> { 10, 5, 5 },
