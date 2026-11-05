@@ -200,6 +200,7 @@ bool read(const juce::File& file, Profile& out, juce::String& error)
     out = {};
     out.name = xml->getStringAttribute("name", file.getFileNameWithoutExtension());
     out.author = xml->getStringAttribute("author");
+    out.silenceFloor = xml->hasAttribute("silenceFrom") ? juce::jlimit(0.0, 10.0, xml->getDoubleAttribute("silenceFrom")) : -1.0;
     for (auto* g : xml->getChildWithTagNameIterator("GAIN"))
     {
         const auto f = dir.getChildFile(g->getStringAttribute("file"));
@@ -359,6 +360,14 @@ bool build(const juce::File& folder, const juce::String& name, const juce::Strin
     xml.setAttribute("version", 1);
     xml.setAttribute("name", name);
     xml.setAttribute("author", author);
+    // recorded down to the bottom (the lowest capture at 8:00 or below, e.g. 7:45: below it the amp is practically
+    // silent) -> GAIN starts from silence at 7:00 and fades up to it, like the real amp (owner 2026-11-05). Recordings
+    // that start higher (e.g. at 9:00) keep their range: the amp is not silent below them.
+    if (!gains.empty() && gains.front().first > 0.01 && gains.front().first <= 1.0 + 1e-6)
+    {
+        xml.setAttribute("silenceFrom", 0.0);
+        report << "GAIN starts from silence at 7:00 and fades up to the lowest capture (" << gains.front().second.getFileName() << ")\n";
+    }
     auto* gridXml = xml.createNewChildElement("GRID");
     gridXml->setAttribute("hz", joinDb(grid));
     juce::ZipFile::Builder zip;

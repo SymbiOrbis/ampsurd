@@ -1109,7 +1109,7 @@ int main(int argc, char** argv)
         const auto dir = out.getChildFile("amp recordings");
         dir.deleteRecursively();
         dir.createDirectory();
-        juce::File(argv[2]).copyFileTo(dir.getChildFile("G1_gain_0900.nam"));
+        juce::File(argv[2]).copyFileTo(dir.getChildFile("G1_gain_0745.nam")); // recorded down to 7:45 -> from silence
         juce::File(argv[3]).copyFileTo(dir.getChildFile("CH1_G7_gain_1500.nam"));
         const auto sweep = ampsurd::ToneSweep::make();
         auto shelf = [](std::vector<double> x, bool low, double gainDb) {
@@ -1138,7 +1138,7 @@ int main(int argc, char** argv)
         writeRec("T12_treble_max", shelf(sweep, false, 8.0));
         // THE CAPTURE CHECK (owner 2026-11-05): a faulty capture stops the build - tiny NAM "Linear" captures with known
         // faults: one 4 ms late, a duplicate, a swapped gain order, a broken file, a clipped sweep; a clean set builds
-        bool checkOk = false;
+        bool checkOk = false, checkNoFadeFrom9 = false;
         juce::String checkWhy;
         {
             auto linearNam = [](const juce::File& f, int impulseAt, double gain) {
@@ -1159,6 +1159,9 @@ int main(int argc, char** argv)
             linearNam(cdir.getChildFile("G1_gain_0900.nam"), 10, 0.2); linearNam(cdir.getChildFile("G2_gain_1100.nam"), 10, 0.4);
             linearNam(cdir.getChildFile("G3_gain_1300.nam"), 10, 0.6);
             const bool clean = tryBuild(e1);
+            ampsurd::amp::Profile cp;
+            juce::String ce;
+            checkNoFadeFrom9 = clean && ampsurd::amp::read(out.getChildFile("check.ampsurdamp"), cp, ce) && cp.silenceFloor < 0.0;
             linearNam(cdir.getChildFile("G4_gain_1500.nam"), 210, 0.8); // 2. + one 200 samples (4.2 ms) off -> stops
             const bool late = !tryBuild(e2) && e2.contains("NOT built") && e2.contains("G4_gain_1500") && e2.contains("ms");
             fresh(); // 3. the same capture twice
@@ -1193,7 +1196,7 @@ int main(int argc, char** argv)
         juce::String report, err;
         const bool built = ampsurd::amp::build(dir, "Test amp", "ui_snapshot", ampFile, report, err);
         ampsurd::amp::Profile prof;
-        const bool readOk = ampsurd::amp::read(ampFile, prof, err) && prof.steps.size() == 2 && prof.steps[0].knob == 2.0 && prof.steps[1].knob == 8.0
+        const bool readOk = ampsurd::amp::read(ampFile, prof, err) && prof.steps.size() == 2 && prof.steps[0].knob == 0.75 && prof.steps[1].knob == 8.0 && prof.silenceFloor == 0.0
                             && prof.tone != nullptr && prof.tone->knobs[0].size() == 5 && prof.tone->knobs[2].size() == 3 && prof.tone->knobs[1].empty();
         // the measured bass max at 60 Hz ~ +9 dB shelf
         double bassMax60 = 0.0;
@@ -1244,6 +1247,23 @@ int main(int argc, char** argv)
         setP(*proc, AP::slotParamId(3, "ampGain"), 8.0f);
         run(200);
         const double g8 = level80();
+        // from silence (owner 2026-11-05): the lowest capture is 7:45, so GAIN reaches down to 7:00 = silence and fades
+        // like a volume knob in between: half way (7:22) = -12 dB, 7:00 = nothing; a set that starts at 9:00 does not fade
+        setP(*proc, AP::slotParamId(3, "ampGain"), 0.75f);
+        run(200);
+        const double gLow = level80();
+        setP(*proc, AP::slotParamId(3, "ampGain"), 0.375f);
+        run(200);
+        const double gHalf = level80();
+        setP(*proc, AP::slotParamId(3, "ampGain"), 0.0f);
+        run(200);
+        const double g0 = level80();
+        const bool fadeOk = std::abs((gLow - gHalf) - 12.04) < 1.0 && g0 < gLow - 60.0 && checkNoFadeFrom9;
+        std::cout << (fadeOk ? "[PASS]" : "[FAIL]") << " AMPSURD AMP FROM SILENCE: GAIN 7:45 " << juce::String(gLow, 1) << " dB, 7:22 "
+                  << juce::String(gHalf, 1) << " dB (" << juce::String(gHalf - gLow, 1) << "), 7:00 " << juce::String(g0, 1)
+                  << " dB (silence); a set from 9:00 keeps its range (" << checkNoFadeFrom9 << ")\n";
+        setP(*proc, AP::slotParamId(3, "ampGain"), 8.0f);
+        run(200);
         // the amp's INPUT compensation follows GAIN (0.9.6): the INPUT -> loudness curve is made again at the new GAIN
         setP(*proc, AP::slotParamId(3, "drive"), 6.0f);
         auto curveAt = [&](double gain) {
@@ -1272,8 +1292,8 @@ int main(int argc, char** argv)
             if (auto* sl = dynamic_cast<juce::Slider*>(&c)) if (sl->isVisible() && sl->getSliderStyle() == juce::Slider::RotaryHorizontalVerticalDrag)
             {
                 ++knobsShown;
-                if (sl->getMinimum() == 2.0 && sl->getMaximum() == 8.0) // GAIN turns only 9:00 .. 15:00 and reads as the clock
-                    gainRange = sl->getTextFromValue(2.0) == "9:00" && sl->getTextFromValue(8.0) == "15:00" && sl->getTextFromValue(5.5) == "12:30";
+                if (sl->getMinimum() == 0.0 && sl->getMaximum() == 8.0) // GAIN 7:00 (silence) .. 15:00 (the highest capture), as the clock
+                    gainRange = sl->getTextFromValue(0.0) == "7:00" && sl->getTextFromValue(8.0) == "15:00" && sl->getTextFromValue(5.5) == "12:30";
             }
             for (auto* ch : c.getChildren()) count(*ch);
         };

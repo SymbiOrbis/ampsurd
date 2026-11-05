@@ -428,6 +428,8 @@ private:
         std::atomic<double> levelGain { 1.0 };
         std::atomic<double> driveCompDb { 0.0 };   // keeps the amp's loudness while its INPUT is turned
         std::atomic<double> measuredDriveDb { 0.0 }; // INPUT of the amp when it was last measured
+        std::atomic<double> fadeFloor { -1.0 };      // AMPSURD amp from silence: GAIN of silence (-1 = off) ...
+        std::atomic<double> fadeTop { 0.0 };         // ... and of its lowest capture (full level from there up)
     };
     std::array<Derived, kNumSlots> derived;
 
@@ -443,6 +445,7 @@ private:
     void requestDriveCurve(int slot);       // (re)compute the INPUT -> loudness curve in the background
     void driveCurveJob(int slot, int generation);
     void updateDriveCompensation();         // message thread (timer)
+    double ampFadeGain(int slot, double gain) const noexcept; // 1, or an AMPSURD amp's fade below its lowest capture
     double slotOutputGain(int slot, bool levelMatch) const noexcept; // level match * INPUT compensation * OUTPUT
     std::shared_ptr<const ampsurd::CaptureAnalyzer::Measurement> measureWithIr(int slot, const std::vector<double>& raw, double sr);
     void storeMeasurement(int slot, std::shared_ptr<const ampsurd::CaptureAnalyzer::Measurement> m, double gainDb);

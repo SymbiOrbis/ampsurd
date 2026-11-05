@@ -74,7 +74,22 @@ public:
     bool isMorph() const noexcept { return !steps.empty(); }
     int getMorphStepCount() const noexcept { return (int) steps.size(); }
     // the GAIN range the steps cover (the knob only moves within it, owner 2026-11-01); 0..10 if not a morph
-    double getMorphMin() const noexcept { return stepKnobs.empty() ? 0.0 : stepKnobs.front(); }
+    double getMorphMin() const noexcept { return stepKnobs.empty() ? 0.0 : (silenceFloor >= 0.0 ? silenceFloor : stepKnobs.front()); }
+    // AMPSURD amp "starts from silence" (owner 2026-11-05): GAIN reaches down to `knob` (the amp's minimum), where the
+    // real amp is silent; between it and the lowest capture the volume fades like a volume knob. The model itself
+    // keeps playing the lowest capture there (measurements stay at full level); the fade is applied by the player
+    // (morphFadeGain). -1 = off.
+    void setMorphSilenceFloor(double knob) noexcept { silenceFloor = knob; }
+    double getMorphSilenceFloor() const noexcept { return silenceFloor; }
+    // the player's gain at GAIN `pos`: 1 from the lowest capture up, a smooth fade to 0 at the silence floor
+    double morphFadeGain(double pos) const noexcept
+    {
+        if (silenceFloor < 0.0 || stepKnobs.empty() || pos >= stepKnobs.front()) return 1.0;
+        const double span = stepKnobs.front() - silenceFloor;
+        if (span <= 1e-9) return 1.0;
+        const double t = (pos - silenceFloor) / span;
+        return t <= 0.0 ? 0.0 : t * t; // like an audio-taper volume knob: -6 dB at 70 %, -12 dB at half, silence at the floor
+    }
     double getMorphMax() const noexcept { return stepKnobs.empty() ? 10.0 : stepKnobs.back(); }
     const std::vector<double>& getMorphKnobs() const noexcept { return stepKnobs; }
     // any thread: the GAIN knob (0..10); the audio thread glides to it
@@ -132,6 +147,7 @@ private:
     // morph (AMPSURD amp)
     std::vector<MorphStep> steps;
     std::vector<double> stepKnobs;
+    double silenceFloor = -1.0;
     std::vector<std::vector<Sample>> stepDelayLines; // per step: its output delayed by the whole part of its `delay`
     std::vector<int> stepDelayPos;
     struct FracState { double a = 0.0, x1 = 0.0, y1 = 0.0; bool on = false; };

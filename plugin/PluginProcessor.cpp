@@ -778,7 +778,7 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         ss.delaySamples = a.delaySamples;
         ss.polarity = a.polarity;
         ss.phaseRadians = a.phaseRadians;
-        ss.levelGain = slotOutputGain(s, levelMatch);
+        ss.levelGain = slotOutputGain(s, levelMatch) * ampFadeGain(s, sp.ampGain->load());
         ss.inputTrim = std::pow(10.0, (getCalibrationTrimDb(s) + (double) sp.drive->load()) / 20.0);
         ss.ampGain = sp.ampGain->load(); // only an AMPSURD amp uses it
         for (int k = 0; k < kNumPedals; ++k)
@@ -1043,6 +1043,8 @@ void AmpsurdProcessor::loadJob(int slot, juce::File file, int gen, bool /*adjust
     const bool canEco = mi.slimmable, ecoActive = mi.ecoActive;
     const bool isAmp = result.model->isMorph();
     const double gainMin = result.model->getMorphMin(), gainMax = result.model->getMorphMax();
+    const double fadeFloor = isAmp ? result.model->getMorphSilenceFloor() : -1.0;
+    const double fadeTop = isAmp && !result.model->getMorphKnobs().empty() ? result.model->getMorphKnobs().front() : 0.0;
     const auto gainKnobs = result.model->getMorphKnobs();
     lastEco[(size_t) slot] = eco;
     engine.getSlot(slot).submit(std::move(result.model));
@@ -1055,6 +1057,8 @@ void AmpsurdProcessor::loadJob(int slot, juce::File file, int gen, bool /*adjust
     newStatus.isAmp = isAmp;
     newStatus.gainMin = gainMin;
     newStatus.gainMax = gainMax;
+    derived[(size_t) slot].fadeTop.store(fadeTop);
+    derived[(size_t) slot].fadeFloor.store(fadeFloor);
     for (double k : gainKnobs) newStatus.gainSteps.add(k);
     newStatus.hasTone = tone != nullptr && !tone->empty();
     for (int k = 0; k < 3 && tone != nullptr; ++k) if (!tone->knobs[(size_t) k].empty()) newStatus.toneMask |= 1 << k;
@@ -1075,6 +1079,7 @@ void AmpsurdProcessor::loadJob(int slot, juce::File file, int gen, bool /*adjust
 
 void AmpsurdProcessor::unloadCapture(int slot)
 {
+    derived[(size_t) slot].fadeFloor.store(-1.0); // no amp fade once empty
     if (getIrStatus(slot).state != IrState::none)
         removeIr(slot); // REMOVE empties the whole slot: capture, cabinet IR and pedals
     for (int k = 0; k < kNumPedals; ++k)
@@ -1167,6 +1172,15 @@ void AmpsurdProcessor::remeasureJob(int gen)
 // ---------------------------------------------------------------------------------------------
 // Per-amp INPUT / OUTPUT
 // ---------------------------------------------------------------------------------------------
+double AmpsurdProcessor::ampFadeGain(int s, double gain) const noexcept
+{
+    // an AMPSURD amp that "starts from silence": below its lowest capture GAIN works like a volume knob (see CaptureModel)
+    const double floor = derived[(size_t) s].fadeFloor.load(std::memory_order_relaxed), top = derived[(size_t) s].fadeTop.load(std::memory_order_relaxed);
+    if (floor < 0.0 || gain >= top || top - floor <= 1e-9) return 1.0;
+    const double t = (gain - floor) / (top - floor);
+    return t <= 0.0 ? 0.0 : t * t;
+}
+
 double AmpsurdProcessor::slotOutputGain(int s, bool levelMatch) const noexcept
 {
     const auto& d = derived[(size_t) s];
@@ -1691,6 +1705,7 @@ CaptureModel::LoadResult AmpsurdProcessor::loadSlotModel(int slot, const juce::F
     info.slimmable = std::all_of(steps.begin(), steps.end(), [](const CaptureModel::MorphStep& m) { return m.model->getInfo().slimmable; });
     info.ecoActive = eco && info.slimmable;
     res.model = CaptureModel::makeMorph(std::move(steps), info, sr, block);
+    res.model->setMorphSilenceFloor(prof.silenceFloor);
     res.model->setMorphPosition(slotParams[(size_t) slot].ampGain->load());
     if (tone != nullptr) *tone = prof.tone;
     return res;

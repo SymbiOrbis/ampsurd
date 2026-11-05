@@ -27,6 +27,8 @@ struct Profile
     struct Step { double knob = 5.0; juce::File nam; };
     std::vector<Step> steps;                       // ascending GAIN; files unpacked into a cache folder
     std::shared_ptr<const ToneStack> tone;         // may be empty (no tone sweeps): no BASS / MID / TREBLE
+    double silenceFloor = -1.0;                    // "starts from silence": GAIN goes down to this knob (0 = 7:00), silent
+                                                   // there, fading up to the lowest capture; -1 = off
 };
 
 // Reads an .ampsurdamp (unpacks its captures once into AMPSURD's cache folder). false + error if unusable.

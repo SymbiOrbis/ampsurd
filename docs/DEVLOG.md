@@ -6,6 +6,17 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-06 — Session 4u: AMPSURD amps from silence; first full-range EVH amp - Claude (Opus 5.5)
+
+- Owner's re-recording session: high-gain captures failed TONE3000's "Inconsistent Tone" (replicate ESR 0.016-0.018
+  > 0.01). Analysis of CH1 14:00 vs 7:30: no noise (SNR 57 dB), no shift, no glitch; the whole repeated section
+  differs evenly and the end is 0.4 dB quieter -> power-stage / Captor drift at half volume on a 100 W head. Lower
+  volume fixed it (all captures train). 7:00 is practically silent, 7:30 too quiet to train, 7:45 trains.
+- Owner: GAIN should start from silence. Builder sets silenceFrom="0" when the lowest capture is at 8:00 or below;
+  the slot fades (t², -12 dB half way) between 7:00 and the lowest capture. docs/AMPSURD_AMP.md. ui_snapshot: all
+  pass (33) incl. FROM SILENCE (7:45 full, 7:22 -11.8 dB, 7:00 silence; a 9:00 set keeps its range). In the next
+  release (the app must have it to play the fade; older AMPSURD versions ignore the attribute and start at 7:45).
+
 ## 2026-11-05 — Session 4t: the amp builder checks every capture and stops on a faulty one - Claude (Opus 5.5)
 
 - Owner asked whether 0, 2, 4, 6, 8, 10 would be enough for a full-range GAIN. Leave-one-out test on the EVH

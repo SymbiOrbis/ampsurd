@@ -77,3 +77,14 @@ Two captures for the same GAIN position stop the build too. Found on the owner's
 CH2 13:00 capture was 3.5 ms early (TONE3000 training) - the only one in nine amps (EVH x 6, Framus Cobra x 3).
 Code: plugin/AmpProfileFile.cpp (checkCaptures); test: ui_snapshot "AMP BUILDER CAPTURE CHECK" (NAM Linear captures
 with known faults).
+
+
+## Starting from silence (since 2026-11-06)
+
+Recorded down to the bottom of the gain knob (the lowest capture at 8:00 or below, e.g. 7:45 - below it the amp is
+practically silent), the builder marks the amp `silenceFrom="0"`: GAIN then reaches down to 7:00, which is silence,
+and between 7:00 and the lowest capture it works like a volume knob (amplitude t², t = 0..1: half way = -12 dB). From
+the lowest capture up, nothing changes (the captures are level-matched as before). Sets that start higher (e.g. 9:00)
+keep their range. The model keeps playing the lowest capture there (CaptureModel::morphFadeGain / setMorphSilenceFloor;
+level match and the INPUT curve are measured at full level); the fade is the slot's output gain
+(AmpsurdProcessor::ampFadeGain). ui_snapshot "AMPSURD AMP FROM SILENCE".
