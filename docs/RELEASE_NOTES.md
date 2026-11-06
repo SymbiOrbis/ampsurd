@@ -19,6 +19,22 @@ notarized (Developer ID: Radovan Glovna): double-click it and install. The first
 access to the audio input: allow it, or AMPSURD hears no guitar (the camera is asked for only when you use
 VIDEO in the player).
 
+## AMPSURD 0.9.10 (beta)
+
+**Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the standalone app.
+**macOS 10.15 or newer:** AMPSURD-macOS.pkg installs the app, the VST3 plugin and the Audio Unit. Installing over an
+older version is fine: presets and recordings (Documents/AMPSURD) stay untouched.
+
+New in 0.9.10:
+- Full amp names: a long name (e.g. "Framus Cobra + Gerhat Screamer CH3") is shown completely on the slot - the
+  text gets smaller instead of ending in "...". The tooltip no longer covers the expanded name.
+- AMPSURD amps recorded from the lowest gain (lowest capture at 8:00 or below): GAIN goes down to 7:00 and fades
+  to silence below the lowest capture, like the amp's own knob.
+- AMPSURD amp builder checks every capture first (loads and plays, timing, similarity to its neighbours,
+  duplicates, gain order, clipped tone sweeps). If anything is wrong, the amp is NOT built and the report says
+  which capture and why.
+- LOG window: a short log shows from the top, CLEAR also resets the dropout summary.
+
 ## AMPSURD 0.9.9 (beta)
 
 **Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the standalone app.

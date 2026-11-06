@@ -27,6 +27,9 @@ struct FilenameLayout
     static juce::StringArray wrap(const juce::String& text, const juce::Font& font, float maxWidth, int maxLines,
                                   bool& truncated);
     static void draw(juce::Graphics&, const juce::String& text, juce::Rectangle<float> area, juce::Colour colour);
+    // how draw() lays a name out in `area`: the lines, the font size it chose, whether it still had to cut
+    struct Fit { juce::StringArray lines; float size = kFontSize, lineHeight = kLineHeight; bool truncated = false; };
+    static Fit fit(const juce::String& text, juce::Rectangle<float> area);
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -113,6 +116,10 @@ public:
     void mouseMove(const juce::MouseEvent&) override;
     void mouseExit(const juce::MouseEvent&) override;
     bool isNameExpanded() const { return nameExpanded; }
+    juce::Rectangle<int> getNameArea() const { return nameArea(); } // tests
+    int getSlotIndex() const { return slot; }
+    // no tooltip over the expanded name (it covered the name it was showing, owner 2026-11-06)
+    juce::String getTooltip() override { return nameExpanded ? juce::String() : juce::SettableTooltipClient::getTooltip(); }
 private:
     juce::Rectangle<int> ampKnobArea() const;
     juce::Label panValue;     // C / L35 / R20 - click and type a value

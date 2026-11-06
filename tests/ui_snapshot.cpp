@@ -1298,6 +1298,29 @@ int main(int argc, char** argv)
             for (auto* ch : c.getChildren()) count(*ch);
         };
         count(*ed);
+        // the whole name on the slot (owner 2026-11-06): long amp names get a smaller font, not "..."
+        bool namesFit = false;
+        {
+            ampsurd::ui::SlotComponent* slot3 = nullptr;
+            std::function<void(juce::Component&)> findSlot = [&](juce::Component& c) {
+                if (auto* sc = dynamic_cast<ampsurd::ui::SlotComponent*>(&c)) if (sc->getSlotIndex() == 3) slot3 = sc;
+                for (auto* ch : c.getChildren()) findSlot(*ch);
+            };
+            findSlot(*ed);
+            if (slot3 != nullptr)
+            {
+                const auto area = slot3->getNameArea().toFloat();
+                namesFit = area.getHeight() < 60.0f; // the short name space above the knobs
+                juce::String detail;
+                for (const juce::String n : { "Framus Cobra + Gerhat Screamer CH3", "EVH 5150 III CH1 + Gerhat Screamer", "EVH 5150 III CH1" })
+                {
+                    const auto f = ampsurd::ui::FilenameLayout::fit(n, area);
+                    namesFit = namesFit && !f.truncated;
+                    detail << n << " -> " << f.lines.joinIntoString(" / ") << " (" << juce::String(f.size, 0) << " pt); ";
+                }
+                std::cout << "  amp names on the slot: " << detail << "\n";
+            }
+        }
         setP(*proc, AP::slotParamId(3, "ampGain"), 6.5f);
         setP(*proc, AP::slotParamId(3, "ampTreble"), 7.0f);
         e->refreshAll();
@@ -1312,7 +1335,7 @@ int main(int argc, char** argv)
                               && proc->getSlotStatus(3).path == ampFile.getFullPathName();
         pf.deleteFile();
         const bool soundOk = std::abs((bassUp - noon) - bassMax60) < 1.5 && bassMax60 > 7.0 && std::abs(g2 - g8) > 0.05;
-        const bool ok = built && readOk && loaded && soundOk && knobsShown == 3 && presetOk && gainRange; // GAIN, BASS, TREBLE (no MID measured)
+        const bool ok = built && readOk && loaded && soundOk && knobsShown == 3 && presetOk && gainRange && namesFit; // GAIN, BASS, TREBLE (no MID measured)
         std::cout << (ok ? "[PASS]" : "[FAIL]") << " AMPSURD AMP: built from recordings (" << built << "), read back (" << readOk
                   << ": 2 gain steps, bass 5 / treble 3 positions), loaded as an amp with tone (" << loaded << "), knobs on the slot: GAIN + the measured BASS, TREBLE ("
                   << knobsShown << "), BASS max at 80 Hz " << juce::String(bassUp - noon, 1) << " dB (measured curve " << juce::String(bassMax60, 1)

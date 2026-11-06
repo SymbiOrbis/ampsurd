@@ -6,6 +6,18 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-06 — Session 4v: full amp names on the slot; release 0.9.10 - Claude (Opus 5.5)
+
+- Owner: long AMPSURD amp names were cut ("Framus Cobra ...") and the tooltip covered the expanded name.
+- FilenameLayout::fit (Components.h/.cpp): tries 21 pt down to 13 pt (up to 4 lines) until the whole name fits;
+  draw() uses it. SlotComponent::getTooltip returns nothing while the name is expanded.
+- Tested: ui_snapshot 33 PASS, new names-fit check ("Framus Cobra + / Gerhat Screamer CH3" 16 pt, "EVH 5150 III
+  CH1 + / Gerhat Screamer" 19 pt, "EVH 5150 III CH1" 21 pt); web shot 19 with the real CH3 amp checked by eye.
+- Build: version 0.9.10 (CMakeLists, AMPSURD.iss, build_pkg.sh), released through CI; Windows signing by the owner.
+- Next: build the re-recorded EVH amps (11 positions, clean + boosted) when the owner uploads them.
+
+---
+
 ## 2026-11-06 — Session 4u: AMPSURD amps from silence; first full-range EVH amp - Claude (Opus 5.5)
 
 - Owner's re-recording session: high-gain captures failed TONE3000's "Inconsistent Tone" (replicate ESR 0.016-0.018

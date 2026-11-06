@@ -184,20 +184,34 @@ juce::StringArray FilenameLayout::wrap(const juce::String& text, const juce::Fon
     return lines;
 }
 
+FilenameLayout::Fit FilenameLayout::fit(const juce::String& text, juce::Rectangle<float> area)
+{
+    // the whole name if at all possible (owner 2026-11-06): the font gets smaller (down to 13 pt) before anything is cut
+    Fit f;
+    for (float size = kFontSize;; size -= 1.0f)
+    {
+        f.size = size;
+        f.lineHeight = kLineHeight * size / kFontSize;
+        const int maxLines = juce::jmin(kMaxLines, juce::jmax(1, (int) (area.getHeight() / f.lineHeight)));
+        f.lines = wrap(text, Fonts::get().semibold(size), area.getWidth(), maxLines, f.truncated);
+        if (!f.truncated || size <= 13.0f) return f;
+    }
+}
+
 void FilenameLayout::draw(juce::Graphics& g, const juce::String& text, juce::Rectangle<float> area, juce::Colour colour)
 {
-    const auto font = Fonts::get().semibold(kFontSize);
-    const int maxLines = juce::jmin(kMaxLines, juce::jmax(1, (int) (area.getHeight() / kLineHeight)));
-    bool truncated = false;
-    const auto lines = wrap(text, font, area.getWidth(), maxLines, truncated);
-    const float blockH = (float) lines.size() * kLineHeight;
+    const auto f = fit(text, area);
+    const auto& lines = f.lines;
+    const float lineH = f.lineHeight;
+    const auto font = Fonts::get().semibold(f.size);
+    const float blockH = (float) lines.size() * lineH;
     float y = area.getCentreY() - blockH * 0.5f;
     g.setFont(font);
     g.setColour(colour);
     for (const auto& l : lines)
     {
-        g.drawText(l, juce::Rectangle<float>(area.getX(), y, area.getWidth(), kLineHeight), juce::Justification::centred, false);
-        y += kLineHeight;
+        g.drawText(l, juce::Rectangle<float>(area.getX(), y, area.getWidth(), lineH), juce::Justification::centred, false);
+        y += lineH;
     }
 }
 
