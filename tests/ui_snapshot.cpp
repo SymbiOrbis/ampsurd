@@ -1016,14 +1016,14 @@ int main(int argc, char** argv)
             bool clickOk = false, placeOk = false;
             if (shownOk)
             {
-                b1->triggerClick();
+                b1->setToggleState(!b1->getToggleState(), juce::sendNotificationSync);
                 pump(50);
                 const bool off = !pOn("ped1On");
-                b2->triggerClick();
+                b2->setToggleState(!b2->getToggleState(), juce::sendNotificationSync);
                 pump(50);
                 const bool on2 = pOn("ped2On");
-                b1->triggerClick();
-                b2->triggerClick();
+                b1->setToggleState(!b1->getToggleState(), juce::sendNotificationSync);
+                b2->setToggleState(!b2->getToggleState(), juce::sendNotificationSync);
                 pump(50);
                 clickOk = off && on2 && pOn("ped1On") && !pOn("ped2On");
                 placeOk = !b1->getBounds().intersects(b2->getBounds()) && slot1->getLocalBounds().contains(b1->getBounds())
