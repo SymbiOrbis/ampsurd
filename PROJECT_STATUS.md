@@ -50,6 +50,8 @@ footswitches (program change, MIDI learn), preset packs, undo / redo, A/B, fast 
 (checklist 30-33). Bundled IRs on hold (no IRs without the author's explicit consent).
 **Public beta v0.9.0 released 2026-10-14** (GitHub pre-release, unsigned):
 https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.0
+**Public beta v0.9.11 released 2026-11-06:** PEDAL on/off buttons on the slot, EQ OFF text overlap fixed. https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.11 - Windows files to be signed by the owner.
+
 **Public beta v0.9.10 released 2026-11-06:** full amp names on the slot (smaller text instead of "..."), AMPSURD amps from silence (7:00), builder capture check. https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.10 - Windows files to be signed by the owner.
 
 **Public beta v0.9.9 released 2026-11-01:** LOG (dropouts with what was going on and the likely cause, problems), GAIN as clock, greyscale IR map, rows dragged on the boxes. https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.9 - Windows files to be signed by the owner.

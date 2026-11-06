@@ -17,7 +17,7 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 - Also built "EVH 5150 III CH2.ampsurdamp" (no boost, 11 captures 7:30-17:00, from silence, capture check passed).
 - Tested: ui_snapshot 34 PASS (new PEDAL BUTTONS ON THE SLOT: shown, click on / off, placement); shots 09 and 23b
   checked by eye.
-- Not released yet (asked the owner whether to publish 0.9.11).
+- Released as 0.9.11 (owner asked for the newest version); Windows signing by the owner.
 
 ---
 
