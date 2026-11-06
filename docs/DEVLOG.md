@@ -6,6 +6,21 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-06 — Session 4w: PEDAL on/off buttons on the slot; EQ text overlap - Claude (Opus 5.5)
+
+- Owner: turn pedals on / off right on the main slot. SlotComponent: PEDAL 1 / PEDAL 2 toggle buttons (attached to
+  sN_ped1On / ped2On), shown only for loaded pedals, lit = on, tooltip names the pedal. Plain capture: name area
+  40..130, pedal names line above the buttons (150..168), IR line unchanged. AMPSURD amp (knobs): no room for the
+  names line - the names are in the buttons' tooltips.
+- Owner: "EQ OFF" overlapped the EQ PRESETS button. EqGraph::controlsTrim: the top text row stops 10 px before
+  EQ PRESETS / the bands box (the old fixed 150 px trim predated the EQ PRESETS button).
+- Also built "EVH 5150 III CH2.ampsurdamp" (no boost, 11 captures 7:30-17:00, from silence, capture check passed).
+- Tested: ui_snapshot 34 PASS (new PEDAL BUTTONS ON THE SLOT: shown, click on / off, placement); shots 09 and 23b
+  checked by eye.
+- Not released yet (asked the owner whether to publish 0.9.11).
+
+---
+
 ## 2026-11-06 — Session 4v: full amp names on the slot; release 0.9.10 - Claude (Opus 5.5)
 
 - Owner: long AMPSURD amp names were cut ("Framus Cobra ...") and the tooltip covered the expanded name.
