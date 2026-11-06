@@ -1006,6 +1006,43 @@ int main(int argc, char** argv)
         const bool frames = layers[0] == 2 && layers[1] == 1; // next to the amp: pedal 2 (bypassed, dimmed), behind it: pedal 1
         std::cout << (frames ? "[PASS]" : "[FAIL]") << " PEDAL FRAMES: two pedals = two frames behind the slot, the bypassed one dimmed ("
                   << layers[0] << "," << layers[1] << ")\n";
+        // PEDAL 1 / PEDAL 2 on the slot (owner 2026-11-06): shown for loaded pedals, lit = on, a click turns it on / off
+        {
+            auto* b1 = slot1 != nullptr ? slot1->getPedalButton(0) : nullptr;
+            auto* b2 = slot1 != nullptr ? slot1->getPedalButton(1) : nullptr;
+            const bool shownOk = b1 != nullptr && b2 != nullptr && b1->isVisible() && b2->isVisible()
+                                 && b1->getToggleState() && !b2->getToggleState();
+            auto pOn = [&](const char* id) { return proc->params.getRawParameterValue(AmpsurdProcessor::slotParamId(0, id))->load() > 0.5f; };
+            bool clickOk = false, placeOk = false;
+            if (shownOk)
+            {
+                b1->triggerClick();
+                pump(50);
+                const bool off = !pOn("ped1On");
+                b2->triggerClick();
+                pump(50);
+                const bool on2 = pOn("ped2On");
+                b1->triggerClick();
+                b2->triggerClick();
+                pump(50);
+                clickOk = off && on2 && pOn("ped1On") && !pOn("ped2On");
+                placeOk = !b1->getBounds().intersects(b2->getBounds()) && slot1->getLocalBounds().contains(b1->getBounds())
+                          && slot1->getLocalBounds().contains(b2->getBounds())
+                          && b1->getBottom() <= 170 && b1->getY() >= slot1->getNameArea().getBottom();
+            }
+            run(400);
+            if (slot1 != nullptr)
+            {
+                juce::PNGImageFormat png;
+                const auto f = out.getChildFile("23b_slot_pedal_buttons.png");
+                f.deleteFile();
+                juce::FileOutputStream os(f);
+                png.writeImageToStream(slot1->createComponentSnapshot(slot1->getLocalBounds(), true, 2.0f), os);
+            }
+            const bool ok = shownOk && clickOk && placeOk;
+            std::cout << (ok ? "[PASS]" : "[FAIL]") << " PEDAL BUTTONS ON THE SLOT: shown " << shownOk << ", click turns on / off "
+                      << clickOk << ", placed " << placeOk << "\n";
+        }
         save(*ed, out.getChildFile("23_pedal_chain.png"));
         proc->removePedal(0, 1);
         setP(*proc, AmpsurdProcessor::slotParamId(0, "ped2On"), 1.0f);

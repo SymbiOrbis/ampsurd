@@ -345,6 +345,16 @@ SlotComponent::SlotComponent(AmpsurdProcessor& p, int s) : proc(p), slot(s), fad
             removeButton.setButtonText("SURE?");
         }
     };
+    for (int k = 0; k < AmpsurdProcessor::kNumPedals; ++k)
+    {
+        auto& b = pedalButtons[(size_t) k];
+        b.setButtonText("PEDAL " + juce::String(k + 1));
+        b.setClickingTogglesState(true);
+        b.setWantsKeyboardFocus(false);
+        addChildComponent(b);
+        pedalAtt[(size_t) k] = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
+            p.params, AmpsurdProcessor::slotParamId(s, ("ped" + juce::String(k + 1) + "On").toRawUTF8()), b);
+    }
     addAndMakeVisible(fader);
     soloButton.setClickingTogglesState(true);
     muteButton.setClickingTogglesState(true);
@@ -412,6 +422,8 @@ SlotComponent::~SlotComponent() = default;
 juce::Rectangle<int> SlotComponent::nameArea() const
 {
     if (ampShown && !nameExpanded) return { 14, 40, getWidth() - 14 - 14 - 44, 52 }; // an AMPSURD amp: the knobs are under the name
+    // pedals: their names and PEDAL buttons are under the name (an expanded amp name stops above the buttons)
+    if (anyPedalShown()) return { 14, 40, getWidth() - 14 - 14 - 44, ampShown ? 106 : 90 };
     return { 14, 40, getWidth() - 14 - 14 - 44, 128 };
 }
 
@@ -444,8 +456,28 @@ juce::Rectangle<int> SlotComponent::irLineArea() const
     return { 14, 170, getWidth() - 14 - 14 - 44, 16 };
 }
 
+juce::Rectangle<int> SlotComponent::pedalButtonArea() const
+{
+    return { 14, 150, getWidth() - 14 - 14 - 44, 18 };
+}
+
+void SlotComponent::layoutPedalButtons()
+{
+    int n = 0;
+    for (bool b : pedalShown) n += b ? 1 : 0;
+    const int bw = 64, gap = 8;
+    auto a = pedalButtonArea().withSizeKeepingCentre(juce::jmax(1, n) * bw + juce::jmax(0, n - 1) * gap, 18);
+    for (int k = 0; k < AmpsurdProcessor::kNumPedals; ++k)
+        if (pedalShown[(size_t) k])
+        {
+            pedalButtons[(size_t) k].setBounds(a.removeFromLeft(bw));
+            a.removeFromLeft(gap);
+        }
+}
+
 void SlotComponent::resized()
 {
+    layoutPedalButtons();
     auto r = getLocalBounds().reduced(14);
     auto buttons = r.removeFromBottom(62);
     auto row1 = buttons.removeFromTop(28), row2 = buttons.removeFromBottom(28);
@@ -549,11 +581,11 @@ void SlotComponent::paint(juce::Graphics& g)
     }
 
     // pedal captures before the amp: one quiet line above the IR line
-    if (pedalLine.isNotEmpty())
+    if (pedalLine.isNotEmpty() && !ampShown)
     {
         g.setColour(textDim);
         g.setFont(Fonts::get().regular(12.0f));
-        g.drawFittedText(pedalLine, irLineArea().translated(0, -17), juce::Justification::centred, 1, 0.9f);
+        g.drawFittedText(pedalLine, pedalButtonArea().translated(0, -18), juce::Justification::centred, 1, 0.9f);
     }
 
     // the cabinet IR, if any, in one quiet line under the capture name
@@ -590,6 +622,26 @@ void SlotComponent::refresh(bool isSelected, bool irEditorOpen)
         pl << (pl.isEmpty() ? "" : "  ") << (pOn ? "" : "(off) ") << ps.fileName << "  " << juce::String::charToString((juce::juce_wchar) 0x2192);
     }
     if (pl != pedalLine) { pedalLine = pl; repaint(); }
+    {
+        std::array<bool, AmpsurdProcessor::kNumPedals> shownNow {};
+        for (int k = 0; k < AmpsurdProcessor::kNumPedals; ++k)
+        {
+            const auto ps = proc.getPedalStatus(slot, k);
+            shownNow[(size_t) k] = ps.state != AmpsurdProcessor::SlotState::empty;
+            auto& b = pedalButtons[(size_t) k];
+            const auto tip = shownNow[(size_t) k] ? "PEDAL " + juce::String(k + 1) + ": " + ps.fileName
+                                                        + " (before the amp) - click to turn it on / off. Load or change pedals in EDIT."
+                                                  : juce::String();
+            if (b.getTooltip() != tip) b.setTooltip(tip);
+        }
+        if (shownNow != pedalShown)
+        {
+            pedalShown = shownNow;
+            for (int k = 0; k < AmpsurdProcessor::kNumPedals; ++k) pedalButtons[(size_t) k].setVisible(pedalShown[(size_t) k]);
+            layoutPedalButtons();
+            repaint();
+        }
+    }
     std::array<int, AmpsurdProcessor::kNumPedals> layers {};
     for (int k = 0; k < AmpsurdProcessor::kNumPedals; ++k)
     {
@@ -923,6 +975,15 @@ int EqGraph::bandAt(juce::Point<float> p, float maxDistance) const
     return best;
 }
 
+// how much of the plot's top row the EQ PRESETS button and the bands box take (from the right, plus a gap)
+float EqGraph::controlsTrim(juce::Rectangle<float> r) const
+{
+    int left = (int) r.getRight();
+    for (const juce::Component* c : { (const juce::Component*) &presetsButton, (const juce::Component*) &bandsBox })
+        if (c->isVisible()) left = juce::jmin(left, c->getX());
+    return juce::jmax(0.0f, r.reduced(10.0f, 0.0f).getRight() - (float) left + 10.0f);
+}
+
 void EqGraph::paint(juce::Graphics& g)
 {
     const auto r = plotArea();
@@ -1052,19 +1113,21 @@ void EqGraph::paint(juce::Graphics& g)
         }
         g.setColour(text);
         g.setFont(Fonts::get().medium(12.0f));
-        g.drawText(t, r.reduced(10.0f, 6.0f).removeFromTop(16.0f).withTrimmedLeft(30.0f).withTrimmedRight(150.0f), juce::Justification::centredLeft, false);
+        g.drawText(t, r.reduced(10.0f, 6.0f).removeFromTop(16.0f).withTrimmedLeft(30.0f).withTrimmedRight(controlsTrim(r) + (eqOn ? 0.0f : 64.0f)),
+                   juce::Justification::centredLeft, true);
     }
-    else if (eqOn || r.getWidth() > 700) // narrow and off: only "EQ OFF" (no overlap)
+    else if (eqOn || r.getWidth() > 900) // narrow and off: only "EQ OFF" (no overlap)
     {
         g.setColour(textDim);
         g.setFont(Fonts::get().regular(12.0f));
         g.drawText(r.getWidth() > 900 ? "Drag a point: left/right = frequency, up/down = gain.  Wheel = width (Q) of the nearest point.  Double-click = reset."
                    : r.getWidth() > 560 ? "Drag: frequency / gain.  Wheel: Q.  Double-click: reset."
                                         : "Drag a point.  Wheel: Q.",
-                   r.reduced(10.0f, 6.0f).removeFromTop(16.0f).withTrimmedLeft(30.0f).withTrimmedRight(150.0f), juce::Justification::centredLeft, true);
+                   r.reduced(10.0f, 6.0f).removeFromTop(16.0f).withTrimmedLeft(30.0f).withTrimmedRight(controlsTrim(r) + (eqOn ? 0.0f : 64.0f)),
+                   juce::Justification::centredLeft, true);
     }
     if (!eqOn)
-        drawLabel(g, "EQ OFF", r.reduced(10.0f, 6.0f).removeFromTop(16.0f).withTrimmedRight(146.0f).toNearestInt(), textDim, juce::Justification::centredRight);
+        drawLabel(g, "EQ OFF", r.reduced(10.0f, 6.0f).removeFromTop(16.0f).withTrimmedRight(controlsTrim(r)).toNearestInt(), textDim, juce::Justification::centredRight);
 }
 
 void EqGraph::refreshIfChanged()

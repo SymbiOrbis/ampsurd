@@ -101,6 +101,14 @@ private:
     juce::String pedalLine; // "lstm  >" when pedal captures play before this amp
     std::array<int, AmpsurdProcessor::kNumPedals> pedalLayers {}; // [0] = pedal next to the amp: 0 none, 1 on, 2 bypassed
     bool irOn = true;
+    // PEDAL 1 / PEDAL 2: turn the pedals before this amp on / off right on the slot (owner 2026-11-06);
+    // only the loaded ones are shown, lit = on
+    std::array<juce::TextButton, AmpsurdProcessor::kNumPedals> pedalButtons;
+    std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>, AmpsurdProcessor::kNumPedals> pedalAtt;
+    std::array<bool, AmpsurdProcessor::kNumPedals> pedalShown {};
+    bool anyPedalShown() const { for (bool b : pedalShown) if (b) return true; return false; }
+    juce::Rectangle<int> pedalButtonArea() const;
+    void layoutPedalButtons();
     MixFader fader;
     juce::Slider panSlider;   // per-amp PAN (stereo width)
     // AMPSURD amp (.ampsurdamp): GAIN, BASS, MID, TREBLE knobs under the name (the tone knobs only if it has them)
@@ -118,6 +126,7 @@ public:
     bool isNameExpanded() const { return nameExpanded; }
     juce::Rectangle<int> getNameArea() const { return nameArea(); } // tests
     int getSlotIndex() const { return slot; }
+    juce::TextButton* getPedalButton(int k) { return pedalShown[(size_t) k] ? &pedalButtons[(size_t) k] : nullptr; } // tests
     // no tooltip over the expanded name (it covered the name it was showing, owner 2026-11-06)
     juce::String getTooltip() override { return nameExpanded ? juce::String() : juce::SettableTooltipClient::getTooltip(); }
 private:
@@ -207,6 +216,7 @@ private:
     std::array<float, 3 * ampsurd::ParametricEq::kNumBands + 2> lastSeen {};
     std::array<float, 3 * ampsurd::ParametricEq::kNumBands + 1> lastGlobal {};
     juce::ComboBox bandsBox; // how many bands this EQ shows (2 ... 10)
+    float controlsTrim(juce::Rectangle<float> plot) const;
     juce::TextButton presetsButton { "EQ PRESETS" }; // factory curves, the user's own, save as (owner 2026-10-28)
     void showPresetMenu();
     void saveAsDialog();
