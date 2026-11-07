@@ -296,7 +296,7 @@ static int webShots(const juce::File& out, int argc, char** argv)
     setP(*proc, "dblOn", 0.0f);
    #endif
 
-    // 8b. AMPSURD IRs: the map of the synthetic 4x12 IRs, amp 3 between V30 + SM57 and V30 + R121, the R121 row
+    // 8b. AMPSURD IRs: the map of the synthetic 4x12 IRs, amp 3 between BRIT 30 + DYN and BRIT 30 + RIBBON, the RIBBON row
     // slid three boxes (0.9.8 / 0.9.9: rows slide and move, greyscale boxes with the mm in each)
     {
         e->showAmpsurdIrs(2);
@@ -812,7 +812,7 @@ int main(int argc, char** argv)
         const bool mapOk = std::abs(tl.y) < 0.05 && std::abs(tl.x) < 0.05 && tl.row == 0.0 && std::abs(tl.mm - 25) < 0.3 && tl.t < 0.05
                            && std::abs(br.y - 8) < 0.05 && std::abs(br.x - 15) < 0.05 && br.rowB == 8 && br.t > 0.95 && std::abs(br.mmB - 100) < 0.3;
         if (!mapOk) std::cout << "  map corners: " << ampsurd::CabIrModel::toRef(tl) << " / " << ampsurd::CabIrModel::toRef(br) << "\n";
-        mx.choose({ 3.0, 45.0 }); // DV77 + SM57, 45 mm
+        mx.choose({ 3.0, 45.0 }); // HEAVY 77 + DYN, 45 mm
         mx.flush();
         settleIr(900);
         ampsurd::CabPoint got;
@@ -891,16 +891,16 @@ int main(int argc, char** argv)
         // SLIDING / MOVING ROWS (owner 2026-11-01): the chosen point stays on the screen, the rows move under it
         bool rowsOk = false;
         {
-            mx.choose({ 3.0, 45.0 }); // display row 3 = DV77 + SM57, box 4 = 45 mm
+            mx.choose({ 3.0, 45.0 }); // display row 3 = HEAVY 77 + DYN, box 4 = 45 mm
             mx.flush();
             settleIr(600);
-            mx.slideRow(3, 2); // DV77 SM57 two boxes right: box 4 now shows 35 mm
+            mx.slideRow(3, 2); // HEAVY 77 DYN two boxes right: box 4 now shows 35 mm
             mx.flush();
             settleIr(900);
             ampsurd::CabPoint a, b;
             const bool slid = proc->getCabIrPoint(0, a) && a.row == 3.0 && a.mm == 35.0 && a.hasLayout && a.offset[3] == 2;
-            mx.moveRow(5, 4); // DV77 MD421 (display row 5) up above DV77 R121
-            mx.choose(ampsurd::CabIrModel::atMap(mx.getOrder(), mx.getOffsets(), 4.0, 3.5)); // between DV77 SM57 and DV77 MD421
+            mx.moveRow(5, 4); // HEAVY 77 DYN WIDE (display row 5) up above HEAVY 77 RIBBON
+            mx.choose(ampsurd::CabIrModel::atMap(mx.getOrder(), mx.getOffsets(), 4.0, 3.5)); // between HEAVY 77 DYN and HEAVY 77 DYN WIDE
             mx.flush();
             settleIr(900);
             const bool moved = proc->getCabIrPoint(0, b) && mx.getOrder()[4] == ampsurd::CabIrModel::rowOf(1, 1) && b.row == 3.0

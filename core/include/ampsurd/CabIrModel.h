@@ -3,12 +3,12 @@
 // AMPSURD IRs (2026-10-28): the owner's synthetic 4x12 cabinet IR set, calculated live.
 //
 // The set (AMPSURD_IRs v6, generator make_irs.py by the owner) is not recorded: every IR is a minimum-phase
-// filter built from parametric EQ models of a speaker (V30, DV77, SWAMP), a microphone (SM57, MD421, R121),
+// filter built from parametric EQ models of a speaker (BRIT 30, HEAVY 77, BAYOU), a microphone (DYN, DYN WIDE, RIBBON),
 // the mic's distance from the speaker centre (25 .. 100 mm, cap edge -> cone), a common voicing and a smooth
 // per-combination "cone ripple". This class is an exact port of that generator (tested against the 144 WAV
 // files: same shape to ~1e-9), so AMPSURD needs no IR files and can make ANY point between them:
 //
-//   row  0 .. 8  = speaker x mic (V30 SM57, V30 R121, V30 MD421, DV77 ..., SWAMP ...); between two rows the
+//   row  0 .. 8  = speaker x mic (BRIT 30 DYN, BRIT 30 RIBBON, BRIT 30 DYN WIDE, HEAVY 77 ..., BAYOU ...); between two rows the
 //                  two combinations are blended (in dB, i.e. their responses are averaged on a log scale)
 //   mm  25 .. 100 = mic position, continuous (the files are every 5 mm)
 //
@@ -53,13 +53,13 @@ public:
     static constexpr int kSpeakers = 3, kMics = 3, kRows = kSpeakers * kMics;
     static constexpr int kIrLength = 2048, kFftSize = 16384;
     static constexpr double kMinMm = 25.0, kMaxMm = 100.0, kStepMm = 5.0;
-    static const char* speakerName(int s);      // "V30", "DV77", "SWAMP"
-    static const char* micName(int m);          // "SM57", "MD421", "R121"
-    static const char* speakerFileTag(int s);   // as in the file names: "30", "77", "SWAMP"
+    static const char* speakerName(int s);      // "BRIT 30", "HEAVY 77", "BAYOU" (own names, owner 2026-11-07: no trademarks)
+    static const char* micName(int m);          // "DYN", "DYN WIDE", "RIBBON"
+    static const char* speakerFileTag(int s);   // in exported file names: "BRIT30", "HEAVY77", "BAYOU"
     static const char* micFileTag(int m);       // "57", "421", "121"
     static int speakerOfRow(int row) { return row / kMics; }
-    // mic order on the map, per speaker: SM57, R121, MD421 (owner 2026-10-29) - mic index = the model's
-    // (0 SM57, 1 MD421, 2 R121), row = speaker * 3 + position of the mic on the map
+    // mic order on the map, per speaker: DYN, RIBBON, DYN WIDE (owner 2026-10-29) - mic index = the model's
+    // (0 DYN, 1 DYN WIDE, 2 RIBBON), row = speaker * 3 + position of the mic on the map
     static int micOfRow(int row) { static const int m[kMics] { 0, 2, 1 }; return m[row % kMics]; }
     static int rowOf(int speaker, int micIndex) { static const int pos[kMics] { 0, 2, 1 }; return speaker * kMics + pos[micIndex]; }
 
@@ -76,13 +76,13 @@ public:
     // a simple point (old presets) on the default map (rows in order, not slid)
     static CabPoint onDefaultMap(CabPoint simple);
     static bool isValidOrder(const std::array<int, 9>& order);
-    // "V30 + SM57, 45 mm" or, between rows, "V30 + 70 % SM57 / 30 % MD421, 47.5 mm"
+    // "BRIT 30 + DYN, 45 mm" or, between rows, "BRIT 30 + 70 % DYN / 30 % DYN WIDE, 47.5 mm"
     static std::string describe(CabPoint p);
-    // a file name like the original set: "AMPSURD-412-30-57-P045mm" (a point between rows / positions gets
-    // both tags and the exact position, e.g. "AMPSURD-412-30-57+30-421-P047.5mm")
+    // a file name like the original set: "AMPSURD-412-BRIT30-DYN-P045mm" (a point between rows / positions gets
+    // both tags and the exact position, e.g. "AMPSURD-412-BRIT30-DYN+BRIT30-DYNWIDE-P047.5mm")
     static std::string fileName(CabPoint p);
     // "ampsurd-ir2:<row>,<mm>" - how presets refer to it (no file needed). "ampsurd-ir:" (test builds of
-    // 2026-10-28, mic order SM57 / MD421 / R121) is still read: its row goes to the same speaker and nearest mic.
+    // 2026-10-28, mic order DYN / DYN WIDE / RIBBON) is still read: its row goes to the same speaker and nearest mic.
     // The pair form / a map: "ampsurd-ir3:<row>,<mm>,<rowB>,<mmB>,<t>;<x>,<y>;<order x9>;<offset x9>" (0.9.8).
     static std::string toRef(CabPoint p);
     static bool fromRef(const std::string& ref, CabPoint& p);

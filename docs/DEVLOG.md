@@ -6,6 +6,23 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-07 — Session 5a: no trademarks in the app and on the website; release 0.9.15 - Claude (Opus 5.5)
+
+- Owner: replace all protected names in the product and on the website (after a talk about trademarks; captures
+  and TONE3000 terms checked separately, e-mail to TONE3000 sent by the owner).
+- CabIrModel names (display only - refs are row numbers, so presets are unchanged): speakers V30 / DV77 / SWAMP
+  -> BRIT 30 / HEAVY 77 / BAYOU, mics SM57 / MD421 / R121 -> DYN / DYN WIDE / RIBBON; export file tags
+  BRIT30 / HEAVY77 / BAYOU and DYN / DYNWIDE / RIBBON ("AMPSURD-412-BRIT30-DYN-P045mm"). Map: speaker column
+  68 px (HEAVY 77 fits). Amp builder example "EVH 5150 III Red" -> "My Amp CH3". Code comments, tests, UI_SPEC
+  follow. Kept: test data file names (tests/data/ampsurd_irs, the owner's original set), docs/ampsurd_irs
+  (the owner's generator), history in DEVLOG / RELEASE_NOTES.
+- Website: IR map text with the new names; Amp Pack list without brand names (descriptions instead); footer:
+  trademark note (VST - Steinberg, Apple / macOS / Audio Unit, Windows, "other product names ...") replaces the
+  old amp-names note; all 21 screenshots re-rendered.
+- Tested: ui_snapshot 37 PASS; map shot checked by eye; site at 1280 px and phone (no horizontal scroll).
+
+---
+
 ## 2026-11-07 — Session 4z: the new AMPSURD logo; release 0.9.14 - Claude (Opus 5.5)
 
 - Owner's logo package (Inter Bold outlines, lying "B" + "p" bowl glyph, red #D23C42; icon on #303134).

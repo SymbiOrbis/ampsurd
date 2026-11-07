@@ -469,10 +469,10 @@ void CabIrMatrix::paint(juce::Graphics& g)
             g.setColour(text.withAlpha(0.06f));
             g.fillRect(lr);
         }
-        label(g, M::speakerName(M::speakerOfRow(row)), lr.withWidth(58).withTrimmedLeft(4), text, juce::Justification::centredLeft, 12.0f);
+        label(g, M::speakerName(M::speakerOfRow(row)), lr.withWidth(68).withTrimmedLeft(4), text, juce::Justification::centredLeft, 12.0f); // "HEAVY 77" fits
         g.setColour(textDim);
         g.setFont(Fonts::get().regular(12.0f));
-        g.drawText(M::micName(M::micOfRow(row)), lr.withTrimmedLeft(62).withTrimmedRight(42), juce::Justification::centredLeft, false);
+        g.drawText(M::micName(M::micOfRow(row)), lr.withTrimmedLeft(72).withTrimmedRight(42), juce::Justification::centredLeft, false);
         g.setFont(Fonts::get().regular(13.0f));
         g.setColour(textDim);
         g.drawText("<", leftArrow(d), juce::Justification::centred, false);

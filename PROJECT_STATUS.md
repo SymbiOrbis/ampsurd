@@ -50,6 +50,8 @@ footswitches (program change, MIDI learn), preset packs, undo / redo, A/B, fast 
 (checklist 30-33). Bundled IRs on hold (no IRs without the author's explicit consent).
 **Public beta v0.9.0 released 2026-10-14** (GitHub pre-release, unsigned):
 https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.0
+**Public beta v0.9.15 released 2026-11-07:** own names on the IR map (BRIT 30 / HEAVY 77 / BAYOU x DYN / DYN WIDE / RIBBON), no brand names in the app or on the website. https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.15 - Windows files to be signed by the owner.
+
 **Public beta v0.9.14 released 2026-11-07:** the new AMPSURD logo (top bar, app icon, installer icon, website). https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.14 - Windows files to be signed by the owner.
 
 **Public beta v0.9.13 released 2026-11-07:** an AMPSURD amp between two GAIN positions plays its two captures on two cores when one is free. https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.13 - Windows files to be signed by the owner.

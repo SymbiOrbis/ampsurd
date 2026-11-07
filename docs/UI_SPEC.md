@@ -83,9 +83,9 @@ NAM NAME DISPLAY
 This is an important part of the visual identity.
 The filename itself should become the large central visual element of each slot.
 Example actual filename:
-Rectifier underscore CH3 underscore Modern underscore SM57 underscore A2 dot NAM.
+Rectifier underscore CH3 underscore Modern underscore DYN underscore A2 dot NAM.
 Display:
-Rectifier underscore CH3 underscore Modern underscore SM57 underscore A2.
+Rectifier underscore CH3 underscore Modern underscore DYN underscore A2.
 The dot NAM extension may be omitted from the large display.
 IMPORTANT TYPOGRAPHY RULES
 All five slots MUST use EXACTLY THE SAME font size for their NAM names.
@@ -93,7 +93,7 @@ Do NOT make short names larger.
 For example:
 5153
 must use exactly the same character size as:
-Rectifier underscore CH3 underscore Modern underscore SM57 underscore A2.
+Rectifier underscore CH3 underscore Modern underscore DYN underscore A2.
 This is a deliberate design decision.
 Do not auto-scale the font based on filename length.
 Do not make "5153" fill the available space.
@@ -109,7 +109,7 @@ Preserve:
 - original spelling
 Do not insert hyphens or modify words.
 The text block should remain horizontally centered and, as a complete block, visually centered within the available filename area.
-For example, Rectifier underscore CH3 underscore Modern underscore SM57 underscore A2 might render across approximately three lines depending on actual line-breaking and layout constraints.
+For example, Rectifier underscore CH3 underscore Modern underscore DYN underscore A2 might render across approximately three lines depending on actual line-breaking and layout constraints.
 The precise wrapping algorithm can be determined technically, but the principle is:
 - fixed font size
 - centered text

@@ -2,7 +2,7 @@
 
 // AMPSURD IRs (2026-10-28): the owner's synthetic 4x12 cabinet IRs as one map to play with.
 //
-//   rows    = speaker x microphone (V30 / DV77 / SWAMP x SM57 / MD421 / R121)
+//   rows    = speaker x microphone (BRIT 30 / HEAVY 77 / BAYOU x DYN / DYN WIDE / RIBBON)
 //   boxes   = mic position, 25 mm (cap edge) .. 100 mm (on the cone), every 5 mm; the number is in the box
 //
 // Rows can be slid left / right by whole boxes (drag a row's name sideways, or its < > arrows) and moved up /

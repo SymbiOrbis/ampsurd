@@ -19,6 +19,16 @@ notarized (Developer ID: Radovan Glovna): double-click it and install. The first
 access to the audio input: allow it, or AMPSURD hears no guitar (the camera is asked for only when you use
 VIDEO in the player).
 
+## AMPSURD 0.9.15 (beta)
+
+**Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the standalone app.
+**macOS 10.15 or newer:** AMPSURD-macOS.pkg installs the app, the VST3 plugin and the Audio Unit. Installing over an
+older version is fine: presets and recordings (Documents/AMPSURD) stay untouched.
+
+New in 0.9.15:
+- The AMPSURD IR map has its own names: speakers BRIT 30, HEAVY 77 and BAYOU, microphones DYN, DYN WIDE and RIBBON
+  (no brand names). Presets made with the old names load exactly as before; exported IR files get the new names.
+
 ## AMPSURD 0.9.14 (beta)
 
 **Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the standalone app.

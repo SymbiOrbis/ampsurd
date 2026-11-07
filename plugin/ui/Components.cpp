@@ -4415,7 +4415,7 @@ void HeaderBar::buildAmpDialog()
     chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories, [this](const juce::FileChooser& fc) {
         const auto folder = fc.getResult();
         if (!folder.isDirectory()) return;
-        auto* w = new juce::AlertWindow("Build an AMPSURD amp", "Name of the amp (e.g. EVH 5150 III Red):", juce::MessageBoxIconType::NoIcon, this);
+        auto* w = new juce::AlertWindow("Build an AMPSURD amp", "Name of the amp (e.g. My Amp CH3):", juce::MessageBoxIconType::NoIcon, this);
         w->addTextEditor("name", folder.getFileName());
         w->addTextEditor("author", "", "Author (optional):");
         w->addButton("BUILD", 1, juce::KeyPress(juce::KeyPress::returnKey));
