@@ -6,6 +6,26 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-07 — Session 4y: an AMPSURD amp's two GAIN captures on two cores - Claude (Opus 5.5)
+
+- Owner approved (after the dropout talk): an AMPSURD amp between two GAIN positions plays its upper capture on a
+  free core. With 5 busy amps nothing changes (every core already has an amp); with 1-2 amps the slowest part of
+  the chain (pedals -> two captures -> IR) gets about one NAM-time shorter.
+- ParallelRunner side jobs: offer(fn, ctx, index) / finish(handle) from inside a job, 16 runner-owned side slots
+  (state 0 free / 1 filling / 2 offered / 3 running / 4 done), no allocation, no locks. finish() runs the job itself
+  if no core took it, else spins until done (audio thread: counted in waitedMsTotal for the log). current():
+  thread-local runner of the running job. run(..., sideWork): with side work possible even one job is published
+  so idle helpers wake, and helpers without a job of their own watch for side work until the block is done (only
+  then - no spinning for plain captures). The audio thread helps with side work while it waits.
+- CaptureModel::processMorph: both steps needed -> upper step offered (runUpperStepJob), lower step here, then
+  finish. Engine: sideWork = any running path with an AMPSURD amp (CaptureSlot::activeIsMorph).
+- Tested: ui_snapshot 36 PASS (new TWO GAIN CAPTURES ON TWO CORES: bit-identical to one core over 400 blocks with
+  GAIN moving, a helper took the upper capture in 368 of 400). Soak test 3 min with the CH3 amp: finite output, but
+  this container has too few cores for helper threads, so the real-time gain is NOT measured here - the owner's
+  PC will show it (CPU / DROPOUTS, the log's "waited ... for a helper core").
+
+---
+
 ## 2026-11-07 — Session 4x: EVH CH3 amp; dropout log with real run time; release 0.9.12 - Claude (Opus 5.5)
 
 - Built "EVH 5150 III CH3.ampsurdamp" (no boost, 11 captures 7:30-17:00, from silence, capture check passed).
