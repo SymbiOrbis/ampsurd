@@ -70,7 +70,12 @@ int main(int argc, char** argv)
             double d = ref.size() == mine.size() ? 0.0 : 1.0;
             for (size_t i = 0; i < std::min(ref.size(), mine.size()); ++i) d = std::max(d, std::abs(ref[i] - mine[i]));
             if (d > worst) { worst = d; worstName = name + " @ " + std::to_string((int) sr); }
-            if (CabIrModel::fileName({ (double) CabIrModel::rowOf(spk, mic), mm }) + ".wav" != name)
+            // the owner's files use the old tags (30/77/SWAMP x 57/421/121); exported files get AMPSURD's own names
+            // (owner 2026-11-07: no trademarks): the same file name with the new tags
+            static const char* spkNew[] { "BRIT30", "HEAVY77", "BAYOU" };
+            static const char* micNew[] { "DYN", "DYNWIDE", "RIBBON" };
+            const std::string expected = std::string("AMPSURD-412-") + spkNew[spk] + "-" + micNew[mic] + "-P" + m[3].str() + "mm.wav";
+            if (CabIrModel::fileName({ (double) CabIrModel::rowOf(spk, mic), mm }) + ".wav" != expected)
                 check(false, "file name for " + name + ": " + CabIrModel::fileName({ (double) CabIrModel::rowOf(spk, mic), mm }));
             ++files;
         }
@@ -108,9 +113,9 @@ int main(int argc, char** argv)
                            && std::abs(p.mm - 47.5) < 1e-6 && !CabIrModel::fromRef("C:/irs/x.wav", p);
         std::printf("  %s | %s | %s\n", CabIrModel::describe({ 0, 25 }).c_str(), CabIrModel::describe({ 0.3, 47.5 }).c_str(),
                     CabIrModel::describe({ 2.5, 100 }).c_str());
-        check(refOk && CabIrModel::describe({ 0, 25 }) == "V30 + SM57, 25 mm"
-                  && CabIrModel::describe({ 0.3, 47.5 }) == "V30 + 70 % SM57 / 30 % R121, 47.5 mm"
-                  && CabIrModel::describe({ 1, 30 }) == "V30 + R121, 30 mm" && CabIrModel::describe({ 2, 30 }) == "V30 + MD421, 30 mm"
+        check(refOk && CabIrModel::describe({ 0, 25 }) == "BRIT 30 + DYN, 25 mm"
+                  && CabIrModel::describe({ 0.3, 47.5 }) == "BRIT 30 + 70 % DYN / 30 % RIBBON, 47.5 mm"
+                  && CabIrModel::describe({ 1, 30 }) == "BRIT 30 + RIBBON, 30 mm" && CabIrModel::describe({ 2, 30 }) == "BRIT 30 + DYN WIDE, 30 mm"
                   && CabIrModel::fromRef("ampsurd-ir:1.0000,40.000", p) && p.row == 2.0, // old ref: V30 MD421 -> its new row
               "preset reference and names");
     }
@@ -143,7 +148,7 @@ int main(int argc, char** argv)
         const auto mid = CabIrModel::atMap(order, off, 6.0, 0.5);
         const bool midOk = mid.row == 0 && mid.mm == 55.0 && mid.rowB == 2 && mid.mmB == 35.0 && std::abs(mid.t - 0.5) < 1e-12;
         std::printf("  %s | %s\n", CabIrModel::describe(mid).c_str(), CabIrModel::fileName(mid).c_str());
-        check(dc < 1e-9 && midOk && CabIrModel::describe(mid) == "50 % V30 + SM57 55 mm / 50 % V30 + MD421 35 mm",
+        check(dc < 1e-9 && midOk && CabIrModel::describe(mid) == "50 % BRIT 30 + DYN 55 mm / 50 % BRIT 30 + DYN WIDE 35 mm",
               "MAP: a box centre = that IR alone; between rows = each row at its own position, blended");
         // the reference keeps the sound and the map; old references still load
         CabPoint back;
