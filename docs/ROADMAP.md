@@ -189,3 +189,7 @@ inspiration; own code). Next: listening tests; maybe later a real second take in
   a person with a Mac to test it with an interface and in Logic / GarageBand.
 - iPad / iPhone (AUv3 app): not planned - a separate touch layout, App Store only (Apple Developer
   account, review), and the iOS audio-input / sandbox limits.
+
+## Collected small suggestions (owner 2026-11-07) - COLLECTED, not implemented yet
+
+- IR panel: the "REPLACE IR" button should say "ADD / REPLACE IR" (it also adds an IR when the slot has none).
