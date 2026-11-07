@@ -90,6 +90,8 @@ public:
     void prepare(double sampleRate, int maxBlockSize, double maxDelayMs);
 
     CaptureSlot& getSlot(int i) noexcept { return slots[(size_t) i]; }
+    // audio thread: ms the audio thread has waited for helper cores so far (the log tells a paused helper apart)
+    double helperWaitMsTotal() const noexcept { return runner.waitedMsTotal(); }
     // pedal k of amp i: a capture played BEFORE the amp (its own sample rate / resampling like any capture).
     // Bypassed or empty = the amp gets the guitar straight (20 ms crossfade); a bypassed pedal does not run.
     CaptureSlot& getPedal(int i, int k) noexcept { return pedals[(size_t) i][(size_t) k]; }

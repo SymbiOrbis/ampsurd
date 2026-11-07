@@ -42,6 +42,7 @@ add_library(ampsurd_core STATIC
   src/Effects.cpp
   src/Resampler.cpp
   src/ParallelRunner.cpp
+  src/ThreadCpuClock.cpp
   src/PitchShifter.cpp
   src/RootEnhancer.cpp
   src/BlendToneEq.cpp

@@ -149,7 +149,12 @@ void ParallelRunner::run(int numJobs, JobFn fn, void* context) noexcept
     if (sleeping.load(std::memory_order_seq_cst) > 0) wakeAll(work);
 
     while (claimAndRun(gen)) {}                       // the audio thread works too
-    while (jobsDone.load(std::memory_order_acquire) < numJobs) cpuRelax(); // jobs already started by workers
+    if (jobsDone.load(std::memory_order_acquire) < numJobs) // jobs already started by workers
+    {
+        const auto waitStart = std::chrono::steady_clock::now();
+        while (jobsDone.load(std::memory_order_acquire) < numJobs) cpuRelax();
+        waitedMs += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - waitStart).count();
+    }
 }
 
 void ParallelRunner::workerLoop()

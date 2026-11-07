@@ -6,6 +6,7 @@
 #include <limits>
 
 #include "ampsurd/Convolver.h"
+#include "ampsurd/ThreadCpuClock.h"
 #include "PluginEditor.h"
 
 #include <algorithm>
@@ -727,6 +728,8 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         AmpsurdProcessor& p;
         const int n;
         const double start = juce::Time::getMillisecondCounterHiRes();
+        const ampsurd::ThreadCpuClock::Mark cpuStart = ampsurd::ThreadCpuClock::now();
+        const double waitStart = p.engine.helperWaitMsTotal();
         ~DropWatch()
         {
             const double sr = p.currentSampleRate.load();
@@ -738,6 +741,8 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
             d.atMs = start;
             d.workMs = (float) work;
             d.budgetMs = (float) budget;
+            d.ranMs = (float) ampsurd::ThreadCpuClock::ranMs(cpuStart, ampsurd::ThreadCpuClock::now(), work);
+            d.helperWaitMs = (float) (p.engine.helperWaitMsTotal() - waitStart);
             d.samples = n;
             d.grace = juce::Time::getMillisecondCounter() < p.dropGraceUntil.load();
             p.eventLog.pushDrop(d);
@@ -2686,7 +2691,24 @@ juce::String AmpsurdProcessor::describeDrop(const ampsurd::EventLog::Drop& d)
     if (!twoCaptures.isEmpty())
         t << " - GAIN between two recorded positions on " << twoCaptures.joinIntoString(", ") << " (two captures play there)";
     t << " - CPU " << juce::roundToInt(getCpuLoadPercent()) << " %";
+    // how much of that time AMPSURD really ran (owner 2026-11-07): tells "the computer paused AMPSURD" from
+    // "AMPSURD was too slow"
+    const bool known = d.ranMs >= 0.0f;
+    const float waited = juce::jmax(0.0f, d.helperWaitMs);
+    const float ran = known ? juce::jmax(0.0f, d.ranMs - waited) : 0.0f; // the helper wait is spinning, not work
+    const bool paused = known && ran < 0.5f * d.workMs && ran <= d.budgetMs;
+    const bool helperPaused = waited > 0.5f * d.workMs;
+    if (known)
+    {
+        t << " - AMPSURD itself worked " << juce::String(ran, 1) << " ms of it";
+        if (waited >= 0.1f) t << ", waited " << juce::String(waited, 1) << " ms for a helper core";
+    }
     if (d.grace) t << " - not counted (right after starting the audio or loading an amp)";
+    else if (helperPaused)
+        t << ". Likely cause: the computer paused one of AMPSURD's helper threads (another program, power saving, a driver)"
+             " - not AMPSURD's own work";
+    else if (paused)
+        t << ". Likely cause: the computer paused AMPSURD (another program, power saving, a driver, USB) - not AMPSURD's own work";
     else if (busy.isNotEmpty()) t << ". Likely cause: that background work took the CPU from the audio (once it ends, it should stop)";
     else if (d.budgetMs < 3.0f) t << ". Likely cause: a very small buffer - a larger buffer size (e.g. 256) gives AMPSURD more time";
     else if (d.workMs > 3.0f * d.budgetMs) t << ". Likely cause: the computer paused AMPSURD (another program, power saving, a driver)";

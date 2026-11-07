@@ -37,6 +37,9 @@ public:
     void start(int workers);
     void stop();
     int numWorkers() const noexcept { return (int) threads.size(); }
+    // audio thread: all the time run() so far waited for jobs a helper core had started (ms, keeps growing).
+    // For the log: a block that waited long = a helper thread was paused by the computer.
+    double waitedMsTotal() const noexcept { return waitedMs; }
 
     // Audio thread. Runs fn(context, 0..numJobs-1) and returns when all are done.
     void run(int numJobs, JobFn fn, void* context) noexcept;
@@ -58,6 +61,7 @@ private:
     std::atomic<JobFn> fnNow { nullptr };
     std::atomic<void*> ctxNow { nullptr };
     std::atomic<int> sleeping { 0 };
+    double waitedMs = 0.0; // audio thread only
 };
 
 } // namespace ampsurd

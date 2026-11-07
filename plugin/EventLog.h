@@ -31,6 +31,8 @@ public:
         float workMs = 0.0f;        // how long AMPSURD worked on the block
         float budgetMs = 0.0f;      // how long the block lasts (the time it had)
         float gapMs = 0.0f;         // time since the previous block started (lateCall)
+        float ranMs = -1.0f;        // how long the audio thread really ran in that time (-1 = not known)
+        float helperWaitMs = 0.0f;  // of the block: waiting for a helper core to finish its amp
         int samples = 0;
         DropKind kind = DropKind::slowBlock;
         bool grace = false;         // right after starting audio / loading: not counted in DROPOUTS

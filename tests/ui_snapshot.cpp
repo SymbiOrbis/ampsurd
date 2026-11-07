@@ -16,6 +16,7 @@
 #include "../plugin/UpdateCheck.h"
 #include "../plugin/PluginProcessor.h"
 #include "ampsurd/CaptureAnalyzer.h"
+#include "ampsurd/ThreadCpuClock.h"
 
 static void pump(int ms)
 {
@@ -1134,6 +1135,60 @@ int main(int argc, char** argv)
                   << "), a missing IR as a problem (" << problemOk << "), shown in the log panel (" << shownOk << "), written to the file ("
                   << fileOk << ")\n";
         if (!ok) std::cout << t1 << "\n";
+
+        // how long AMPSURD really ran (owner 2026-11-07): a busy 30 ms runs ~30 ms, a 30 ms sleep runs ~0 ms;
+        // a dropout block where AMPSURD ran little = "the computer paused AMPSURD"
+        {
+            auto spin = [](double ms) {
+                const auto a = ampsurd::ThreadCpuClock::now();
+                const double t0 = juce::Time::getMillisecondCounterHiRes();
+                volatile double x = 0.0;
+                while (juce::Time::getMillisecondCounterHiRes() - t0 < ms) x = x + 1.0;
+                return ampsurd::ThreadCpuClock::ranMs(a, ampsurd::ThreadCpuClock::now(), juce::Time::getMillisecondCounterHiRes() - t0);
+            };
+            auto nap = [](double ms) {
+                const auto a = ampsurd::ThreadCpuClock::now();
+                const double t0 = juce::Time::getMillisecondCounterHiRes();
+                juce::Thread::sleep((int) ms);
+                return ampsurd::ThreadCpuClock::ranMs(a, ampsurd::ThreadCpuClock::now(), juce::Time::getMillisecondCounterHiRes() - t0);
+            };
+            const double busy = spin(30.0), idle = nap(30.0);
+            const bool clockOk = busy > 20.0 && busy <= 31.0 && idle >= 0.0 && idle < 3.0;
+            pump(1100);
+            lg.clear();
+            ampsurd::EventLog::Drop p;
+            p.atMs = juce::Time::getMillisecondCounterHiRes();
+            p.workMs = 44.7f;
+            p.budgetMs = 2.7f;
+            p.samples = 128;
+            p.ranMs = 1.2f;
+            lg.pushDrop(p);
+            proc->runHousekeeping();
+            const auto tp = lg.getText();
+            const bool pausedOk = tp.contains("worked 1.2 ms of it") && tp.contains("the computer paused AMPSURD");
+            pump(1100);
+            lg.clear();
+            p.atMs = juce::Time::getMillisecondCounterHiRes();
+            p.ranMs = 44.0f;
+            lg.pushDrop(p);
+            proc->runHousekeeping();
+            const auto ts = lg.getText();
+            const bool slowOk = ts.contains("worked 44.0 ms of it") && !ts.contains("paused") && ts.contains("very small buffer");
+            pump(1100);
+            lg.clear();
+            p.atMs = juce::Time::getMillisecondCounterHiRes();
+            p.ranMs = 44.0f;
+            p.helperWaitMs = 40.0f;
+            lg.pushDrop(p);
+            proc->runHousekeeping();
+            const auto th = lg.getText();
+            const bool helperOk = th.contains("waited 40.0 ms for a helper core") && th.contains("paused one of AMPSURD's helper threads");
+            const bool ok2 = clockOk && pausedOk && slowOk && helperOk;
+            std::cout << (ok2 ? "[PASS]" : "[FAIL]") << " LOG: real run time (busy 30 ms ran " << busy << " ms, a 30 ms sleep ran " << idle
+                      << " ms); paused " << pausedOk << ", really slow " << slowOk << ", helper paused " << helperOk << "\n";
+            if (!ok2) std::cout << tp << "\n" << ts << "\n" << th << "\n";
+            lg.clear();
+        }
     }
 
     // AMPSURD AMP (.ampsurdamp, owner 2026-10-30): built from a folder of "recordings" named as in the recording sheet
