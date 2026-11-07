@@ -6,6 +6,23 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-07 — Session 4x: EVH CH3 amp; dropout log with real run time; release 0.9.12 - Claude (Opus 5.5)
+
+- Built "EVH 5150 III CH3.ampsurdamp" (no boost, 11 captures 7:30-17:00, from silence, capture check passed).
+- Owner: crackle when a chord rings out; LOG: 22.6 ms and 44.7 ms blocks (128 samples, 2.7 ms), also while not
+  playing, with the driver missing buffers at the same moments - looks like the computer pausing AMPSURD, but the
+  clock time alone cannot tell. Owner approved measuring it.
+- core ThreadCpuClock: how long the calling thread really ran (Windows x64: QueryThreadCycleTime against __rdtsc;
+  macOS / Linux: CLOCK_THREAD_CPUTIME_ID). ParallelRunner::waitedMsTotal: the audio thread's spin-wait for jobs a
+  helper core had started. DropWatch records both (Drop::ranMs, helperWaitMs); describeDrop writes "AMPSURD itself
+  worked X ms of it[, waited Y ms for a helper core]" and names "the computer paused AMPSURD" (ran < half the
+  block time and <= its budget) or "paused one of AMPSURD's helper threads" (waited > half).
+- Tested: ui_snapshot 35 PASS (new: a busy 30 ms ran ~27 ms here, a 30 ms sleep ~0 ms; the three log texts).
+  The Windows clock path is only compiled in CI - not tested on Windows yet: the owner's next log will show it.
+- Owner suggestion collected (ROADMAP): "REPLACE IR" -> "ADD / REPLACE IR".
+
+---
+
 ## 2026-11-06 — Session 4w: PEDAL on/off buttons on the slot; EQ text overlap - Claude (Opus 5.5)
 
 - Owner: turn pedals on / off right on the main slot. SlotComponent: PEDAL 1 / PEDAL 2 toggle buttons (attached to
