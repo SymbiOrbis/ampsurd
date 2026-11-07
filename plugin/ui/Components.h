@@ -602,7 +602,12 @@ public:
     bool saveAsFile(const juce::File& f, juce::String& error);
     static constexpr const char* kSaveAsPatterns = "*.ampsurd;*.ampsurdpack";
 
+    // the AMPSURD logo (assets/brand/ampsurd_logo.svg, owner 2026-11-07) - where it is drawn (tests)
+    juce::Rectangle<float> logoArea() const;
+    bool hasLogo() const { return logo != nullptr; }
+
 private:
+    std::unique_ptr<juce::Drawable> logo;
     void showPresetMenu();
     void save(bool saveAs);
     void showSettings();

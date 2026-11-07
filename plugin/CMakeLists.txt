@@ -61,6 +61,7 @@ endif()
 # background dragon (assets/dragon, made by tools/dragon/make_dragon.py), factory EQ presets (assets/eq).
 file(GLOB AMPSURD_ASSETS CONFIGURE_DEPENDS
   "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/*.ttf"
+  "${CMAKE_CURRENT_SOURCE_DIR}/assets/brand/*.svg"
   "${CMAKE_CURRENT_SOURCE_DIR}/assets/logos/*.svg"
   "${CMAKE_CURRENT_SOURCE_DIR}/assets/logos/*.png"
   "${CMAKE_CURRENT_SOURCE_DIR}/assets/dragon/*.png"

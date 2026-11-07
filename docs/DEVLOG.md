@@ -6,6 +6,20 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-07 — Session 4z: the new AMPSURD logo; release 0.9.14 - Claude (Opus 5.5)
+
+- Owner's logo package (Inter Bold outlines, lying "B" + "p" bowl glyph, red #D23C42; icon on #303134).
+- Top bar: HeaderBar draws assets/brand/ampsurd_logo.svg (juce::Drawable) 176 px wide (was 24 pt text), the
+  capitals centred on the buttons' middle line, the "p" stem below; the old text stays as a fallback.
+- App icon: assets/icon/icon_1024.png, icon_256.png (JUCE ICON_BIG / ICON_SMALL) and ampsurd.ico (installer) from
+  the package. Version 0.9.14.
+- Website (outputs/index.html): the brand text -> the inline logo SVG (currentColor = red, height 40-78 px),
+  favicon -> the icon SVG, screenshots 01, 06 and 16b re-rendered with the new top bar. Checked at 1280 px and
+  on a phone (no horizontal scroll).
+- Tested: ui_snapshot 37 PASS (new HEADER LOGO).
+
+---
+
 ## 2026-11-07 — Session 4y: an AMPSURD amp's two GAIN captures on two cores - Claude (Opus 5.5)
 
 - Owner approved (after the dropout talk): an AMPSURD amp between two GAIN positions plays its upper capture on a

@@ -1045,6 +1045,22 @@ int main(int argc, char** argv)
             std::cout << (ok ? "[PASS]" : "[FAIL]") << " PEDAL BUTTONS ON THE SLOT: shown " << shownOk << ", click turns on / off "
                       << clickOk << ", placed " << placeOk << "\n";
         }
+        // the new AMPSURD logo in the header (owner 2026-11-07): loaded, larger than the old text, left of PLAYER / REC
+        {
+            auto* hb = findVisible<ampsurd::ui::HeaderBar>(*ed);
+            const auto la = hb != nullptr ? hb->logoArea() : juce::Rectangle<float>();
+            const bool logoOk = hb != nullptr && hb->hasLogo() && la.getRight() <= 205.0f && la.getX() >= 20.0f && la.getY() >= 0.0f
+                                && la.getBottom() <= (float) hb->getHeight() && la.getWidth() >= 170.0f;
+            if (hb != nullptr)
+            {
+                juce::PNGImageFormat png;
+                const auto f = out.getChildFile("00_header_logo.png");
+                f.deleteFile();
+                juce::FileOutputStream os(f);
+                png.writeImageToStream(hb->createComponentSnapshot(hb->getLocalBounds().withWidth(420), true, 2.0f), os);
+            }
+            std::cout << (logoOk ? "[PASS]" : "[FAIL]") << " HEADER LOGO: the new logo is drawn at " << la.toString() << "\n";
+        }
         save(*ed, out.getChildFile("23_pedal_chain.png"));
         proc->removePedal(0, 1);
         setP(*proc, AmpsurdProcessor::slotParamId(0, "ped2On"), 1.0f);

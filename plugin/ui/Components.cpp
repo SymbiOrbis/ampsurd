@@ -4191,6 +4191,7 @@ void MasterPanel::refresh()
 // =============================================================================================
 HeaderBar::HeaderBar(AmpsurdProcessor& p) : proc(p)
 {
+    logo = juce::Drawable::createFromImageData(BinaryData::ampsurd_logo_svg, (size_t) BinaryData::ampsurd_logo_svgSize);
     for (auto* b : { &presetButton, &saveButton, &saveAsButton, &settingsButton })
         addAndMakeVisible(*b);
     presetButton.onClick = [this] { showPresetMenu(); };
@@ -4267,11 +4268,23 @@ void ArrowButton::paintButton(juce::Graphics& g, bool highlighted, bool down)
     g.fillPath(head);
 }
 
+juce::Rectangle<float> HeaderBar::logoArea() const
+{
+    // the logo (10483 x 2136: capitals 1510 high, the "p" stem 626 below them) as large as fits before PLAYER /
+    // REC (x 210): 176 px wide, the capitals centred on the buttons' middle line (y 28), the stem below
+    constexpr float w = 176.0f, h = w * 2135.9f / 10483.2f, capsAbove = h * 1510.0f / 2135.9f;
+    return { 24.0f, 28.0f - capsAbove * 0.5f, w, h };
+}
+
 void HeaderBar::paint(juce::Graphics& g)
 {
-    g.setColour(accent);
-    g.setFont(Fonts::get().semibold(24.0f).withExtraKerningFactor(0.16f));
-    g.drawText("AMPSURD", getLocalBounds().reduced(24, 0), juce::Justification::centredLeft, false);
+    if (logo != nullptr) logo->drawWithin(g, logoArea(), juce::RectanglePlacement::xLeft | juce::RectanglePlacement::yTop, 1.0f);
+    else
+    {
+        g.setColour(accent);
+        g.setFont(Fonts::get().semibold(24.0f).withExtraKerningFactor(0.16f));
+        g.drawText("AMPSURD", getLocalBounds().reduced(24, 0), juce::Justification::centredLeft, false);
+    }
     drawLabel(g, "PRESET", { presetButton.getX() - 64, 0, 56, getHeight() }, textDim, juce::Justification::centredRight);
     if (status.isNotEmpty()) // MIDI learn / last footswitch action, under the buttons
     {
