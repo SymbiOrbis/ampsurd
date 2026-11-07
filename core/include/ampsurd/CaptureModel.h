@@ -146,6 +146,10 @@ private:
 
     // morph (AMPSURD amp)
     std::vector<MorphStep> steps;
+    // the upper GAIN step on another core (ParallelRunner side job): its input and length for this block
+    const Sample* sideIn = nullptr;
+    int sideN = 0;
+    static void runUpperStepJob(void* model, int step) noexcept;
     std::vector<double> stepKnobs;
     double silenceFloor = -1.0;
     std::vector<std::vector<Sample>> stepDelayLines; // per step: its output delayed by the whole part of its `delay`

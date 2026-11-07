@@ -50,6 +50,8 @@ public:
 
     // Audio thread: true when a real (non-empty) capture is currently playing.
     bool hasActiveCapture() const noexcept { return active != nullptr && !active->isEmpty(); }
+    // Audio thread: an AMPSURD amp (GAIN steps) is playing - it may run two captures on two cores
+    bool activeIsMorph() const noexcept { return active != nullptr && active->isMorph(); }
     // Audio thread: changes every time another capture becomes the active one (identity for caches).
     uint32_t getSwapCount() const noexcept { return swaps; }
     // Audio thread: a newly submitted capture is waiting to be adopted.

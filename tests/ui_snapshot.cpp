@@ -17,6 +17,7 @@
 #include "../plugin/PluginProcessor.h"
 #include "ampsurd/CaptureAnalyzer.h"
 #include "ampsurd/ThreadCpuClock.h"
+#include "ampsurd/ParallelRunner.h"
 
 static void pump(int ms)
 {
@@ -1189,6 +1190,54 @@ int main(int argc, char** argv)
             if (!ok2) std::cout << tp << "\n" << ts << "\n" << th << "\n";
             lg.clear();
         }
+    }
+
+    // TWO GAIN CAPTURES ON TWO CORES (owner 2026-11-07): an AMPSURD amp between two GAIN positions hands the upper
+    // capture to a free core. The sound must be exactly the same as on one core, and a helper must really take it.
+    {
+        auto makeAmp = [&] {
+            std::vector<ampsurd::CaptureModel::MorphStep> st(2);
+            st[0].model = std::move(ampsurd::CaptureModel::load(argv[2], 48000.0, 128).model);
+            st[1].model = std::move(ampsurd::CaptureModel::load(argv[3], 48000.0, 128).model);
+            st[0].knob = 2.0;
+            st[1].knob = 8.0;
+            st[1].delay = 1.3;
+            st[0].pairLoss = 0.1;
+            ampsurd::CaptureInfo info;
+            info.displayName = "two cores test";
+            auto m = ampsurd::CaptureModel::makeMorph(std::move(st), info, 48000.0, 128);
+            if (m) m->setMorphPosition(4.5);
+            return m;
+        };
+        auto serial = makeAmp(), parallel = makeAmp();
+        bool sameOk = serial != nullptr && parallel != nullptr;
+        int taken = 0;
+        double worst = 0.0;
+        if (sameOk)
+        {
+            ampsurd::ParallelRunner runner;
+            runner.start(2);
+            juce::Random rnd(7);
+            std::vector<double> in(128), a(128), b(128);
+            struct Ctx { ampsurd::CaptureModel* m; const double* in; double* out; } ctx { parallel.get(), in.data(), b.data() };
+            for (int blk = 0; blk < 400; ++blk)
+            {
+                for (auto& x : in) x = 0.2 * (rnd.nextDouble() * 2.0 - 1.0) * std::sin(0.01 * blk);
+                if (blk == 200) { serial->setMorphPosition(6.0); parallel->setMorphPosition(6.0); } // moving GAIN too
+                serial->process(in.data(), a.data(), 128, false);
+                runner.run(1, [](void* c, int) noexcept {
+                    auto& x = *static_cast<Ctx*>(c);
+                    x.m->process(x.in, x.out, 128, false);
+                }, &ctx, true);
+                for (int k = 0; k < 128; ++k) worst = std::max(worst, std::abs(a[(size_t) k] - b[(size_t) k]));
+            }
+            taken = runner.sideTakenByOthers();
+            runner.stop();
+            sameOk = worst == 0.0;
+        }
+        const bool ok = sameOk && taken > 0;
+        std::cout << (ok ? "[PASS]" : "[FAIL]") << " TWO GAIN CAPTURES ON TWO CORES: same sound as one core (largest difference "
+                  << worst << "), a helper core took the upper capture in " << taken << " of 400 blocks\n";
     }
 
     // AMPSURD AMP (.ampsurdamp, owner 2026-10-30): built from a folder of "recordings" named as in the recording sheet

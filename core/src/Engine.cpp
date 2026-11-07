@@ -390,7 +390,11 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
         job.n = n;
         job.stride = stride;
         job.rotationMix = s.rotationActive ? 1.0 : 0.0;
-        runner.run(count, &Engine::runPathJob, &job);
+        // an AMPSURD amp may run its two GAIN captures on two cores (owner 2026-11-07): helpers that have no amp
+        // of their own then watch for that work during the block
+        bool sideWork = false;
+        for (int k = 0; k < count; ++k) sideWork = sideWork || slots[(size_t) job.slot[(size_t) k]].activeIsMorph();
+        runner.run(count, &Engine::runPathJob, &job, sideWork);
     }
 
     // a path that just woke up is treated like a capture that is still loading until it is warm

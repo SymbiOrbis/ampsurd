@@ -1,4 +1,5 @@
 #include "ampsurd/CaptureModel.h"
+#include "ampsurd/ParallelRunner.h"
 
 #include <algorithm>
 #include <cmath>
@@ -352,6 +353,12 @@ void CaptureModel::runStep(size_t i, const Sample* in, Sample* out, int n) noexc
     }
 }
 
+void CaptureModel::runUpperStepJob(void* model, int step) noexcept
+{
+    auto& m = *static_cast<CaptureModel*>(model);
+    m.runStep((size_t) step, m.sideIn, m.morphB.data(), m.sideN);
+}
+
 void CaptureModel::processMorph(const Sample* in, Sample* out, int n) noexcept
 {
     const double target = morphTarget.load(std::memory_order_relaxed);
@@ -373,8 +380,20 @@ void CaptureModel::processMorph(const Sample* in, Sample* out, int n) noexcept
     }
     if (steps.size() == 1) { runStep(0, in, out, n); return; }
     const bool needLower = w0 < 1.0 || w1 < 1.0, needUpper = w0 > 0.0 || w1 > 0.0;
+    // both steps play (GAIN between two positions): the upper one on a free core, if there is one (owner 2026-11-07).
+    // The two steps share nothing (own model, delay line, allpass), so they can run at the same time; with no free
+    // core finish() runs it here - the result is the same either way.
+    ParallelRunner* runner = needLower && needUpper ? ParallelRunner::current() : nullptr;
+    int handle = -1;
+    if (runner != nullptr)
+    {
+        sideIn = in;
+        sideN = n;
+        handle = runner->offer(&CaptureModel::runUpperStepJob, this, lower + 1);
+    }
     if (needLower) runStep((size_t) lower, in, morphA.data(), n);
-    if (needUpper) runStep((size_t) lower + 1, in, morphB.data(), n);
+    if (handle >= 0) runner->finish(handle);
+    else if (needUpper) runStep((size_t) lower + 1, in, morphB.data(), n);
     const double loss = steps[(size_t) lower].pairLoss;
     for (int k = 0; k < n; ++k)
     {
