@@ -41,7 +41,7 @@ param(
 $ErrorActionPreference = "Stop"
 $Raw = "https://raw.githubusercontent.com/SymbiOrbis/ampsurd/main/tools/nam_training"
 $Api = "https://rest.runpod.io/v1"
-$Image = "__IMAGE__"
+$Image = "runpod/pytorch:1.5.0-cu1281-torch280-ubuntu2404"
 # cheapest suitable first (RunPod takes the first one that is free); all are fast enough for NAM
 $Gpus = @(
     "NVIDIA RTX A4500", "NVIDIA RTX A5000", "NVIDIA RTX 4000 Ada Generation", "NVIDIA GeForce RTX 3090",
