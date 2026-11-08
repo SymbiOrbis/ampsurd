@@ -46,16 +46,39 @@ switch_off() {
 upload() { rclone copy nams "$OUT" --include "*.nam" --include "summary*.txt" --ignore-existing --retries 5 > /dev/null 2>&1; }
 # what each training is doing right now (read by train_amp.ps1 on the PC): "CH1_CLEAN_G08 epoch 37/400 | ..."
 status() {
-    local line="" f name ep
+    # per training: what it trains, its epoch, and how long it still needs (from its own epoch speed so far:
+    # the rest of this recording + the recordings still waiting in its share); the machine needs the longest one
+    local line="" f name ep pos now t0 e0 rate left worst=0 k
+    now=$(date +%s)
     for f in train_part*.txt; do
         [ -f "$f" ] || continue
+        k=${f#train_part}; k=${k%.txt}
         name=$(grep -o 'training [^ ]* (' "$f" | tail -1 | sed 's/training //; s/ (//')
-        ep=$(tr '\r' '\n' < "$f" | grep -o 'Epoch [0-9]*/[0-9]*' | tail -1 | awk -F'[ /]' '{print $2+1 "/" $3+1}')
-        [ -n "$name" ] && line="$line${line:+ | }$name epoch ${ep:-0/$EPOCHS}"
+        pos=$(grep -o '^\[[0-9]*/[0-9]*\] training' "$f" | tail -1 | tr -d '[]' | awk -F'[/ ]' '{print $1, $2}')
+        ep=$(tr '\r' '\n' < "$f" | grep -o 'Epoch [0-9]*/[0-9]*' | tail -1 | awk -F'[ /]' '{print $2+1}')
+        [ -n "$name" ] || continue
+        ep=${ep:-0}
+        # speed: epochs since this part's first measurement (kept in .speed_<k>, restarted with each recording)
+        if [ ! -f ".speed_$k" ] || [ "$(cut -d' ' -f1 ".speed_$k")" != "$name" ] || [ "$ep" -lt "$(cut -d' ' -f3 ".speed_$k")" ]; then
+            echo "$name $now $ep" > ".speed_$k"
+        fi
+        read -r _ t0 e0 < ".speed_$k"
+        left=""
+        if [ "$ep" -gt "$e0" ] && [ "$now" -gt "$t0" ]; then
+            rate=$(awk -v d="$(( ep - e0 ))" -v t="$(( now - t0 ))" 'BEGIN{print d/t}')   # epochs per second
+            set -- $pos
+            left=$(awk -v r="$rate" -v e="$ep" -v E="$EPOCHS" -v i="${1:-1}" -v n="${2:-1}" \
+                'BEGIN{printf "%d", ((E - e) + (n - i) * E) / r}')
+            [ "$left" -gt "$worst" ] && worst=$left
+        fi
+        line="$line${line:+ | }$name epoch $ep/$EPOCHS"
     done
     [ -n "$line" ] || line="${1:-starting}"
+    [ "$worst" -gt 0 ] && line="$line - $(( worst / 3600 )) h $(( worst % 3600 / 60 )) min left"
     echo "$(date '+%H:%M') $line" > "status_${RUNPOD_POD_ID:-pod}.txt"
+    echo "$worst" > "eta_${RUNPOD_POD_ID:-pod}.txt"
     rclone copyto "status_${RUNPOD_POD_ID:-pod}.txt" "$OUT/status/status_${RUNPOD_POD_ID:-pod}.txt" > /dev/null 2>&1
+    rclone copyto "eta_${RUNPOD_POD_ID:-pod}.txt" "$OUT/status/eta_${RUNPOD_POD_ID:-pod}.txt" > /dev/null 2>&1
 }
 
 # safety limit: whatever happens, after MAX_HOURS upload what is there and switch off

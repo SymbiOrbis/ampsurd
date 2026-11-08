@@ -162,12 +162,20 @@ do {
     $n = @(& $Rclone lsf "$Root/$Amp/NAMs" --include "*.nam" 2>$null).Count
     $pods = Get-AmpPods
     $running = $pods.Count
-    Say "$n of $total trained, $running machine(s) running"
+    $lines = @(); $worst = 0
     foreach ($p in ($pods | Sort-Object name)) {
         $st = & $Rclone cat "$Root/$Amp/NAMs/status/status_$($p.id).txt" 2>$null
         if (-not $st) { $st = "starting ..." }
-        Write-Host ("   machine {0}: {1}" -f ($p.name -replace "^ampsurd-$Slug-", ""), $st)
+        $eta = 0; [int]::TryParse(((& $Rclone cat "$Root/$Amp/NAMs/status/eta_$($p.id).txt" 2>$null) -join ""), [ref]$eta) | Out-Null
+        if ($eta -gt $worst) { $worst = $eta }
+        $lines += ("   machine {0}: {1}" -f ($p.name -replace "^ampsurd-$Slug-", ""), $st)
     }
+    $left = ""
+    if ($worst -gt 0) {
+        $left = " - about {0} h {1} min left (around {2})" -f [Math]::Floor($worst / 3600), [Math]::Floor(($worst % 3600) / 60), (Get-Date).AddSeconds($worst).ToString("HH:mm")
+    }
+    Say "$n of $total trained, $running machine(s) running$left"
+    $lines | ForEach-Object { Write-Host $_ }
 } while ($running -gt 0)
 Collect-Nams
 Get-ChildItem $NamDir -Filter "summary*.txt" | ForEach-Object { Get-Content $_.FullName | Select-String "OK|FAILED|SKIPPED" }
