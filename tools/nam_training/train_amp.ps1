@@ -45,8 +45,8 @@ $Image = "runpod/pytorch:1.5.0-cu1281-torch280-ubuntu2404"
 # cheapest suitable first (RunPod takes the first one that is free); all are fast enough for NAM
 $Gpus = @(
     "NVIDIA RTX A4500", "NVIDIA RTX A5000", "NVIDIA RTX 4000 Ada Generation", "NVIDIA GeForce RTX 3090",
-    "__PRO4000__", "NVIDIA A40", "NVIDIA L4", "NVIDIA RTX A6000", "NVIDIA GeForce RTX 4090"
-) | Where-Object { $_ -and -not $_.StartsWith("__") }
+    "NVIDIA A40", "NVIDIA L4", "NVIDIA RTX A6000", "NVIDIA GeForce RTX 4090"
+)
 $Root = "gdrive:AMPSURD training"
 $Slug = ($Amp.ToLower() -replace "[^a-z0-9]+", "-").Trim("-")
 

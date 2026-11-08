@@ -1,5 +1,21 @@
 # Training NAM captures on a rented GPU (RunPod)
 
+## The one command (on the owner's PC)
+
+    powershell -ExecutionPolicy Bypass -File .\train_amp.ps1 -Amp "Mesa Dual" -Recordings "C:\...\Mesa Dual\recordings"
+
+Uploads the recordings to Google Drive (AMPSURD training\<amp>\recordings), rents 3 machines (cheapest suitable
+free GPU, 3 trainings each), shows every 5 minutes what each machine trains and how long it still needs, and
+downloads the .nam files to <recordings>\..\NAMs when all machines are off. Each machine (pod_job.sh) switches
+itself off when done, on errors, and after 8 hours at the latest; finished .nam files go to Google Drive every
+4 minutes. Running it again for the same amp trains only what is missing; another amp can run at the same time
+in a second window. First run: asks for the RunPod API key (kept encrypted for the Windows user) and connects
+rclone (C:\rclone.exe) to Google Drive (drive.file scope: only rclone's own files).
+The first time also: -InputFile <path to T3K-sweep-v3.wav> (uploaded once to AMPSURD training\_input).
+Options: -Machines -PerMachine -Epochs -MaxHours -NoWait -Collect.
+
+## By hand (Jupyter), as on 2026-11-08
+
 Owner's process since 2026-11-08 (TONE3000 free training cap reached; local CPU training too slow).
 Same trainer as TONE3000 / the NAM window: neural-amp-modeler 0.13 (A2 = SlimmableContainer, ECO works),
 400 epochs, automatic latency. The .nam files carry loudness and gain, so the AMPSURD amp builder's checks work.
