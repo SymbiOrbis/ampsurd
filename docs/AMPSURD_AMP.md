@@ -88,3 +88,19 @@ the lowest capture up, nothing changes (the captures are level-matched as before
 keep their range. The model keeps playing the lowest capture there (CaptureModel::morphFadeGain / setMorphSilenceFloor;
 level match and the INPUT curve are measured at full level); the fade is the slot's output gain
 (AmpsurdProcessor::ampFadeGain). ui_snapshot "AMPSURD AMP FROM SILENCE".
+
+## Loudness: at least -37 dB (since 2026-11-08)
+
+Owner: "-37 dB would be the least"; "8 o'clock capture should already deliver some tone. If not, the capture is
+likely made incorrectly." The builder reads NAM's own loudness (the `loudness` in the .nam metadata, as TONE3000
+writes it):
+
+- **Below 8:00** (7:30, 7:45): a capture quieter than -37 dB is left out - too quiet to build on. GAIN then fades
+  from silence at 7:00 up to the first capture that passes (see "Starting from silence").
+- **8:00 and up**: a capture quieter than -37 dB is a faulty capture - the build stops ("it is too quiet - -41.8 dB,
+  at least -37 dB from 8:00 up (the amp volume or the recording level too low?)").
+- A file without loudness in its metadata is not judged by this rule.
+
+Typical cause (owner, Dual Rectifier CH3 RAW): the amp's master too low ("too cold") - fine for one amp, too quiet
+for another. Recording tip: set the level at 17:00 (peaks -3 to -6 dB), then record and train 8:00 first and check
+its loudness before recording the whole set.

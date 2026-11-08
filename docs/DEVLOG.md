@@ -6,6 +6,21 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-08 — Session 5b: capture checks for the Dual Rectifier sets; builder loudness rule - Claude (Opus 5.5)
+
+- Owner's Dual Rectifier captures: CH3 RAW (10, no 7:30) / VINTAGE (11) and CH2 RAW / VINTAGE / MODERN (11 each).
+  Builder check: all pass. Found by hand: CH3 VINTAGE 9:00 is quieter than 8:00 and matches RAW 9:00 (-32.2 vs
+  -32.1 dB, NAM gain 0.008 vs 0.009) - recorded / trained in the wrong mode; the owner re-records CH3 (cause: amp
+  master at ~1/4, "too cold" for this amp). The check missed it (NAM gain fell 0.039 -> 0.008, below the 0.05
+  limit): a relative gain / loudness order check was proposed, NOT approved yet.
+- Owner rule: loudness at least -37 dB. AmpProfileFile build(): below 8:00 a quieter capture is left out (GAIN fades
+  from silence to the first that passes), from 8:00 up it is a fault that stops the build. docs/AMPSURD_AMP.md.
+- On the owner's sets: CH2 RAW 7:30 (-39.9) left out, 8:00 (-36.98) passes; CH3 RAW 8:00 (-41.8) stops; the rest
+  and the EVH sets unchanged.
+- Tested: ui_snapshot 37 PASS (CAPTURE CHECK: too quiet 7:30 left out, too quiet 8:00 stops).
+
+---
+
 ## 2026-11-07 — Session 5a: no trademarks in the app and on the website; release 0.9.15 - Claude (Opus 5.5)
 
 - Owner: replace all protected names in the product and on the website (after a talk about trademarks; captures
