@@ -1298,12 +1298,13 @@ int main(int argc, char** argv)
         bool checkOk = false, checkNoFadeFrom9 = false;
         juce::String checkWhy;
         {
-            auto linearNam = [](const juce::File& f, int impulseAt, double gain) {
+            auto linearNam = [](const juce::File& f, int impulseAt, double gain, double loudness = 0.0) {
                 juce::String w;
                 for (int i = 0; i < 256; ++i) w << (i ? "," : "") << (i == impulseAt ? "1.0" : "0.0");
                 f.replaceWithText("{\"version\":\"0.5.4\",\"architecture\":\"Linear\",\"sample_rate\":48000,"
                                   "\"config\":{\"receptive_field\":256,\"bias\":false,\"in_channels\":1,\"out_channels\":1},"
-                                  "\"metadata\":{\"gain\":" + juce::String(gain, 2) + "},\"weights\":[" + w + "]}");
+                                  "\"metadata\":{\"gain\":" + juce::String(gain, 2)
+                                  + (loudness != 0.0 ? ",\"loudness\":" + juce::String(loudness, 2) : juce::String()) + "},\"weights\":[" + w + "]}");
             };
             const auto cdir = out.getChildFile("amp check");
             auto fresh = [&] { cdir.deleteRecursively(); cdir.createDirectory(); };
@@ -1311,7 +1312,7 @@ int main(int argc, char** argv)
                 juce::String rep;
                 return ampsurd::amp::build(cdir, "Check", "ui_snapshot", out.getChildFile("check.ampsurdamp"), rep, err);
             };
-            juce::String e1, e2, e3, e4, e5, e6;
+            juce::String e1, e2, e3, e4, e5, e6, e7, e8;
             fresh(); // 1. clean: three captures, rising gain -> builds
             linearNam(cdir.getChildFile("G1_gain_0900.nam"), 10, 0.2); linearNam(cdir.getChildFile("G2_gain_1100.nam"), 10, 0.4);
             linearNam(cdir.getChildFile("G3_gain_1300.nam"), 10, 0.6);
@@ -1341,12 +1342,24 @@ int main(int argc, char** argv)
             for (size_t i = 0; i < clip.size(); ++i) cb.setSample(0, (int) i, (float) clip[i]);
             writeWav(cdir.getChildFile("T00_ref_all_noon.wav"), cb, 48000.0);
             const bool clipStops = !tryBuild(e6) && e6.contains("clip");
+            // 7. loudness (owner 2026-11-08: at least -37 dB): a too quiet 7:30 is left out (GAIN fades from silence up
+            // to 8:00); 8. a too quiet 8:00 stops the build; -36.9 dB passes
+            fresh();
+            linearNam(cdir.getChildFile("G0_gain_0730.nam"), 10, 0.1, -39.9); linearNam(cdir.getChildFile("G1_gain_0800.nam"), 10, 0.2, -36.9);
+            linearNam(cdir.getChildFile("G2_gain_1100.nam"), 10, 0.4, -20.0); linearNam(cdir.getChildFile("G3_gain_1300.nam"), 10, 0.6, -15.0);
+            ampsurd::amp::Profile qp;
+            juce::String qe;
+            const bool quietLeftOut = tryBuild(e7) && ampsurd::amp::read(out.getChildFile("check.ampsurdamp"), qp, qe) && qp.steps.size() == 3
+                                      && std::abs(qp.steps[0].knob - 1.0) < 1e-6 && qp.silenceFloor == 0.0;
+            linearNam(cdir.getChildFile("G1_gain_0800.nam"), 10, 0.2, -41.8);
+            const bool quietStops = !tryBuild(e8) && e8.contains("too quiet") && e8.contains("G1_gain_0800");
             cdir.deleteRecursively();
             out.getChildFile("check.ampsurdamp").deleteFile();
-            checkOk = clean && late && dup && order && broken && clipStops;
+            checkOk = clean && late && dup && order && broken && clipStops && quietLeftOut && quietStops;
             checkWhy << "clean builds " << (int) clean << " (" << e1 << "), 4 ms off stops " << (int) late << ", duplicate stops " << (int) dup
-                     << ", swapped gain stops " << (int) order << ", broken file stops " << (int) broken << ", clipped sweep stops " << (int) clipStops;
-            if (!checkOk) checkWhy << "\n" << e2 << "\n" << e3 << "\n" << e4 << "\n" << e5 << "\n" << e6;
+                     << ", swapped gain stops " << (int) order << ", broken file stops " << (int) broken << ", clipped sweep stops " << (int) clipStops
+                     << ", too quiet 7:30 left out " << (int) quietLeftOut << ", too quiet 8:00 stops " << (int) quietStops;
+            if (!checkOk) checkWhy << "\n" << e2 << "\n" << e3 << "\n" << e4 << "\n" << e5 << "\n" << e6 << "\n" << e7 << "\n" << e8;
         }
         std::cout << (checkOk ? "[PASS]" : "[FAIL]") << " AMP BUILDER CAPTURE CHECK: " << checkWhy << "\n";
         const auto ampFile = out.getChildFile("Test amp.ampsurdamp");

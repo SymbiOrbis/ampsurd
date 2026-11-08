@@ -245,6 +245,37 @@ bool build(const juce::File& folder, const juce::String& name, const juce::Strin
     std::sort(gains.begin(), gains.end(), [](auto& a, auto& b) { return a.first < b.first; });
     if (gains.empty()) { error = "No gain captures found: the .nam files need \"gain_HHMM\" in their names (e.g. G1_gain_0900.nam)."; return false; }
 
+    // loudness (owner 2026-11-08: "-37 dB would be the least"): NAM's own loudness (metadata) must be at least
+    // -37 dB. Below 8:00 a quieter capture is left out (too quiet to build on: GAIN fades from silence up to the
+    // first capture that passes); from 8:00 up it is a faulty capture ("8 o'clock should already deliver some tone -
+    // if not, the capture is likely made incorrectly"). A file without loudness is not judged by it.
+    constexpr double kMinLoudnessDb = -37.0;
+    auto loudnessOf = [](const juce::File& f, double& db) {
+        const auto json = juce::JSON::parse(f);
+        if (auto* meta = json.getProperty("metadata", {}).getDynamicObject())
+            if (meta->hasProperty("loudness")) { db = (double) meta->getProperty("loudness"); return std::isfinite(db); }
+        return false;
+    };
+    juce::StringArray tooQuiet;
+    for (auto it = gains.begin(); it != gains.end();)
+    {
+        double db = 0.0;
+        if (loudnessOf(it->second, db) && db < kMinLoudnessDb)
+        {
+            const auto text = it->second.getFileName() + " (" + juce::String(db, 1) + " dB, at least " + juce::String(kMinLoudnessDb, 0) + " dB)";
+            if (it->first < 1.0 - 1e-6)
+            {
+                report << "left out, too quiet to build on: " << text << " - GAIN fades from silence instead\n";
+                it = gains.erase(it);
+                continue;
+            }
+            tooQuiet.add(it->second.getFileName() + ": it is too quiet - " + juce::String(db, 1) + " dB, at least "
+                         + juce::String(kMinLoudnessDb, 0) + " dB from 8:00 up (the amp volume or the recording level too low?)");
+        }
+        ++it;
+    }
+    if (gains.empty()) { error = "All gain captures are too quiet (below " + juce::String(kMinLoudnessDb, 0) + " dB)."; return false; }
+
     // every capture is checked before it goes into the amp (left out with the reason when it is faulty)
     {
         for (size_t i = 1; i < gains.size(); ++i)
@@ -256,7 +287,7 @@ bool build(const juce::File& folder, const juce::String& name, const juce::Strin
         std::vector<CaptureCheck> caps;
         for (auto& g : gains) caps.push_back({ g.first, g.second });
         checkCaptures(caps, report);
-        juce::StringArray faulty;
+        juce::StringArray faulty = tooQuiet;
         for (auto& c : caps)
             if (c.problem.isNotEmpty()) faulty.add(c.file.getFileName() + ": " + c.problem);
         if (!faulty.isEmpty())
