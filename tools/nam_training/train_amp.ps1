@@ -17,7 +17,7 @@ What it does:
 Running it again for the same amp trains only what is not finished yet (e.g. after the safety limit).
 
 Once on this PC:
-  - rclone.exe (rclone.org/downloads) - default C:\rclone.exe, or say where with -Rclone
+  - rclone.exe (rclone.org/downloads) - put it next to this script (or C:\rclone.exe, or say where with -Rclone)
   - the first run asks for your RunPod API key (Settings / Credentials - API Keys, permission "All") and keeps it
     encrypted for your Windows user in %USERPROFILE%\.ampsurd\runpod_key.txt
   - the first run connects rclone to your Google Drive (a browser window: allow access). rclone only sees the files
@@ -33,7 +33,7 @@ param(
     [int]$PerMachine = 3,
     [int]$Epochs = 400,
     [int]$MaxHours = 8,
-    [string]$Rclone = "C:\rclone.exe",
+    [string]$Rclone = "",
     [switch]$Collect,
     [switch]$NoWait
 )
@@ -54,7 +54,12 @@ function Say($t) { Write-Host ("{0}  {1}" -f (Get-Date -Format "HH:mm"), $t) }
 function Fail($t) { Write-Host $t -ForegroundColor Red; exit 1 }
 
 # --- rclone + Google Drive ---
-if (-not (Test-Path $Rclone)) { Fail "rclone.exe not found at $Rclone - download it from rclone.org/downloads or use -Rclone <path>" }
+# rclone.exe: next to this script, then C:\rclone.exe, then anywhere on the PATH
+if (-not $Rclone) {
+    foreach ($c in @((Join-Path $PSScriptRoot "rclone.exe"), "C:\rclone.exe")) { if (Test-Path $c) { $Rclone = $c; break } }
+    if (-not $Rclone) { $cmd = Get-Command rclone.exe -ErrorAction SilentlyContinue; if ($cmd) { $Rclone = $cmd.Source } }
+}
+if (-not $Rclone -or -not (Test-Path $Rclone)) { Fail "rclone.exe not found - put it next to train_amp.ps1 (rclone.org/downloads) or use -Rclone <path>" }
 $remotes = & $Rclone listremotes
 if ($remotes -notcontains "gdrive:") {
     Say "Connecting rclone to your Google Drive - a browser window opens, allow access ..."
