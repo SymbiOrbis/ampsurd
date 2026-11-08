@@ -14,6 +14,8 @@ rclone (C:\rclone.exe) to Google Drive (drive.file scope: only rclone's own file
 The first time also: -InputFile <path to T3K-sweep-v3.wav> (uploaded once to AMPSURD training\_input).
 Options: -Machines -PerMachine -Epochs -MaxHours -NoWait -Collect.
 
+Tested end to end 2026-11-08 (2 recordings, 20 epochs, 1 machine): trained, uploaded, switched itself off.
+
 ## By hand (Jupyter), as on 2026-11-08
 
 Owner's process since 2026-11-08 (TONE3000 free training cap reached; local CPU training too slow).

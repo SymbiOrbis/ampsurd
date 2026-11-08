@@ -6,6 +6,28 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-08 — Session 5c: NAM training on rented GPUs (one command) - Claude (Opus 5.5)
+
+- TONE3000 training cap reached (until 1 Dec). Local CPU training (owner's Ryzen AI 9 HX 470, no NVIDIA) far too
+  slow. Chosen: rented GPUs on RunPod with the official trainer neural-amp-modeler 0.13 (A2 / SlimmableContainer,
+  400 epochs like TONE3000). Local result checked: same format as TONE3000 files, loudness + gain in the metadata,
+  the AMPSURD builder loads it. The TONE3000 sweep is the NAM standard v3 input (trainer's hash check).
+- tools/nam_training: train_batch.py (batch like the trainer window, --part/--parts), setup_gdrive.py,
+  finish_and_upload.sh (CH1 by hand tonight), and the one-command solution: train_amp.ps1 on the owner's PC
+  (uploads recordings to Google Drive "AMPSURD training\<amp>", rents machines via the RunPod REST API - cheapest
+  suitable GPU, 3 trainings per machine, image runpod/pytorch:1.5.0-cu1281-torch280-ubuntu2404 - reports every
+  5 minutes with time left, downloads the .nam files at the end) + pod_job.sh on each machine (installs, trains
+  its share, uploads every 4 minutes, switches itself off when done / on errors / after 8 h).
+- Measured (RTX PRO 4000, 12 vCPU): ~22 min per capture alone, ~62 min with three side by side (CPU-bound, ~1.3x
+  throughput). More machines help, bigger GPUs do not.
+- Tested end to end by the owner: "Test" amp, 2 recordings, 20 epochs, 1 machine (RTX A5000 $0.27/h) - trained,
+  uploaded to Google Drive, switched itself off. Fixed on the way: rclone notices stopping PowerShell, machine
+  count with one machine, browser login started by rclone config create (config_refresh_token=false).
+- Open: rclone's shared Google Drive client id is being retired in 2026 - set up the owner's own client id.
+  CH1 (Dual Rectifier, CLEAN + PUSHED, 20 captures) trains tonight on the first machine.
+
+---
+
 ## 2026-11-08 — Session 5b: capture checks for the Dual Rectifier sets; builder loudness rule - Claude (Opus 5.5)
 
 - Owner's Dual Rectifier captures: CH3 RAW (10, no 7:30) / VINTAGE (11) and CH2 RAW / VINTAGE / MODERN (11 each).
