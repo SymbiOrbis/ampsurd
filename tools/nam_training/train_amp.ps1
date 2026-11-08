@@ -114,7 +114,7 @@ if ($files.Count -eq 0) { Fail "No recordings on Google Drive for '$Amp'." }
 Say "$($files.Count) recordings, $($done.Count) already trained"
 if ($done.Count -ge $files.Count) { Say "Nothing left to train."; Collect-Nams; exit 0 }
 
-try { $already = (Get-AmpPods).Count } catch { Fail "RunPod did not answer ($($_.Exception.Message)) - check the API key (delete $KeyFile to enter it again)." }
+try { $already = @(Get-AmpPods).Count } catch { Fail "RunPod did not answer ($($_.Exception.Message)) - check the API key (delete $KeyFile to enter it again)." }
 if ($already -gt 0) { Fail "Machines for '$Amp' are still running - wait for them, or check RunPod." }
 
 # --- machines ---
@@ -168,7 +168,7 @@ $total = $files.Count
 do {
     Start-Sleep -Seconds 300
     $n = @(& $Rclone lsf "$Root/$Amp/NAMs" --include "*.nam" 2>$null).Count
-    try { $pods = Get-AmpPods } catch { Say "RunPod did not answer - trying again in 5 minutes"; continue }
+    try { $pods = @(Get-AmpPods) } catch { Say "RunPod did not answer - trying again in 5 minutes"; continue }
     $running = $pods.Count
     $lines = @(); $worst = 0
     foreach ($p in ($pods | Sort-Object name)) {

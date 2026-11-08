@@ -75,7 +75,7 @@ status() {
     done
     [ -n "$line" ] || line="${1:-starting}"
     [ "$worst" -gt 0 ] && line="$line - $(( worst / 3600 )) h $(( worst % 3600 / 60 )) min left"
-    echo "$(date '+%H:%M') $line" > "status_${RUNPOD_POD_ID:-pod}.txt"
+    echo "$line" > "status_${RUNPOD_POD_ID:-pod}.txt"   # (no time: the machine runs on UTC, the PC adds its own)
     echo "$worst" > "eta_${RUNPOD_POD_ID:-pod}.txt"
     rclone copyto "status_${RUNPOD_POD_ID:-pod}.txt" "$OUT/status/status_${RUNPOD_POD_ID:-pod}.txt" > /dev/null 2>&1
     rclone copyto "eta_${RUNPOD_POD_ID:-pod}.txt" "$OUT/status/eta_${RUNPOD_POD_ID:-pod}.txt" > /dev/null 2>&1
