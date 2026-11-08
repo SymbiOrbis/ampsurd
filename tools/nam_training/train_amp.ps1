@@ -155,13 +155,19 @@ if ($NoWait) {
 }
 
 # --- progress ---
-Say "Waiting (you can close this window - the machines carry on) ..."
+Say "Waiting - a report every 5 minutes (you can close this window - the machines carry on) ..."
 $total = $files.Count
 do {
     Start-Sleep -Seconds 300
     $n = @(& $Rclone lsf "$Root/$Amp/NAMs" --include "*.nam" 2>$null).Count
-    $running = (Get-AmpPods).Count
+    $pods = Get-AmpPods
+    $running = $pods.Count
     Say "$n of $total trained, $running machine(s) running"
+    foreach ($p in ($pods | Sort-Object name)) {
+        $st = & $Rclone cat "$Root/$Amp/NAMs/status/status_$($p.id).txt" 2>$null
+        if (-not $st) { $st = "starting ..." }
+        Write-Host ("   machine {0}: {1}" -f ($p.name -replace "^ampsurd-$Slug-", ""), $st)
+    }
 } while ($running -gt 0)
 Collect-Nams
 Get-ChildItem $NamDir -Filter "summary*.txt" | ForEach-Object { Get-Content $_.FullName | Select-String "OK|FAILED|SKIPPED" }

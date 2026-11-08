@@ -16,7 +16,7 @@
 #   AMPSURD training/<AMP>/NAMs/                    the results (.nam, summaries, a log per machine)
 #
 # The machine switches itself off at the end in every case (done, failed, or the safety limit) - after uploading
-# everything it finished. Finished .nam files are also uploaded every 10 minutes while it trains.
+# everything it finished. Finished .nam files and a status line (status/status_<pod>.txt) go up every 4 minutes.
 
 set -u
 RAW="https://raw.githubusercontent.com/SymbiOrbis/ampsurd/main/tools/nam_training"
@@ -44,6 +44,19 @@ switch_off() {
     exit 0
 }
 upload() { rclone copy nams "$OUT" --include "*.nam" --include "summary*.txt" --ignore-existing --retries 5 > /dev/null 2>&1; }
+# what each training is doing right now (read by train_amp.ps1 on the PC): "CH1_CLEAN_G08 epoch 37/400 | ..."
+status() {
+    local line="" f name ep
+    for f in train_part*.txt; do
+        [ -f "$f" ] || continue
+        name=$(grep -o 'training [^ ]* (' "$f" | tail -1 | sed 's/training //; s/ (//')
+        ep=$(tr '\r' '\n' < "$f" | grep -o 'Epoch [0-9]*/[0-9]*' | tail -1 | awk -F'[ /]' '{print $2+1 "/" $3+1}')
+        [ -n "$name" ] && line="$line${line:+ | }$name epoch ${ep:-0/$EPOCHS}"
+    done
+    [ -n "$line" ] || line="${1:-starting}"
+    echo "$(date '+%H:%M') $line" > "status_${RUNPOD_POD_ID:-pod}.txt"
+    rclone copyto "status_${RUNPOD_POD_ID:-pod}.txt" "$OUT/status/status_${RUNPOD_POD_ID:-pod}.txt" > /dev/null 2>&1
+}
 
 # safety limit: whatever happens, after MAX_HOURS upload what is there and switch off
 # (the training stops, the normal end below uploads and switches off; if that hangs, this does it 15 minutes later)
@@ -51,6 +64,7 @@ upload() { rclone copy nams "$OUT" --include "*.nam" --include "summary*.txt" --
   sleep 900; upload; switch_off ) &
 LIMIT_PID=$!
 
+status "installing"
 say "AMPSURD training machine: amp '$AMP', parts $PART_FROM-$PART_TO of $PARTS, $EPOCHS epochs, limit ${MAX_HOURS:-8} h"
 
 # --- tools ---
@@ -78,7 +92,7 @@ rclone copy "$OUT" nams --include "*.nam" > /dev/null 2>&1
 say "$(wc -l < mine.txt) of $N recordings are this machine's; $(ls nams/*.nam 2> /dev/null | wc -l) .nam already finished"
 
 # --- training: one per part, side by side; finished .nam files go up every 10 minutes ---
-( while true; do sleep 600; upload; done ) &
+( sleep 60; while true; do status; upload; sleep 240; done ) &
 UP_PID=$!
 # this machine holds only its own recordings: split them between its trainings (1..L)
 L=$(( PART_TO - PART_FROM + 1 ))
@@ -93,6 +107,7 @@ kill "$UP_PID" 2> /dev/null
 
 # --- results ---
 upload
+status "finished - switching off"
 for f in train_part*.txt; do tail -n 40 "$f"; done
 cat nams/summary*.txt 2> /dev/null
 say "$(rclone lsf "$OUT" --include "*.nam" | wc -l) .nam files are on Google Drive in AMPSURD training/$AMP/NAMs"
