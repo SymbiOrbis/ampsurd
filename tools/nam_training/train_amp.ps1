@@ -38,7 +38,9 @@ param(
     [switch]$NoWait
 )
 
-$ErrorActionPreference = "Stop"
+# rclone writes notices to stderr; with "Stop" PowerShell 5 would treat them as errors - errors are checked by hand
+$ErrorActionPreference = "Continue"
+$env:RCLONE_LOG_LEVEL = "ERROR"
 $Raw = "https://raw.githubusercontent.com/SymbiOrbis/ampsurd/main/tools/nam_training"
 $Api = "https://rest.runpod.io/v1"
 $Image = "runpod/pytorch:1.5.0-cu1281-torch280-ubuntu2404"
@@ -76,11 +78,11 @@ if (-not (Test-Path $KeyFile)) {
     $sec | ConvertFrom-SecureString | Set-Content $KeyFile
 }
 $Key = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
-    [Runtime.InteropServices.Marshal]::SecureStringToBSTR((Get-Content $KeyFile | ConvertTo-SecureString)))
+    [Runtime.InteropServices.Marshal]::SecureStringToBSTR((Get-Content $KeyFile -ErrorAction Stop | ConvertTo-SecureString -ErrorAction Stop)))
 $Headers = @{ Authorization = "Bearer $Key" }
 
 function Get-AmpPods {
-    $all = Invoke-RestMethod -Uri "$Api/pods" -Headers $Headers
+    $all = Invoke-RestMethod -Uri "$Api/pods" -Headers $Headers -ErrorAction Stop
     @($all | Where-Object { $_.name -like "ampsurd-$Slug-*" })
 }
 
@@ -112,7 +114,8 @@ if ($files.Count -eq 0) { Fail "No recordings on Google Drive for '$Amp'." }
 Say "$($files.Count) recordings, $($done.Count) already trained"
 if ($done.Count -ge $files.Count) { Say "Nothing left to train."; Collect-Nams; exit 0 }
 
-if ((Get-AmpPods).Count -gt 0) { Fail "Machines for '$Amp' are still running - wait for them, or check RunPod." }
+try { $already = (Get-AmpPods).Count } catch { Fail "RunPod did not answer ($($_.Exception.Message)) - check the API key (delete $KeyFile to enter it again)." }
+if ($already -gt 0) { Fail "Machines for '$Amp' are still running - wait for them, or check RunPod." }
 
 # --- machines ---
 $parts = [Math]::Min($Machines * $PerMachine, $files.Count - $done.Count)
@@ -144,7 +147,7 @@ for ($m = 1; $m -le $Machines; $m++) {
         $body.cloudType = $cloud
         try {
             $pod = Invoke-RestMethod -Method Post -Uri "$Api/pods" -Headers $Headers -ContentType "application/json" `
-                -Body ($body | ConvertTo-Json -Depth 5)
+                -Body ($body | ConvertTo-Json -Depth 5) -ErrorAction Stop
             break
         } catch { Say "  no machine free in $cloud cloud ($($_.Exception.Message))" }
     }
@@ -165,7 +168,7 @@ $total = $files.Count
 do {
     Start-Sleep -Seconds 300
     $n = @(& $Rclone lsf "$Root/$Amp/NAMs" --include "*.nam" 2>$null).Count
-    $pods = Get-AmpPods
+    try { $pods = Get-AmpPods } catch { Say "RunPod did not answer - trying again in 5 minutes"; continue }
     $running = $pods.Count
     $lines = @(); $worst = 0
     foreach ($p in ($pods | Sort-Object name)) {
