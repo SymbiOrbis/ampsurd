@@ -2711,8 +2711,11 @@ juce::String AmpsurdProcessor::describeDrop(const ampsurd::EventLog::Drop& d)
         t << ". Likely cause: the computer paused AMPSURD (another program, power saving, a driver, USB) - not AMPSURD's own work";
     else if (busy.isNotEmpty()) t << ". Likely cause: that background work took the CPU from the audio (once it ends, it should stop)";
     else if (known && ran > 3.0f * d.budgetMs)
-        // AMPSURD really worked that long (not paused): a sudden spike, not a steady overload (owner's log 2026-11-09)
-        t << ". AMPSURD itself took that long - a sudden spike in its own work (not the computer, not the buffer size)";
+        // the audio thread was busy the whole time (not paused): a sudden spike, not a steady overload. On Windows a driver
+        // interrupting the thread is counted as the thread's own time, so this can still be a driver (owner 2026-11-09:
+        // "my PC froze" at that moment)
+        t << ". A sudden spike - AMPSURD's audio thread was busy that long: its own work, or a driver interrupting it"
+             " (if the whole computer froze at that moment too, it was a driver)";
     else if (d.budgetMs < 3.0f) t << ". Likely cause: a very small buffer - a larger buffer size (e.g. 256) gives AMPSURD more time";
     else if (!known && d.workMs > 3.0f * d.budgetMs) t << ". Likely cause: the computer paused AMPSURD (another program, power saving, a driver)";
     else t << ". Likely cause: too much for this CPU at this buffer size - ECO on the amps, fewer amps or a larger buffer";

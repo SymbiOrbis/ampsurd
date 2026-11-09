@@ -1190,7 +1190,7 @@ int main(int argc, char** argv)
             lg.pushDrop(p);
             proc->runHousekeeping();
             const auto ts = lg.getText();
-            const bool slowOk = ts.contains("worked 44.0 ms of it") && !ts.contains("paused") && ts.contains("sudden spike");
+            const bool slowOk = ts.contains("worked 44.0 ms of it") && !ts.contains("paused") && ts.contains("A sudden spike");
             pump(1100);
             lg.clear();
             p.atMs = juce::Time::getMillisecondCounterHiRes();
