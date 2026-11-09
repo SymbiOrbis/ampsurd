@@ -21,6 +21,10 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
   a clipboard .ampsurdtone in the temp folder (works between instances), copiedToneName for the menu text
   ("Paste tone (name)"); the target keeps its mix share / PAN like loading a tone; one undo step.
   ui_snapshot 38 PASS (new COPY / PASTE TONE).
+- Owner: let users choose where a tone is saved. Save tone dialog: SAVE (Tones folder, as before) + SAVE AS... (the
+  system's save window, starting in the Tones folder with the name; asks before replacing). Tones saved elsewhere
+  load via LOAD NAM / "Load a tone from a file" / drag and drop (the quick list shows the Tones folder only).
+  ui_snapshot 38 PASS (the dialog itself is not driven by the tests).
 
 ---
 
