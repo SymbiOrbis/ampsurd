@@ -6,6 +6,24 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-09 — Session 5d: Dual amps (CH2 + CH3); Copy / Paste tone - Claude (Opus 5.5)
+
+- Dual Rectifier: checked the owner's final batch (CH2 RAW / VINTAGE / MODERN, CH3 MODERN as before; a CH3 VINTAGE +
+  RAW zip first was the OLD set, the corrected one followed; 42 EQ sweeps, 14 per channel, refs within 0.4-0.6 dB).
+  Built six AMPSURD amps "Dual CH2/CH3 RAW/VINTAGE/MODERN" (temporary names): captures all pass, CH2 RAW 7:30 left out
+  (-39.9 dB), GAIN from silence everywhere; CH2 sweeps: loud part distorted -> quiet part used; CH3: loud part.
+  Not committed (owner's files). Not heard by ear here.
+- CH1 (first rented-GPU batch): PUSHED 8:00 -40.3 dB (below -37: the build would stop); PUSHED 11:00-17:00 validation
+  ESR 0.05-0.16 (CLEAN 0.007-0.034, PUSHED 8-10 0.004-0.007) - same A2 model size as TONE3000, cause unknown
+  (asked for the input file to measure recording consistency); CH1 sweeps T11 / T12 clip in the loud part only -
+  proposed: use the quiet part instead of stopping (NOT approved yet).
+- Owner: Copy / Paste a whole tone from the slot's right-click menu. AmpsurdProcessor::copyTone / pasteTone through
+  a clipboard .ampsurdtone in the temp folder (works between instances), copiedToneName for the menu text
+  ("Paste tone (name)"); the target keeps its mix share / PAN like loading a tone; one undo step.
+  ui_snapshot 38 PASS (new COPY / PASTE TONE).
+
+---
+
 ## 2026-11-08 — Session 5c: NAM training on rented GPUs (one command) - Claude (Opus 5.5)
 
 - TONE3000 training cap reached (until 1 Dec). Local CPU training (owner's Ryzen AI 9 HX 470, no NVIDIA) far too
