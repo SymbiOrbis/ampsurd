@@ -744,10 +744,21 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
             d.ranMs = (float) ampsurd::ThreadCpuClock::ranMs(cpuStart, ampsurd::ThreadCpuClock::now(), work);
             d.helperWaitMs = (float) (p.engine.helperWaitMsTotal() - waitStart);
             d.samples = n;
+            const auto& bt = p.blockTimes;
+            for (int s = 0; s < 5 && s < ampsurd::kNumSlots; ++s)
+                for (int k = 0; k < 4; ++k) d.slotMs[s][k] = bt.ran[(size_t) s] ? bt.path[(size_t) s][(size_t) k] : -1.0f;
+            d.pathsMs = bt.paths;
+            d.mixMs = bt.mix;
+            d.inputMs = p.partMs[0];
+            d.effectsMs = p.partMs[1];
+            d.outputMs = p.partMs[2];
             d.grace = juce::Time::getMillisecondCounter() < p.dropGraceUntil.load();
             p.eventLog.pushDrop(d);
         }
     } dropWatch { *this, numSamples };
+    blockTimes = {};
+    partMs = {};
+    auto clockMs = [] { return juce::Time::getMillisecondCounterHiRes(); };
 
     const int numIn = getTotalNumInputChannels();
     const int numOut = getTotalNumOutputChannels();
@@ -835,6 +846,7 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
     for (int start = 0; start < numSamples; start += maxBlock)
     {
         const int n = juce::jmin(maxBlock, numSamples - start);
+        const double tIn = clockMs();
         for (int i = 0; i < n; ++i)
         {
             // invalid input (NaN / inf from a misbehaving driver or host) would poison every filter and
@@ -868,7 +880,21 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
 
         double* L = outBuffer.data();
         double* R = outBufferR.data();
+        const double tEngine = clockMs();
+        partMs[0] += (float) (tEngine - tIn);
         engine.process(inBuffer.data(), L, R, n, settings);
+        {
+            // the log: add this part of the block to the block's breakdown (a host block can be split in several)
+            const auto& t = engine.lastTimes();
+            for (int s = 0; s < ampsurd::kNumSlots; ++s)
+            {
+                blockTimes.ran[(size_t) s] = blockTimes.ran[(size_t) s] || t.ran[(size_t) s];
+                for (int k = 0; k < ampsurd::Engine::BlockTimes::kParts; ++k) blockTimes.path[(size_t) s][(size_t) k] += t.path[(size_t) s][(size_t) k];
+            }
+            blockTimes.paths += t.paths;
+            blockTimes.mix += t.mix;
+        }
+        const double tFx = clockMs();
        #if AMPSURD_ROOT
         root.process(inBuffer.data(), L, R, n, rootSettings); // ROOT layer: under the amps, silenced by the gate
        #endif
@@ -877,6 +903,8 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         doubler.process(L, R, n, dblSettings); // DOUBLER: after the gate (clean silences), before delays / reverb
        #endif
         fx.process(L, R, n, fxSettings);           // flanger, delays, reverb: after the gate, so tails ring out
+        const double tOut = clockMs();
+        partMs[1] += (float) (tOut - tFx);
 
         for (int i = 0; i < n; ++i)
         {
@@ -931,6 +959,7 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
             outPeakL = juce::jmax(outPeakL, (float) std::abs(outR != nullptr ? L[i] : y));
             outPeakR = juce::jmax(outPeakR, (float) std::abs(outR != nullptr ? yR : y));
         }
+        partMs[2] += (float) (clockMs() - tOut);
     }
 
     for (int ch = 2; ch < numOut; ++ch)
@@ -2702,6 +2731,42 @@ juce::String AmpsurdProcessor::describeDrop(const ampsurd::EventLog::Drop& d)
     {
         t << " - AMPSURD itself worked " << juce::String(ran, 1) << " ms of it";
         if (waited >= 0.1f) t << ", waited " << juce::String(waited, 1) << " ms for a helper core";
+    }
+    // which part took the time (owner 2026-11-09: "which part took how long")
+    if (d.pathsMs >= 0.0f)
+    {
+        struct Part { juce::String what; float ms; };
+        std::vector<Part> parts;
+        int amps = 0;
+        float ampSum = 0.0f;
+        for (int s = 0; s < 5 && s < kNumSlots; ++s)
+        {
+            if (d.slotMs[s][0] < 0.0f) continue;
+            ++amps;
+            const auto st = getSlotStatus(s);
+            const juce::String a = "amp " + juce::String(s + 1) + " ";
+            const juce::String capture = st.isAmp && st.gainSteps.size() >= 2 ? "GAIN captures" : "capture";
+            const juce::String names[4] = { "pedals", capture, "tone + cabinet IR", "EQ + alignment" };
+            for (int k = 0; k < 4; ++k)
+            {
+                parts.push_back({ a + names[k], d.slotMs[s][k] });
+                ampSum += d.slotMs[s][k];
+            }
+        }
+        parts.push_back({ "mixing + global EQ", d.mixMs });
+        parts.push_back({ "input + PITCH", d.inputMs });
+        parts.push_back({ "effects (gate, delays, reverb ...)", d.effectsMs });
+        parts.push_back({ "output (limiter, player)", d.outputMs });
+        std::stable_sort(parts.begin(), parts.end(), [](const Part& x, const Part& y) { return x.ms > y.ms; });
+        juce::StringArray list;
+        for (const auto& pt : parts)
+            if (pt.ms >= 0.1f && list.size() < 5) list.add(pt.what + " " + juce::String(pt.ms, 1) + " ms");
+        if (!list.isEmpty()) t << " - where the time went: " << list.joinIntoString(", ");
+        if (amps > 1 && ampSum > 1.2f * d.pathsMs && d.pathsMs >= 0.1f)
+            t << " (the amps ran side by side on several cores: " << juce::String(d.pathsMs, 1) << " ms for all of them)";
+        const float outside = d.workMs - (d.inputMs + d.pathsMs + d.mixMs + d.effectsMs + d.outputMs);
+        if (outside >= 0.5f && outside >= 0.1f * d.workMs)
+            t << " - " << juce::String(outside, 1) << " ms outside these parts (settings, MIDI, meters)";
     }
     if (d.grace) t << " - not counted (right after starting the audio or loading an amp)";
     else if (helperPaused)

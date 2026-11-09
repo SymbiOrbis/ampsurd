@@ -283,6 +283,9 @@ public:
     int lastDriverXRuns = -1;                      // message thread
     juce::String lastAudioSetup;                   // "48 kHz, 128 samples" - logged when it changes
     bool startLogged = false;
+    // the log: where the current block's time went (audio thread only; read by DropWatch at the block's end)
+    ampsurd::Engine::BlockTimes blockTimes;
+    std::array<float, 3> partMs {}; // input + pitch, effects, output
     juce::String describeDrop(const ampsurd::EventLog::Drop& d);
     void drainEventLog();
         void startDropoutGrace(juce::uint32 ms) { dropGraceUntil.store(juce::jmax(dropGraceUntil.load(), juce::Time::getMillisecondCounter() + ms)); }

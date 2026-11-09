@@ -19,6 +19,11 @@ notarized (Developer ID: Radovan Glovna): double-click it and install. The first
 access to the audio input: allow it, or AMPSURD hears no guitar (the camera is asked for only when you use
 VIDEO in the player).
 
+## Next version (not released yet)
+
+- LOG: each dropout now says where the time went - for each amp its pedals, capture (GAIN captures), tone + cabinet
+  IR and EQ, plus mixing, input / PITCH, effects and output (the biggest parts first).
+
 ## AMPSURD 0.9.16 (beta)
 
 **Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the standalone app.

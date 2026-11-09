@@ -1,10 +1,19 @@
 #include "ampsurd/Engine.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 
 namespace ampsurd
 {
+namespace
+{
+// the log's timing (Engine::BlockTimes): a cheap monotonic clock in ms
+inline double nowMs() noexcept
+{
+    return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+} // namespace
 
 Engine::Engine()
 {
@@ -233,6 +242,9 @@ void Engine::processPath(int i, const EngineSettings& s, const double* in, int n
 {
     // Everything here belongs to path i only, so the five paths can run at the same time.
     const auto& ss = s.slots[(size_t) i];
+    auto& tm = times.path[(size_t) i];
+    times.ran[(size_t) i] = true;
+    double t0 = nowMs();
     double* buf = scratch.data() + (size_t) i * (size_t) stride;
     const double* slotIn = notesRouting ? splitIn.data() + (size_t) i * (size_t) stride : in;
 
@@ -251,6 +263,8 @@ void Engine::processPath(int i, const EngineSettings& s, const double* in, int n
         if (std::abs(tg - trimTarget) < 1e-7 * trimTarget) tg = trimTarget;
         slotIn = t;
     }
+    double t1 = nowMs();
+    tm[BlockTimes::eq] = (float) (t1 - t0);
     // pedal captures before the amp (serial): out = in + mix * (level * pedal(in) - in), 20 ms crossfades
     for (int k = 0; k < kNumPedals; ++k)
     {
@@ -279,8 +293,12 @@ void Engine::processPath(int i, const EngineSettings& s, const double* in, int n
         std::copy(pb, pb + n, t);
         slotIn = t;
     }
+    double t2 = nowMs();
+    tm[BlockTimes::pedals] = (float) (t2 - t1);
     slots[(size_t) i].setMorphPosition(ss.ampGain);
     slots[(size_t) i].process(slotIn, buf, n, false); // level match is applied as levelGain
+    double t3 = nowMs();
+    tm[BlockTimes::amp] = (float) (t3 - t2);
     toneStacks[(size_t) i].process(buf, n, true);       // AMPSURD amp: BASS / MID / TREBLE (nothing without a filter)
 
     // cabinet IR and its own EQ (both bypassed together; no CPU without an IR)
@@ -290,6 +308,8 @@ void Engine::processPath(int i, const EngineSettings& s, const double* in, int n
     auto& ieq = irEqs[(size_t) i];
     ieq.setBands(irEqActive ? ss.irEq : ParametricEq::neutralised(ss.irEq));
     ieq.process(buf, n);
+    double t4 = nowMs();
+    tm[BlockTimes::cabinet] = (float) (t4 - t3);
 
     auto& al = aligners[(size_t) i];
     al.setTargets(ss.delaySamples, ss.polarity, ss.phaseRadians, rotationMix);
@@ -298,11 +318,16 @@ void Engine::processPath(int i, const EngineSettings& s, const double* in, int n
     auto& eq = eqs[(size_t) i];
     eq.setBands(ss.eqEnabled ? ss.eq : ParametricEq::neutralised(ss.eq)); // OFF also releases the cuts
     eq.process(buf, n);
+    tm[BlockTimes::eq] += (float) (nowMs() - t4);
 }
 
 void Engine::process(const double* in, double* out, double* outR, int n, const EngineSettings& s) noexcept
 {
     const int stride = (int) (scratch.size() / kNumSlots);
+    const double tStart = nowMs();
+    times.path = {};
+    times.ran = {};
+    times.paths = times.mix = 0.0f;
     if (n > stride)
     {
         std::fill(out, out + n, 0.0);
@@ -394,7 +419,9 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
         // of their own then watch for that work during the block
         bool sideWork = false;
         for (int k = 0; k < count; ++k) sideWork = sideWork || slots[(size_t) job.slot[(size_t) k]].activeIsMorph();
+        const double tPaths = nowMs();
         runner.run(count, &Engine::runPathJob, &job, sideWork);
+        times.paths = (float) (nowMs() - tPaths);
     }
 
     // a path that just woke up is treated like a capture that is still loading until it is warm
@@ -573,6 +600,7 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
         globalEqR.setBands(geq);
         globalEqR.process(outR, n);
     }
+    times.mix = std::max(0.0f, (float) (nowMs() - tStart) - times.paths); // everything but the paths
 }
 
 } // namespace ampsurd

@@ -92,6 +92,18 @@ public:
     CaptureSlot& getSlot(int i) noexcept { return slots[(size_t) i]; }
     // audio thread: ms the audio thread has waited for helper cores so far (the log tells a paused helper apart)
     double helperWaitMsTotal() const noexcept { return runner.waitedMsTotal(); }
+    // audio thread, after process(): where the last block's time went (ms, wall clock) - the log shows it for a
+    // dropout (owner 2026-11-09: "which part took how long"). Paths on helper cores run at the same time, so
+    // the parts of all paths can add up to more than `paths`.
+    struct BlockTimes
+    {
+        enum Part { pedals, amp, cabinet, eq, kParts }; // cabinet = tone stack + IR + IR EQ; eq = input trim, align, EQ
+        std::array<std::array<float, kParts>, kNumSlots> path {};
+        std::array<bool, kNumSlots> ran {};
+        float paths = 0.0f; // all paths together (step 2)
+        float mix = 0.0f;   // splitting, mix law, blend tone, Frankenstein, global EQ
+    };
+    const BlockTimes& lastTimes() const noexcept { return times; }
     // pedal k of amp i: a capture played BEFORE the amp (its own sample rate / resampling like any capture).
     // Bypassed or empty = the amp gets the guitar straight (20 ms crossfade); a bypassed pedal does not run.
     CaptureSlot& getPedal(int i, int k) noexcept { return pedals[(size_t) i][(size_t) k]; }
@@ -223,6 +235,7 @@ private:
     double frankMix = 0.0, frankCoef = 0.0;
     double gainCoef = 0.0;
     double sampleRate = 48000.0;
+    BlockTimes times;
 };
 
 } // namespace ampsurd

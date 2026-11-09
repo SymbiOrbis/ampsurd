@@ -6,6 +6,25 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-09 — Session 5e: the log shows where a dropout's time went - Claude (Opus 5.5)
+
+- Owner (approved "yes, please do"): for each dropout, which part took how long. Engine::BlockTimes (core): per amp
+  pedals / capture (GAIN captures on an AMPSURD amp) / tone + cabinet IR / EQ + alignment, all amps together, and the
+  mixing (mix law, blend tone, Frankenstein, global EQ); a steady_clock read around each part (about 25 reads a block).
+  The processor adds input + PITCH, effects (gate, ROOT, DOUBLER, flanger, delays, reverb) and output (limiter,
+  bypass, player), summed over a host block that is split in pieces. EventLog::Drop carries it; describeDrop lists the
+  five biggest parts (largest first, from 0.1 ms), notes when the amps ran side by side on several cores, and the time
+  outside all parts (settings, MIDI, meters) when it is at least 0.5 ms and 10 % of the block.
+- Files: core/include/ampsurd/Engine.h, core/src/Engine.cpp, plugin/EventLog.h, plugin/PluginProcessor.h/.cpp,
+  tests/ui_snapshot.cpp (new LOG: WHERE THE TIME WENT - the engine really measures amp 2, and the text).
+- Tested (Linux): ui_snapshot 38 PASS with wavenet / lstm / my_model; AMPSURD AMP and PACK fail with these example
+  captures exactly as on the code before this change (lstm is below the -37 dB rule). engine_test, frankenstein_test
+  pass. Not yet seen in a real dropout on the owner's PC. Windows: a driver interrupting the audio thread is counted in
+  whatever part was running then, so a spike in one part can still be a driver.
+- Next: release with this when the owner asks; the owner sends the log of the next dropout.
+
+---
+
 ## 2026-11-09 — Session 5d: Dual amps (CH2 + CH3); Copy / Paste tone - Claude (Opus 5.5)
 
 - Dual Rectifier: checked the owner's final batch (CH2 RAW / VINTAGE / MODERN, CH3 MODERN as before; a CH3 VINTAGE +

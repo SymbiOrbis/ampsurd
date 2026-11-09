@@ -1208,6 +1208,50 @@ int main(int argc, char** argv)
         }
     }
 
+    // LOG: WHERE THE TIME WENT (owner 2026-11-09): the engine measures each part of each amp, and a dropout lists
+    // the biggest parts (largest first)
+    {
+        ampsurd::Engine e;
+        e.setMultiCore(0);
+        e.prepare(48000.0, 128, 20.0);
+        e.getSlot(1).submit(std::move(ampsurd::CaptureModel::load(argv[2], 48000.0, 128).model));
+        ampsurd::EngineSettings es;
+        std::vector<double> in(128, 0.0), l(128), r(128);
+        for (int blk = 0; blk < 50; ++blk)
+        {
+            for (int k = 0; k < 128; ++k) in[(size_t) k] = 0.1 * std::sin(0.05 * (blk * 128 + k));
+            e.process(in.data(), l.data(), r.data(), 128, es);
+        }
+        const auto& t = e.lastTimes();
+        const bool measuredOk = t.ran[1] && !t.ran[0] && t.path[1][ampsurd::Engine::BlockTimes::amp] > 0.0f && t.paths >= t.path[1][ampsurd::Engine::BlockTimes::amp]
+                                && t.mix >= 0.0f;
+        auto& lg = proc->getEventLog();
+        pump(1100);
+        lg.clear();
+        ampsurd::EventLog::Drop p;
+        p.atMs = juce::Time::getMillisecondCounterHiRes();
+        p.workMs = 46.6f;
+        p.budgetMs = 5.3f;
+        p.samples = 256;
+        p.ranMs = 45.2f;
+        p.slotMs[1][0] = 0.0f; p.slotMs[1][1] = 40.0f; p.slotMs[1][2] = 0.4f; p.slotMs[1][3] = 0.2f;
+        p.pathsMs = 40.6f;
+        p.mixMs = 0.3f;
+        p.inputMs = 0.1f;
+        p.effectsMs = 0.8f;
+        p.outputMs = 0.0f;
+        lg.pushDrop(p);
+        proc->runHousekeeping();
+        const auto tw = lg.getText();
+        const bool textOk = tw.contains("where the time went: amp 2 capture 40.0 ms, effects (gate, delays, reverb ...) 0.8 ms, amp 2 tone + cabinet IR 0.4 ms")
+                            && tw.contains("4.8 ms outside these parts") && !tw.contains("amp 1 ");
+        const bool ok = measuredOk && textOk;
+        std::cout << (ok ? "[PASS]" : "[FAIL]") << " LOG: where the time went (engine measured amp 2: " << t.path[1][1] << " ms of "
+                  << t.paths << " ms; text " << textOk << ")\n";
+        if (!ok) std::cout << tw << "\n";
+        lg.clear();
+    }
+
     // TWO GAIN CAPTURES ON TWO CORES (owner 2026-11-07): an AMPSURD amp between two GAIN positions hands the upper
     // capture to a free core. The sound must be exactly the same as on one core, and a helper must really take it.
     {

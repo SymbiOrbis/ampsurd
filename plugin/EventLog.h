@@ -33,6 +33,13 @@ public:
         float gapMs = 0.0f;         // time since the previous block started (lateCall)
         float ranMs = -1.0f;        // how long the audio thread really ran in that time (-1 = not known)
         float helperWaitMs = 0.0f;  // of the block: waiting for a helper core to finish its amp
+        // where the time went (ms; owner 2026-11-09): per amp {pedals, amp, tone + cabinet, EQ}, -1 = did not run
+        float slotMs[5][4] = { { -1.0f }, { -1.0f }, { -1.0f }, { -1.0f }, { -1.0f } }; // [s][0] < 0: amp s did not run
+        float pathsMs = -1.0f;      // all amps together (they run side by side on several cores); -1 = not measured
+        float mixMs = 0.0f;         // mixing the amps, blend tone, global EQ
+        float inputMs = 0.0f;       // input, tuner, PITCH
+        float effectsMs = 0.0f;     // gate, ROOT, DOUBLER, flanger, delays, reverb
+        float outputMs = 0.0f;      // limiter, bypass, player
         int samples = 0;
         DropKind kind = DropKind::slowBlock;
         bool grace = false;         // right after starting audio / loading: not counted in DROPOUTS
