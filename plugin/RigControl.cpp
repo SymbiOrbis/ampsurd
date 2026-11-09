@@ -358,6 +358,32 @@ juce::Array<juce::File> AmpsurdProcessor::listTones()
     return files;
 }
 
+juce::File AmpsurdProcessor::toneClipboardFile()
+{
+    return juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("AMPSURD_copied_tone.ampsurdtone");
+}
+
+bool AmpsurdProcessor::hasCopiedTone() { return toneClipboardFile().existsAsFile(); }
+
+juce::String AmpsurdProcessor::copiedToneName()
+{
+    const auto f = toneClipboardFile().getSiblingFile("AMPSURD_copied_tone.txt");
+    return hasCopiedTone() && f.existsAsFile() ? f.loadFileAsString().trim() : juce::String();
+}
+
+bool AmpsurdProcessor::copyTone(int slot, juce::String& error) const
+{
+    if (!saveTone(slot, toneClipboardFile(), error)) return false;
+    toneClipboardFile().getSiblingFile("AMPSURD_copied_tone.txt").replaceWithText(getSlotStatus(slot).fileName);
+    return true;
+}
+
+bool AmpsurdProcessor::pasteTone(int slot, juce::String& error)
+{
+    if (!hasCopiedTone()) { error = "Nothing copied yet - right-click an amp and choose Copy tone."; return false; }
+    return loadTone(slot, toneClipboardFile(), error);
+}
+
 bool AmpsurdProcessor::saveTone(int slot, const juce::File& file, juce::String& error) const
 {
     const auto st = getSlotStatus(slot);

@@ -1560,6 +1560,30 @@ int main(int argc, char** argv)
         std::cout << (saved && loaded && same && rigKept && rejects ? "[PASS]" : "[FAIL]") << " TONES: amp 1 saved as a tone (" << saved
                   << "), loaded into amp 3 (" << loaded << ") = the same capture, pedal, AMPSURD IR, EQs, INPUT / OUTPUT (" << same
                   << "), amp 3's PAN kept (" << rigKept << "), a wrong file is refused (" << rejects << ") " << err << "\n";
+        // COPY / PASTE TONE (owner 2026-11-09): amp 1 copied, pasted into amp 5 = the same as saving + loading a tone
+        {
+            juce::String cerr;
+            AP::toneClipboardFile().deleteFile();
+            const bool nothingYet = !AP::hasCopiedTone() && !proc->pasteTone(4, cerr) && cerr.isNotEmpty();
+            const bool copied = proc->copyTone(0, cerr) && AP::hasCopiedTone() && AP::copiedToneName() == proc->getSlotStatus(0).fileName;
+            const bool pasted = proc->pasteTone(4, cerr);
+            for (int t = 0; t < 300 && proc->getSlotStatus(4).state != AP::SlotState::loaded; ++t) run(20);
+            run(1500);
+            ampsurd::CabPoint cp5;
+            const bool same5 = proc->getSlotStatus(4).path == proc->getSlotStatus(0).path
+                               && proc->getPedalStatus(4, 0).path == proc->getPedalStatus(0, 0).path
+                               && proc->getCabIrPoint(4, cp5) && std::abs(cp5.mm - 52.5) < 1e-6
+                               && std::abs(v(AP::slotParamId(4, "drive")) - 4.5f) < 0.01f
+                               && std::abs(v(AP::bandParamId(4, 3, "gain")) - 5.5f) < 0.01f;
+            const bool ok = nothingYet && copied && pasted && same5;
+            std::cout << (ok ? "[PASS]" : "[FAIL]") << " COPY / PASTE TONE: nothing to paste at first " << nothingYet << ", amp 1 copied "
+                      << copied << ", pasted into amp 5 " << pasted << " = the same capture, pedal, IR, EQ, INPUT " << same5 << " " << cerr << "\n";
+            proc->unloadCapture(4);
+            proc->removePedal(4, 0);
+            proc->removeIr(4);
+            AP::toneClipboardFile().deleteFile();
+            run(500);
+        }
         toneFile.deleteFile();
         proc->unloadCapture(2);
         proc->removePedal(0, 0);

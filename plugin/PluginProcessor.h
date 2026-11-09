@@ -342,6 +342,13 @@ public:
     static juce::Array<juce::File> listTones();        // by name
     bool saveTone(int slot, const juce::File& file, juce::String& error) const;
     bool loadTone(int slot, const juce::File& file, juce::String& error);
+    // Copy / paste a tone between slots (owner 2026-11-09: slot right-click menu) - the same as saving and loading a
+    // tone, through a clipboard file in the temp folder (so it also works between AMPSURD windows / plugin instances).
+    bool copyTone(int slot, juce::String& error) const;
+    bool pasteTone(int slot, juce::String& error);
+    static bool hasCopiedTone();
+    static juce::String copiedToneName();   // the copied amp's capture name ("" = nothing copied)
+    static juce::File toneClipboardFile();
 
     // --- move an amp to another slot by mouse (message thread): the two slots swap everything (capture, IR,
     //     mix share, mute / solo, EQs, alignment, pan, levels, ECO); Frankenstein sections follow the amps ---

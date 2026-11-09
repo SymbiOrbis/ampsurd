@@ -783,8 +783,21 @@ void SlotComponent::mouseUp(const juce::MouseEvent& e)
     m.addItem(2, "Remove NAM", status.state != AmpsurdProcessor::SlotState::empty);
     m.addItem(3, "Show file location", juce::File(status.path).exists());
     m.addSeparator();
+    // copy / paste the whole tone (capture, pedals, IR, EQs, levels) to another slot (owner 2026-11-09)
+    const bool loaded = status.state != AmpsurdProcessor::SlotState::empty;
+    m.addItem(5, "Copy tone", loaded);
+    const auto copied = AmpsurdProcessor::copiedToneName();
+    m.addItem(6, AmpsurdProcessor::hasCopiedTone() ? "Paste tone" + (copied.isNotEmpty() ? " (" + copied + ")" : juce::String()) : "Paste tone",
+              AmpsurdProcessor::hasCopiedTone());
+    m.addSeparator();
     m.addItem(4, "Tones...");
     m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this), [this](int r) {
+        if (r == 5 || r == 6)
+        {
+            juce::String err;
+            const bool ok = r == 5 ? proc.copyTone(slot, err) : proc.pasteTone(slot, err);
+            if (!ok) juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, r == 5 ? "Copy tone" : "Paste tone", err);
+        }
         if (r == 4) juce::Timer::callAfterDelay(150, [sp = juce::Component::SafePointer<SlotComponent>(this)] {
             if (sp != nullptr) showToneMenu(sp->proc, sp->slot, sp.getComponent());
         });
