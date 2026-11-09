@@ -50,16 +50,42 @@ void loadToneInto(AmpsurdProcessor& proc, int slot, const juce::File& f)
         juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, "Load tone", err);
 }
 
+// the system's save window: any folder / name (the system asks before replacing a file)
+void saveToneAs(AmpsurdProcessor& proc, int slot, const juce::String& name)
+{
+    static std::unique_ptr<juce::FileChooser> chooser;
+    AmpsurdProcessor::getToneFolder().createDirectory();
+    const auto start = AmpsurdProcessor::getToneFolder().getChildFile((name.isNotEmpty() ? name : juce::String("Tone")) + ".ampsurdtone");
+    chooser = std::make_unique<juce::FileChooser>("Save the tone of amp " + juce::String(slot + 1), start, "*.ampsurdtone");
+    chooser->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                             | juce::FileBrowserComponent::warnAboutOverwriting,
+                         [&proc, slot](const juce::FileChooser& fc) {
+                             auto f = fc.getResult();
+                             if (f == juce::File()) return;
+                             if (!f.hasFileExtension(".ampsurdtone")) f = f.withFileExtension(".ampsurdtone");
+                             juce::String err;
+                             if (!proc.saveTone(slot, f, err))
+                                 juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::WarningIcon, "Save tone", err);
+                         });
+}
+
 void saveToneDialog(AmpsurdProcessor& proc, int slot, juce::Component* parent)
 {
     auto* w = new juce::AlertWindow("Save tone", "Name of this tone (amp " + juce::String(slot + 1)
                                         + ": capture, pedals, IR, EQs, INPUT / OUTPUT):", juce::MessageBoxIconType::NoIcon, parent);
     w->addTextEditor("name", proc.getSlotStatus(slot).fileName);
     w->addButton("SAVE", 1, juce::KeyPress(juce::KeyPress::returnKey));
+    // SAVE AS... (owner 2026-11-09): the user picks the folder and the name; SAVE = quickly into the Tones folder
+    w->addButton("SAVE AS...", 2);
     w->addButton("CANCEL", 0, juce::KeyPress(juce::KeyPress::escapeKey));
     w->enterModalState(true, juce::ModalCallbackFunction::create([&proc, slot, w, parent](int result) {
-        if (result != 1) return;
+        if (result == 0) return;
         const auto name = juce::File::createLegalFileName(w->getTextEditorContents("name").trim());
+        if (result == 2)
+        {
+            juce::Timer::callAfterDelay(150, [&proc, slot, name] { saveToneAs(proc, slot, name); });
+            return;
+        }
         if (name.isEmpty()) return;
         const auto f = AmpsurdProcessor::getToneFolder().getChildFile(name + ".ampsurdtone");
         auto doSave = [&proc, slot, f] {
