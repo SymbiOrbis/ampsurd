@@ -19,6 +19,20 @@ notarized (Developer ID: Radovan Glovna): double-click it and install. The first
 access to the audio input: allow it, or AMPSURD hears no guitar (the camera is asked for only when you use
 VIDEO in the player).
 
+## AMPSURD 0.9.16 (beta)
+
+**Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the standalone app.
+**macOS 10.15 or newer:** AMPSURD-macOS.pkg installs the app, the VST3 plugin and the Audio Unit. Installing over an
+older version is fine: presets and recordings (Documents/AMPSURD) stay untouched.
+
+New in 0.9.16:
+- Copy tone / Paste tone in an amp slot's right-click menu: the whole tone of that amp (capture or AMPSURD amp,
+  pedals, IR, EQs, INPUT / OUTPUT, ECO) into another slot - without saving a file. Works between AMPSURD windows.
+  The target keeps its mix share and PAN; one Undo step.
+- Save tone: SAVE AS... - choose the folder and name yourself (SAVE still saves straight into Documents/AMPSURD/Tones).
+- LOG: a dropout where AMPSURD's audio thread was busy the whole time is now called a sudden spike (its own work or
+  a driver interrupting it) instead of "the computer paused AMPSURD".
+
 ## AMPSURD 0.9.15 (beta)
 
 **Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the standalone app.

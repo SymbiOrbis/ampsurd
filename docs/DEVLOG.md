@@ -25,6 +25,12 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
   system's save window, starting in the Tones folder with the name; asks before replacing). Tones saved elsewhere
   load via LOAD NAM / "Load a tone from a file" / drag and drop (the quick list shows the Tones folder only).
   ui_snapshot 38 PASS (the dialog itself is not driven by the tests).
+- Owner's log (0.9.15, 256 samples, one Dual amp + pedal + IR file): 46.6 ms block, "AMPSURD itself worked 45.2 ms",
+  driver missed buffers, 3 more within a second; the whole PC had frozen just before. The old fallback rule still
+  said "the computer paused AMPSURD" - fixed: busy the whole time = "a sudden spike - its own work, or a driver
+  interrupting it" (Windows counts interrupt / DPC time to the interrupted thread). Approved next: per-part timing
+  of a dropout block (pedals, GAIN captures, IR, effects) to tell which part took the time.
+- Release 0.9.16 (Copy / Paste tone, SAVE AS..., the log text). ui_snapshot 38 PASS.
 
 ---
 
