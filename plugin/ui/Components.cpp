@@ -1555,6 +1555,7 @@ EditPanel::EditPanel(AmpsurdProcessor& p) : proc(p), graph(p), align(p), level(p
     toneButton.onClick = [this] { if (slot >= 0) showToneMenu(proc, slot, &toneButton); };
     closeButton.onClick = [this] { if (onClose) onClose(); };
     closeButton.setTooltip("Close EDIT and return to the gate and tuner");
+    closeButton.getProperties().set("redAlways", true);
     eqOnButton.setClickingTogglesState(true);
     flatButton.onClick = [this] {
         if (slot < 0) return;
@@ -2118,6 +2119,7 @@ GlobalEqPanel::GlobalEqPanel(AmpsurdProcessor& p) : proc(p), tuner(p), graph(p),
     eqOnButton.setTooltip("Switch the Global EQ on or off (it shapes the complete sound, after the blend)");
     flatButton.setTooltip("Reset all ten bands of the Global EQ");
     closeButton.setTooltip("Back to Frankenstein");
+    closeButton.getProperties().set("redAlways", true);
     closeButton.onClick = [this] { if (onClose) onClose(); };
     flatButton.onClick = [this] {
         const auto d = ampsurd::ParametricEq::defaultBands();
@@ -2667,6 +2669,7 @@ PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), pla
         });
     };
     closeButton.onClick = [this] { if (onClose) onClose(); };
+    closeButton.getProperties().set("redAlways", true); // owner 2026-11-10: CLOSE is red
     startButton.setTooltip("Back to the start");
     recButton.setTooltip("No take yet: record it. With a take: punch in a correction here (the take is replaced from this point); "
                          "press again to punch out. Start PLAY a little earlier, then the correction's start can later be dragged earlier too.");
@@ -3244,6 +3247,7 @@ IrPanel::IrPanel(AmpsurdProcessor& p) : proc(p), graph(p), copyButton(p)
     eqOnButton.setTooltip("Switch this IR's EQ on or off");
     flatButton.setTooltip("Reset all ten bands of this IR's EQ");
     closeButton.setTooltip("Close the IR editor and return to the gate and tuner");
+    closeButton.getProperties().set("redAlways", true);
     setSlot(-1);
 }
 

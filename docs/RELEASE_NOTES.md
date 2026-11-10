@@ -21,6 +21,7 @@ VIDEO in the player).
 
 ## Next version (not released yet)
 
+- CLOSE in the middle section (EDIT, IR, IR map, GLOBAL, PLAYER, ROOT, DOUBLER, LOG) is red, like an active MUTE.
 - LOG: each dropout now says where the time went - for each amp its pedals, capture (GAIN captures), tone + cabinet
   IR and EQ, plus mixing, input / PITCH, effects and output (the biggest parts first).
 

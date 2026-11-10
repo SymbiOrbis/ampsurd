@@ -61,6 +61,7 @@ DoublerPanel::DoublerPanel(AmpsurdProcessor& p) : proc(p)
     onAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(proc.params, "dblOn", onButton);
     onButton.setTooltip("DOUBLER on / off (experimental). Off: AMPSURD sounds exactly as without it");
     closeButton.setTooltip("Close DOUBLER (it keeps running if it is ON)");
+    closeButton.getProperties().set("redAlways", true);
     closeButton.onClick = [this] { if (onClose) onClose(); };
     for (int v = 0; v < 3; ++v)
     {

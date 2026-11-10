@@ -88,6 +88,7 @@ CabIrMatrix::CabIrMatrix(AmpsurdProcessor& p) : proc(p)
     resetButton.onClick = [this] { resetRows(); };
     resetButton.setTooltip("All rows back in their order and not slid (the default map)");
     closeButton.setTooltip("Back to the IR editor (Esc)");
+    closeButton.getProperties().set("redAlways", true);
     hoverButton.setTooltip("On: moving the mouse over the map lets you hear each point. Leaving the map returns to the "
                            "point you clicked. Off: only clicking / dragging changes the IR");
     snapButton.setTooltip("On: only the centres of the boxes (one IR, not blended). Off: anything in between, too");

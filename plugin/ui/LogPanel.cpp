@@ -25,6 +25,7 @@ LogPanel::LogPanel(AmpsurdProcessor& p) : proc(p)
         b->setWantsKeyboardFocus(false);
     }
     closeButton.setTooltip("Back (Esc)");
+    closeButton.getProperties().set("redAlways", true);
     copyButton.setTooltip("Copies the whole log - to paste into an e-mail or a message");
     fileButton.setTooltip("Shows the log file (Documents / AMPSURD / Logs / AMPSURD_log.txt) - to send it to someone");
     clearButton.setTooltip("Empties this list (the file keeps everything)");

@@ -6,6 +6,14 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-10 — Session 5g: CLOSE is red - Claude (Opus 5.5)
+
+- Owner: the CLOSE button of the middle section red, like MUTE when active. New button property "redAlways" (Theme.cpp:
+  red fill, white text, a bit brighter on hover); set on every CLOSE of the middle section: amp EDIT, IR editor, IR map,
+  GLOBAL (back to Frankenstein), PLAYER / REC, ROOT, DOUBLER, LOG. Checked on the snapshot (03_edit_slot2.png).
+
+---
+
 ## 2026-11-10 — Session 5f: website Q&A page - Claude (Opus 5.5)
 
 - Owner: the dropout advice as part of an extensive, searchable Q&A on the website. New faq.html (single file next to

@@ -120,6 +120,13 @@ void LookAndFeel::drawButtonBackground(juce::Graphics& g, juce::Button& b, const
     using namespace colours;
     auto r = b.getLocalBounds().toFloat().reduced(0.5f);
     const bool on = b.getToggleState();
+    if ((bool) b.getProperties().getWithDefault("redAlways", false))
+    {
+        // "redAlways": CLOSE in the middle section - always red like an active MUTE (owner 2026-11-10)
+        g.setColour(accent.brighter((highlighted || down) && b.isEnabled() ? 0.15f : 0.0f).withAlpha(b.isEnabled() ? 1.0f : 0.3f));
+        g.fillRoundedRectangle(r, 2.0f);
+        return;
+    }
     if (on)
     {
         // "redWhenOn": a warning switch (MUTE) is red when active, not white
@@ -157,7 +164,8 @@ void LookAndFeel::drawButtonText(juce::Graphics& g, juce::TextButton& b, bool, b
     using namespace colours;
     const bool on = b.getToggleState();
     g.setFont(getTextButtonFont(b, b.getHeight()));
-    const bool red = on && (bool) b.getProperties().getWithDefault("redWhenOn", false);
+    const bool red = (on && (bool) b.getProperties().getWithDefault("redWhenOn", false))
+                     || (bool) b.getProperties().getWithDefault("redAlways", false);
     g.setColour((red ? juce::Colours::white : on ? onText : text).withAlpha(b.isEnabled() ? 1.0f : 0.35f));
     g.drawFittedText(b.getButtonText(), b.getLocalBounds().reduced(3, 0), juce::Justification::centred, 1, 0.85f);
 }

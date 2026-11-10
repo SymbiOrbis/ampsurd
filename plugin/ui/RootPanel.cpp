@@ -59,6 +59,7 @@ RootPanel::RootPanel(AmpsurdProcessor& p) : proc(p)
     onButton.setTooltip("ROOT on / off (experimental). Off: AMPSURD sounds exactly as without it");
     invertButton.setTooltip("Flips the layer's polarity - try it if turning ROOT up makes the low end thinner instead of bigger");
     closeButton.setTooltip("Close ROOT (it keeps running if it is ON)");
+    closeButton.getProperties().set("redAlways", true);
     closeButton.onClick = [this] { if (onClose) onClose(); };
     const char* tips[3] = { "PARALLEL: layer from the clean DI guitar (recommended)", "POST: layer from the amps' output",
                             "SUB: adds an octave-down tone (experimental, single notes work best)" };
