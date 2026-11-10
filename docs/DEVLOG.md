@@ -6,6 +6,18 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-10 — Session 5f: website Q&A page - Claude (Opus 5.5)
+
+- Owner: the dropout advice as part of an extensive, searchable Q&A on the website. New faq.html (single file next to
+  index.html, same look): 48 questions in 7 topics (getting started, amps and sound, tones / presets / files, dropouts
+  and clicks, buffer and latency, player and recording, help); live search with highlighting, topic chips, "#" link
+  per question (faq.html#latencymon opens it). Buffer table + chart at 48 kHz (the audio settings already show 48 kHz
+  values: 256 samples = 5.3 ms). index.html: Q&A in the menu, links from the log section and the beta box.
+  Checked in Chromium at 1280 px and 390 px (search, links, no sideways scroll). Not in the repo (the website files
+  live outside it); the owner uploads index.html + faq.html to /public_html.
+
+---
+
 ## 2026-11-09 — Session 5e: the log shows where a dropout's time went - Claude (Opus 5.5)
 
 - Owner (approved "yes, please do"): for each dropout, which part took how long. Engine::BlockTimes (core): per amp
