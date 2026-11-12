@@ -306,6 +306,18 @@ juce::AudioProcessorValueTreeState::ParameterLayout AmpsurdProcessor::createLayo
                                                                   n + "Pedal " + String(k + 1) + " Level",
                                                                   NormalisableRange<float>(-24.0f, 12.0f, 0.1f), 0.0f, unitAttr("dB", 1)));
         }
+        // this amp's own noise gate (owner 2026-11-12), in addition to the global gate; off by default
+        group->addChild(std::make_unique<AudioParameterBool>(ParameterID { slotParamId(s, "gateOn"), 1 }, n + "Gate", false));
+        group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { slotParamId(s, "gateThreshold"), 1 }, n + "Gate Threshold",
+                                                              NormalisableRange<float>(-96.0f, -20.0f, 0.1f),
+                                                              ampsurd::NoiseGate::kDefaultThresholdDb, db));
+        {
+            NormalisableRange<float> dr(5.0f, 2000.0f, 1.0f);
+            dr.setSkewForCentre(150.0f);
+            group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { slotParamId(s, "gateDecay"), 1 }, n + "Gate Decay", dr,
+                                                                  ampsurd::NoiseGate::kDefaultDecayMs,
+                                                                  AudioParameterFloatAttributes().withLabel("ms")));
+        }
         addEqBandParams(*group, s, n);
         // cabinet IR of this slot and its own EQ (same ten bands)
         group->addChild(std::make_unique<AudioParameterBool>(ParameterID { slotParamId(s, "irOn"), 1 }, n + "IR On", true));
@@ -505,6 +517,9 @@ AmpsurdProcessor::AmpsurdProcessor()
         sp.drive = params.getRawParameterValue(slotParamId(s, "drive"));
         sp.level = params.getRawParameterValue(slotParamId(s, "level"));
         sp.ampGain = params.getRawParameterValue(slotParamId(s, "ampGain"));
+        sp.gateOn = params.getRawParameterValue(slotParamId(s, "gateOn"));
+        sp.gateThreshold = params.getRawParameterValue(slotParamId(s, "gateThreshold"));
+        sp.gateDecay = params.getRawParameterValue(slotParamId(s, "gateDecay"));
         sp.ampTone[0] = params.getRawParameterValue(slotParamId(s, "ampBass"));
         sp.ampTone[1] = params.getRawParameterValue(slotParamId(s, "ampMid"));
         sp.ampTone[2] = params.getRawParameterValue(slotParamId(s, "ampTreble"));
@@ -798,6 +813,9 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         ss.levelGain = slotOutputGain(s, levelMatch) * ampFadeGain(s, sp.ampGain->load());
         ss.inputTrim = std::pow(10.0, (getCalibrationTrimDb(s) + (double) sp.drive->load()) / 20.0);
         ss.ampGain = sp.ampGain->load(); // only an AMPSURD amp uses it
+        ss.gateOn = sp.gateOn->load() > 0.5f;
+        ss.gateThresholdDb = sp.gateThreshold->load();
+        ss.gateDecayMs = sp.gateDecay->load();
         for (int k = 0; k < kNumPedals; ++k)
         {
             ss.pedalOn[(size_t) k] = sp.pedalOn[(size_t) k]->load() > 0.5f;

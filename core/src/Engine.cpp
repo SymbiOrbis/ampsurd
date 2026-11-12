@@ -44,6 +44,7 @@ void Engine::prepare(double sr, int maxBlockSize, double maxDelayMs)
         irEqs[(size_t) i].prepare(sr);
         aligners[(size_t) i].prepare(sr, maxDelay);
         eqs[(size_t) i].prepare(sr);
+        gates[(size_t) i].prepare(sr);
         gains[(size_t) i] = 0.0;
         gainsR[(size_t) i] = 0.0;
     }
@@ -247,6 +248,7 @@ void Engine::processPath(int i, const EngineSettings& s, const double* in, int n
     double t0 = nowMs();
     double* buf = scratch.data() + (size_t) i * (size_t) stride;
     const double* slotIn = notesRouting ? splitIn.data() + (size_t) i * (size_t) stride : in;
+    const double* gateKey = slotIn; // the amp's own gate listens to the guitar as this amp receives it
 
     // input calibration (exactly 1.0 = untouched, bit-identical)
     const double trimTarget = std::clamp(ss.inputTrim, 0.01, 100.0);
@@ -318,6 +320,11 @@ void Engine::processPath(int i, const EngineSettings& s, const double* in, int n
     auto& eq = eqs[(size_t) i];
     eq.setBands(ss.eqEnabled ? ss.eq : ParametricEq::neutralised(ss.eq)); // OFF also releases the cuts
     eq.process(buf, n);
+
+    // the amp's own noise gate (off: nothing runs once it is fully open)
+    auto& gt = gates[(size_t) i];
+    gt.setParameters(ss.gateOn, ss.gateThresholdDb, ss.gateDecayMs);
+    if (ss.gateOn || gt.getCurrentGain() < 1.0) gt.process(gateKey, buf, n);
     tm[BlockTimes::eq] += (float) (nowMs() - t4);
 }
 

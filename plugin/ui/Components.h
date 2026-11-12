@@ -94,8 +94,9 @@ private:
     AmpsurdProcessor& proc;
     const int slot;
     juce::TextButton loadButton { "LOAD NAM" }, editButton { "EDIT" }, irButton { "ADD IR" },
-                     soloButton { "SOLO" }, muteButton { "MUTE" }, removeButton { "REMOVE" }, ecoButton { "ECO" };
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> ecoAtt;
+                     soloButton { "SOLO" }, muteButton { "MUTE" }, removeButton { "REMOVE" }, ecoButton { "ECO" },
+                     gateButton { "GATE" }; // this amp's own noise gate: lit = on (owner 2026-11-12)
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> ecoAtt, gateAtt;
     double removeArmedAt = -1.0; // REMOVE needs a second click within 3 s
     AmpsurdProcessor::IrStatus irStatus;
     juce::String pedalLine; // "lstm  >" when pedal captures play before this amp
@@ -289,6 +290,12 @@ private:
     std::array<Block, AmpsurdProcessor::kNumPedals> blocks;
     std::unique_ptr<juce::FileChooser> chooser;
     juce::String shown;
+    // after the amp: its own noise gate (owner 2026-11-12) - GATE on / off, THRESHOLD, DECAY
+    juce::TextButton gateButton { "GATE" };
+    juce::Slider gateThreshold, gateDecay;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> gateAtt;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> gateThrAtt, gateDecayAtt;
+    juce::Rectangle<int> ampLabel;
 };
 
 // ---------------------------------------------------------------------------------------------

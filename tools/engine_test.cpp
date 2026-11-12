@@ -864,6 +864,47 @@ int main(int argc, char** argv)
         check(stepNear <= 1.5 * stepSteady, "PEDALS: switched on while playing without a click (step %.3f vs %.3f)", stepNear, stepSteady);
     }
 
+    // ---------------- AMP GATE: each amp's own noise gate (owner 2026-11-12) ----------------
+    {
+        // a note (0.4 s), then only hiss at -75 dB (what a high-gain amp turns into noise between notes)
+        std::vector<double> in((size_t) (1.4 * sr));
+        std::mt19937 rng(7);
+        std::uniform_real_distribution<double> uni(-1.0, 1.0);
+        for (size_t i = 0; i < in.size(); ++i)
+        {
+            const double t = (double) i / sr;
+            in[i] = (t < 0.4 ? 0.3 * std::sin(2.0 * 3.14159265358979 * 110.0 * t) : 0.0) + 0.000178 * uni(rng);
+        }
+        auto render = [&](bool gateOn) {
+            Engine eng;
+            eng.getSlot(0).submit(loadAt(argv[1]));
+            eng.prepare(sr, 256, 10.0);
+            EngineSettings s;
+            s.slots[0].mix = 100.0f;
+            s.slots[0].gateOn = gateOn;
+            s.slots[0].gateThresholdDb = -60.0f;
+            s.slots[0].gateDecayMs = 120.0f;
+            std::vector<double> out(in.size());
+            for (size_t pos = 0; pos < in.size(); pos += 256)
+            {
+                const int n = (int) std::min<size_t>(256, in.size() - pos);
+                eng.process(in.data() + pos, out.data() + pos, n, s);
+            }
+            return out;
+        };
+        const auto off = render(false), on = render(true);
+        auto rms = [&](const std::vector<double>& y, double a, double b) {
+            double p = 0.0;
+            const size_t i0 = (size_t) (a * sr), i1 = (size_t) (b * sr);
+            for (size_t i = i0; i < i1; ++i) p += y[i] * y[i];
+            return std::sqrt(p / (double) (i1 - i0));
+        };
+        const double noteOff = rms(off, 0.1, 0.35), noteOn = rms(on, 0.1, 0.35), tailOff = rms(off, 1.0, 1.35), tailOn = rms(on, 1.0, 1.35);
+        check(std::abs(20.0 * std::log10(noteOn / noteOff)) < 0.5 && tailOn < tailOff * 0.01,
+              "AMP GATE: the note passes (%.2f dB difference), the hiss after it is silenced (%.1f dB -> %.1f dB)",
+              20.0 * std::log10(noteOn / noteOff), 20.0 * std::log10(tailOff + 1e-12), 20.0 * std::log10(tailOn + 1e-12));
+    }
+
     std::printf(failures == 0 ? "\nALL PASS\n" : "\n%d FAILURE(S)\n", failures);
     return failures == 0 ? 0 : 1;
 }

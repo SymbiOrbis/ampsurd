@@ -37,6 +37,7 @@
 #include "ampsurd/CaptureSlot.h"
 #include "ampsurd/Frankenstein.h"
 #include "ampsurd/IrSlot.h"
+#include "ampsurd/NoiseGate.h"
 #include "ampsurd/ParallelRunner.h"
 #include "ampsurd/ParametricEq.h"
 #include "ampsurd/PathAligner.h"
@@ -67,6 +68,11 @@ struct SlotSettings
     double ampGain = -1.0;      // AMPSURD amp: its GAIN knob (0..10); -1 = a plain capture
     std::array<bool, kNumPedals> pedalOn {};          // a pedal capture before the amp (only if one is loaded)
     std::array<double, kNumPedals> pedalLevel { 1.0, 1.0 }; // its output level into the next block (linear)
+    // this amp's own noise gate (owner 2026-11-12), in addition to the global one: listens to the guitar going into
+    // this amp, silences this amp's sound after its chain
+    bool gateOn = false;
+    float gateThresholdDb = NoiseGate::kDefaultThresholdDb;
+    float gateDecayMs = NoiseGate::kDefaultDecayMs;
 };
 
 struct EngineSettings
@@ -183,6 +189,7 @@ private:
     std::array<ParametricEq, kNumSlots> irEqs;
     std::array<PathAligner, kNumSlots> aligners;
     std::array<ParametricEq, kNumSlots> eqs;
+    std::array<NoiseGate, kNumSlots> gates; // per-amp noise gates
     ParametricEq globalEq, globalEqR;
     std::array<double, kNumSlots> gains {}, gainsR {};
 

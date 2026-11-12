@@ -419,6 +419,9 @@ private:
         std::array<std::atomic<float>*, ampsurd::kNumPedals> pedalOn {}, pedalLevel {}; // pedal captures before the amp
         std::atomic<float>* ampGain = nullptr;  // AMPSURD amp knobs (0..10, noon = 5)
         std::array<std::atomic<float>*, 3> ampTone {}; // BASS, MID, TREBLE
+        std::atomic<float>* gateOn = nullptr;   // this amp's own noise gate
+        std::atomic<float>* gateThreshold = nullptr;
+        std::atomic<float>* gateDecay = nullptr;
         std::array<std::atomic<float>*, kNumBands> freq {}, gain {}, q {};
     };
     std::array<SlotParams, kNumSlots> slotParams;

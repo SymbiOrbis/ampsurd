@@ -399,6 +399,13 @@ SlotComponent::SlotComponent(AmpsurdProcessor& p, int s) : proc(p), slot(s), fad
     ecoAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.params, AmpsurdProcessor::slotParamId(s, "eco"), ecoButton);
     ecoButton.setTooltip("ECO: play the A2 Lite version of this capture - less CPU, slightly less detail. "
                          "Available only for captures that contain a Lite model (slimmable A2).");
+    // this amp's own noise gate: lit = on; THRESHOLD and DECAY in EDIT (after the amp)
+    addAndMakeVisible(gateButton);
+    gateButton.setClickingTogglesState(true);
+    gateButton.setWantsKeyboardFocus(false);
+    gateAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.params, AmpsurdProcessor::slotParamId(s, "gateOn"), gateButton);
+    gateButton.setTooltip("GATE: this amp's own noise gate, lit = on (in addition to the NOISE GATE below, which works on the whole sound). "
+                          "Its THRESHOLD and DECAY are in EDIT, after the amp");
 
     panSlider.setSliderStyle(juce::Slider::LinearHorizontal);
     panSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
@@ -517,6 +524,7 @@ void SlotComponent::resized()
     r.removeFromBottom(10);
     fader.setBounds(r.removeFromRight(40).withTrimmedTop(22));
     ecoButton.setBounds(40, 10, 44, 20);
+    gateButton.setBounds(90, 10, 50, 20);
     {
         // the shown knobs side by side (GAIN alone, or GAIN + the measured tone knobs)
         auto ka = ampKnobArea();
@@ -721,6 +729,8 @@ void SlotComponent::refresh(bool isSelected, bool irEditorOpen)
     editButton.setEnabled(loaded);
     ecoButton.setEnabled(st.state == AmpsurdProcessor::SlotState::loaded && st.canEco);
     ecoButton.setVisible(st.state != AmpsurdProcessor::SlotState::empty);
+    gateButton.setVisible(st.state != AmpsurdProcessor::SlotState::empty);
+    gateButton.setEnabled(loaded);
     soloButton.setEnabled(loaded);
     muteButton.setEnabled(loaded);
     fader.setEnabled(loaded && !proc.isFrankensteinOn()); // Frankenstein replaces the fader blend
@@ -1690,6 +1700,24 @@ PedalChain::PedalChain(AmpsurdProcessor& p) : proc(p)
         b.on.setTooltip("Pedal on / bypassed (a bypassed pedal uses no CPU)");
         b.level.setTooltip("How loud this pedal drives the next block (like a pedal's LEVEL knob). Double-click: 0 dB");
     }
+    addAndMakeVisible(gateButton);
+    gateButton.setClickingTogglesState(true);
+    gateButton.setWantsKeyboardFocus(false);
+    gateButton.setTooltip("GATE: this amp's own noise gate (also on the amp's card). It listens to your guitar and silences "
+                          "this amp between notes - in addition to the NOISE GATE below");
+    for (auto* sl : { &gateThreshold, &gateDecay })
+    {
+        sl->setSliderStyle(juce::Slider::LinearHorizontal);
+        sl->setTextBoxStyle(juce::Slider::TextBoxRight, false, 62, 20);
+        sl->setTextBoxIsEditable(true);
+        sl->setWantsKeyboardFocus(false);
+        addAndMakeVisible(*sl);
+    }
+    gateThreshold.setDoubleClickReturnValue(true, ampsurd::NoiseGate::kDefaultThresholdDb);
+    gateDecay.setDoubleClickReturnValue(true, ampsurd::NoiseGate::kDefaultDecayMs);
+    gateThreshold.setTooltip("Gate THRESHOLD: below this level (your guitar) the amp is silenced. Higher = closes earlier. "
+                             "Double-click: -70 dB");
+    gateDecay.setTooltip("Gate DECAY: how long the amp fades out when the gate closes. Double-click: 120 ms");
 }
 
 void PedalChain::setSlot(int s)
@@ -1710,6 +1738,23 @@ void PedalChain::setSlot(int s)
         b.level.valueFromTextFunction = [](const juce::String& t) { return t.retainCharacters("+-.0123456789").getDoubleValue(); };
         b.level.updateText();
     }
+    gateAtt.reset();
+    gateThrAtt.reset();
+    gateDecayAtt.reset();
+    if (s >= 0)
+    {
+        gateAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(proc.params, AmpsurdProcessor::slotParamId(s, "gateOn"), gateButton);
+        gateThrAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(proc.params, AmpsurdProcessor::slotParamId(s, "gateThreshold"), gateThreshold);
+        gateDecayAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(proc.params, AmpsurdProcessor::slotParamId(s, "gateDecay"), gateDecay);
+        gateThreshold.textFromValueFunction = [](double v) { return juce::String(v, 1) + " dB"; };
+        gateThreshold.valueFromTextFunction = [](const juce::String& t) { return t.retainCharacters("-.0123456789").getDoubleValue(); };
+        gateDecay.textFromValueFunction = [](double v) { return juce::String(juce::roundToInt(v)) + " ms"; };
+        gateDecay.valueFromTextFunction = [](const juce::String& t) { return t.retainCharacters(".0123456789").getDoubleValue(); };
+        gateThreshold.updateText();
+        gateDecay.updateText();
+    }
+    for (juce::Component* c : { (juce::Component*) &gateButton, (juce::Component*) &gateThreshold, (juce::Component*) &gateDecay })
+        c->setVisible(s >= 0);
     shown = "?";
     refresh();
 }
@@ -1752,7 +1797,17 @@ void PedalChain::resized()
     auto r = getLocalBounds();
     r.removeFromLeft(118); // "BEFORE THE AMP"
     const int arrow = 26;
-    const int bw = (r.getWidth() - arrow * 2 - 60) / AmpsurdProcessor::kNumPedals; // "AMP" at the end
+    // after the amp: GATE, THRESHOLD, DECAY (the amp's own noise gate)
+    {
+        auto g = r.removeFromRight(juce::jmin(366, r.getWidth() / 2));
+        gateDecay.setBounds(g.removeFromRight(116));
+        g.removeFromRight(6);
+        gateThreshold.setBounds(g.removeFromRight(154));
+        g.removeFromRight(6);
+        gateButton.setBounds(g.removeFromRight(56));
+        r.removeFromRight(arrow); // AMP -> GATE
+    }
+    const int bw = (r.getWidth() - arrow * 2 - 44) / AmpsurdProcessor::kNumPedals; // "AMP" at the end
     for (int k = 0; k < AmpsurdProcessor::kNumPedals; ++k)
     {
         auto& b = blocks[(size_t) k];
@@ -1761,7 +1816,7 @@ void PedalChain::resized()
         const bool used = b.on.isVisible();
         if (used)
         {
-            b.level.setBounds(a.removeFromRight(juce::jmin(150, a.getWidth() / 2)));
+            b.level.setBounds(a.removeFromRight(juce::jmin(124, a.getWidth() / 2)));
             a.removeFromRight(4);
             b.on.setBounds(a.removeFromRight(40));
             a.removeFromRight(4);
@@ -1783,7 +1838,11 @@ void PedalChain::paint(juce::Graphics& g)
         g.drawText(juce::String::charToString((juce::juce_wchar) 0x2192), juce::Rectangle<int>(a.getRight(), 0, 26, getHeight()),
                    juce::Justification::centred, false);
     }
-    drawLabel(g, "AMP", juce::Rectangle<int>(blocks.back().area.getRight() + 26, 0, 60, getHeight()), text, juce::Justification::centredLeft, 11.0f);
+    drawLabel(g, "AMP", juce::Rectangle<int>(blocks.back().area.getRight() + 26, 0, 44, getHeight()), text, juce::Justification::centredLeft, 11.0f);
+    g.setColour(textDim);
+    g.setFont(Fonts::get().regular(14.0f));
+    g.drawText(juce::String::charToString((juce::juce_wchar) 0x2192), juce::Rectangle<int>(gateButton.getX() - 26, 0, 26, getHeight()),
+               juce::Justification::centred, false);
 }
 
 bool PedalChain::isInterestedInFileDrag(const juce::StringArray& files)
