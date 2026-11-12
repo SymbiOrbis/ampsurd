@@ -38,16 +38,58 @@ int deviceInputForRank(juce::AudioDeviceManager& dm, int rank)
     return -1;
 }
 
-// the guitar comes from device input `ch` alone (processor channel 1 = input 1 of AMPSURD)
-void useDeviceInputForGuitar(juce::StandalonePluginHolder& h, AmpsurdProcessor& p, int ch)
+juce::PropertiesFile::Options ampsurdSettingsOptions()
 {
+    juce::PropertiesFile::Options o;
+    o.applicationName = "AMPSURD"; o.filenameSuffix = ".settings"; o.osxLibrarySubFolder = "Application Support";
+    return o;
+}
+
+// the player's INPUT 2 (a second interface input: mic, keyboard...): the device input chosen for it, if it is
+// active next to the guitar's; -1 = none
+int wantedInput2 = -2; // the setting, read once (-2 = not read yet)
+int input2DeviceInput(juce::StandalonePluginHolder& h, AmpsurdProcessor& p)
+{
+    if (wantedInput2 == -2)
+    {
+        juce::PropertiesFile pf(ampsurdSettingsOptions());
+        wantedInput2 = pf.getIntValue("playerInput2", -1);
+    }
+    const int want = wantedInput2;
+    auto* d = h.deviceManager.getCurrentAudioDevice();
+    if (d == nullptr || want < 0) return -1;
+    if (!d->getActiveInputChannels()[want] || want == deviceInputForRank(h.deviceManager, p.getGuitarInput())) return -1;
+    return want;
+}
+
+// the device inputs AMPSURD uses: the guitar (processor input 1 of AMPSURD) and the player's INPUT 2 (-1 = none).
+// Active inputs reach the processor packed in order, so the guitar is its channel 0 or 1.
+void useDeviceInputs(juce::StandalonePluginHolder& h, AmpsurdProcessor& p, int guitarCh, int in2Ch)
+{
+    if (in2Ch == guitarCh) in2Ch = -1;
+    if (auto* d = h.deviceManager.getCurrentAudioDevice(); d == nullptr || in2Ch >= d->getInputChannelNames().size()) in2Ch = -1;
     auto setup = h.deviceManager.getAudioDeviceSetup();
     setup.useDefaultInputChannels = false;
     setup.inputChannels.clear();
-    setup.inputChannels.setBit(ch);
+    setup.inputChannels.setBit(guitarCh);
+    if (in2Ch >= 0) setup.inputChannels.setBit(in2Ch);
     h.deviceManager.setAudioDeviceSetup(setup, true);
-    p.setGuitarInput(0);
+    p.setGuitarInput(in2Ch >= 0 && in2Ch < guitarCh ? 1 : 0);
+    {
+        juce::PropertiesFile pf(ampsurdSettingsOptions());
+        pf.setValue("playerInput2", in2Ch);
+        wantedInput2 = in2Ch;
+        pf.saveIfNeeded();
+    }
+    if (auto* pl = p.getPlayer()) pl->setInput2Available(input2DeviceInput(h, p) >= 0);
     h.saveAudioDeviceState();
+}
+
+// the guitar comes from device input `ch` (the player's INPUT 2 stays where it is, unless it is the same input)
+void useDeviceInputForGuitar(juce::StandalonePluginHolder& h, AmpsurdProcessor& p, int ch)
+{
+    input2DeviceInput(h, p); // reads the setting
+    useDeviceInputs(h, p, ch, wantedInput2 >= 0 && wantedInput2 != ch ? wantedInput2 : -1);
 }
 
 class AudioSettings final : public juce::Component, private juce::ChangeListener
@@ -188,6 +230,16 @@ public:
             };
             sa.guitarDeviceInput = [h, p] { return deviceInputForRank(h->deviceManager, p->getGuitarInput()); };
             sa.setGuitarDeviceInput = [h, p](int ch) { useDeviceInputForGuitar(*h, *p, ch); };
+            sa.input2DeviceInput = [h, p] {
+                const int in2 = input2DeviceInput(*h, *p);
+                if (auto* pl = p->getPlayer()) pl->setInput2Available(in2 >= 0); // follows device changes
+                return in2;
+            };
+            sa.setInput2DeviceInput = [h, p](int ch) {
+                const int guitar = deviceInputForRank(h->deviceManager, p->getGuitarInput());
+                if (guitar >= 0) useDeviceInputs(*h, *p, guitar, ch);
+            };
+            if (auto* pl = p->getPlayer()) pl->setInput2Available(input2DeviceInput(*h, *p) >= 0);
             sa.showAudioSettings = [h, p] { showAudioSettings(*h, *p); };
             p->setStandaloneAudio(std::move(sa));
         }

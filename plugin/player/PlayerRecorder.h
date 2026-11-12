@@ -19,10 +19,18 @@
 //   - the clips are rendered into one composite take in the background with 10 ms equal-power
 //     crossfades at every edge, so the joins never click. UNDO restores the previous clip list.
 //
+// TWO RECORDING TRACKS (owner 2026-11-12): track 0 = GUITAR (AMPSURD's output, as above), track 1 = INPUT 2
+// (a second input of the audio interface - a mic, a keyboard... - recorded as it comes in, without AMPSURD).
+// Each track has an ARM switch: REC records the armed tracks (GUITAR is armed by default, INPUT 2 is armed by
+// hand). Both armed = recorded together; GUITAR off + INPUT 2 on = INPUT 2 is recorded to the guitar take
+// (one after the other). An armed INPUT 2 is heard (monitored) at its VOL / PAN. Each track has its own clips,
+// punch-ins, composite, VOL and PAN; INPUT 2 is lined up without AMPSURD's latency (it does not pass through it).
+//
 // Threads: process() = audio thread (no allocation; short locks shared with transport changes, as in
 // JUCE's own transport/recorder classes). Everything else = message thread; exports and bounces run
 // on a background thread.
 
+#include <array>
 #include <atomic>
 #include <limits>
 #include <vector>
@@ -58,8 +66,20 @@ public:
 
     // audio thread: L/R = AMPSURD's guitar output; adds the tracks and limits the sum (in place)
     // offline = rendering faster than real time (tests, DAW bounce): wait for disk reads instead of
-    // playing silence when the read-ahead is late
-    void process(double* L, double* R, int n, int ampsurdLatencySamples, bool offline = false) noexcept;
+    // playing silence when the read-ahead is late. input2 = the second interface input (nullptr: none)
+    void process(double* L, double* R, int n, int ampsurdLatencySamples, bool offline = false, const float* input2 = nullptr) noexcept;
+
+    // --- the recording tracks ---
+    static constexpr int kTracks = 2;   // 0 = GUITAR, 1 = INPUT 2
+    static juce::String trackName(int t) { return t == 0 ? "GUITAR" : "INPUT 2"; }
+    // ARM (message thread): REC records the armed tracks. Not while recording (false = not changed).
+    bool setArmed(int track, bool on);
+    bool isArmed(int track) const { return validTrack(track) && lanes[(size_t) track].armed.load(); }
+    bool anyArmed() const { return isArmed(0) || isArmed(1); }
+    bool isTrackRecording(int track) const { return validTrack(track) && lanes[(size_t) track].rec.load(); }
+    // INPUT 2 exists (the app has a second interface input selected for it); without it, INPUT 2 records silence
+    void setInput2Available(bool yes) { input2Available.store(yes); }
+    bool isInput2Available() const { return input2Available.load(); }
 
     // --- message thread ---
     juce::String loadBacking(const juce::File&); // empty = ok, otherwise an error to show
@@ -76,27 +96,30 @@ public:
     double getPositionSeconds() const;
     double getLengthSeconds() const;   // backing or take end, whichever is later
     bool hasBacking() const { return backingReady.load(); }
-    bool hasTake() const { return takeReady.load(); }
+    bool hasTake(int track = 0) const { return validTrack(track) && lanes[(size_t) track].takeReady.load(); }
+    bool hasAnyTake() const { return hasTake(0) || hasTake(1); }
+    bool hasMaterial(int track) const { return hasTake(track) || !getClips(track).empty(); } // a take, or one being rendered
     juce::String getBackingName() const { return backingFile.getFileNameWithoutExtension(); }
     double getBackingLengthSeconds() const;
-    double getTakeLengthSeconds() const;
-    juce::File getTakeFile() const { return takeFile; }
-    double getTakeStartSeconds() const { return (double) takeStart.load() / sampleRate; }
+    double getTakeLengthSeconds(int track = 0) const;
+    juce::File getTakeFile(int track = 0) const { return lanes[(size_t) track].takeFile; }
+    double getTakeStartSeconds(int track = 0) const { return (double) lanes[(size_t) track].takeStart.load() / sampleRate; }
     double getSampleRate() const { return sampleRate; }
 
     // --- the guitar track's clips (message thread). Positions in session samples on the timeline. ---
     struct Clip
     {
+        bool operator==(const Clip& o) const { return file == o.file && fileStart == o.fileStart && fileLength == o.fileLength && in == o.in && out == o.out; }
         juce::File file;             // the recorded pass (32-bit float WAV, session rate)
         juce::int64 fileStart = 0;   // timeline position of the file's first sample
         juce::int64 fileLength = 0;  // samples in the file
         juce::int64 in = 0, out = 0; // the part that is heard: [in, out)
         juce::int64 fileEnd() const { return fileStart + fileLength; }
     };
-    const std::vector<Clip>& getClips() const { return clips; }
+    const std::vector<Clip>& getClips(int track = 0) const { return lanes[(size_t) track].clips; }
     // moves the edges of clip `index` (clamped to the recorded audio, at least 50 ms long); re-renders
-    void setClipEdges(int index, juce::int64 in, juce::int64 out);
-    void removeClip(int index);
+    void setClipEdges(int index, juce::int64 in, juce::int64 out, int track = 0);
+    void removeClip(int index, int track = 0);
     // History of the player's steps (recordings, edge moves, deleting a track, BOUNCE, loading a backing): one
     // snapshot (backing + VOL, the guitar track's clips, its video) per step. UNDO / REDO move through it.
     // Since 2026-10-24 the processor keeps ONE history for the sound and the player (Ctrl+Z / Ctrl+Y and the
@@ -110,7 +133,7 @@ public:
     void clearRedo() { redoSnaps.clear(); } // a newer step elsewhere (the sound) ends the redo branch
     juce::String loadBackingAsStep(const juce::File& f); // LOAD BACKING by the user: an undoable step
     void deleteBacking();                                // the X / REMOVE: an undoable step
-    void clearTake();                  // remove the whole guitar track (files stay in Recordings/Takes)
+    void clearTake(int track = -1);    // remove a whole track, -1 = both (files stay in Recordings/Takes)
 
     // --- VIDEO takes (standalone; camera: VideoCapture). A video take is one continuous recording from
     //     STOP; its camera file is kept with the take. Sync: the audio thread notes the wall clock when the
@@ -118,7 +141,7 @@ public:
     //     VIDEO OFFSET (ms, + = the sound later) fine-tunes it by hand. ---
     void attachVideo(const juce::File& videoFile, juce::int64 firstFrameEpochMs); // message thread, after stop
     void dropVideo() { takeVideo = juce::File(); }
-    bool takeHasVideo() const { return takeVideo.existsAsFile() && takeReady.load(); }
+    bool takeHasVideo() const { return takeVideo.existsAsFile() && hasAnyTake(); }
     juce::File getTakeVideo() const { return takeVideo; }
     void setVideoOffsetMs(float ms) { videoOffsetMs.store(ms); }
     float getVideoOffsetMs() const { return videoOffsetMs.load(); }
@@ -138,32 +161,34 @@ public:
     static constexpr double kCrossfadeSeconds = 0.010;
 
     // live recording: where the current pass starts and where the punch-in is (timeline samples, -1 = none)
-    juce::int64 getPassStart() const { return passActive.load() ? passStart.load() : -1; }
-    juce::int64 getPunchIn() const { return getState() == State::recording ? punchIn : -1; }
+    juce::int64 getPassStart(int track = 0) const { const auto& l = lanes[(size_t) track]; return l.passActive.load() ? l.passStart.load() : -1; }
+    juce::int64 getPunchIn(int track = 0) const { return getState() == State::recording && isTrackRecording(track) ? lanes[(size_t) track].punchIn : -1; }
 
     // waveforms (message thread)
     juce::AudioThumbnail& getBackingThumbnail() { return backingThumb; }
-    juce::AudioThumbnail& getTakeThumbnail() { return takeThumb; }
-    juce::AudioThumbnail& getPassThumbnail() { return passThumb; }
+    juce::AudioThumbnail& getTakeThumbnail(int track = 0) { return *lanes[(size_t) track].takeThumb; }
+    juce::AudioThumbnail& getPassThumbnail(int track = 0) { return *lanes[(size_t) track].passThumb; }
 
     void setBackingGainDb(float db) { backingGainDb.store(db); }
-    void setTakeGainDb(float db) { takeGainDb.store(db); }
+    void setTakeGainDb(float db, int track = 0) { lanes[(size_t) track].gainDb.store(db); }
     // GUITAR PAN (-1 = left .. +1 = right; same law as the amps' PAN): where your guitar sits, always, and
     // it is RECORDED with it (panned left -> the take is in the left channel; for stereo layering with
     // BOUNCE). The take plays back as recorded. GUITAR VOL: the take's playback level, and the live guitar
     // on the monitors while recording; never changes the recorded file.
-    void setTakePan(float p) { takePan.store(juce::jlimit(-1.0f, 1.0f, p)); }
-    float getTakePan() const { return takePan.load(); }
+    // INPUT 2 PAN / VOL work the same way for the second input (PAN recorded, VOL = playback and monitoring)
+    void setTakePan(float p, int track = 0) { lanes[(size_t) track].pan.store(juce::jlimit(-1.0f, 1.0f, p)); }
+    float getTakePan(int track = 0) const { return lanes[(size_t) track].pan.load(); }
     float getBackingGainDb() const { return backingGainDb.load(); }
-    float getTakeGainDb() const { return takeGainDb.load(); }
+    float getTakeGainDb(int track = 0) const { return lanes[(size_t) track].gainDb.load(); }
     float getAndResetBackingPeak() { return backingPeak.exchange(0.0f); }
-    float getAndResetTakePeak() { return takePeak.exchange(0.0f); }
+    float getAndResetTakePeak(int track = 0) { return lanes[(size_t) track].peak.exchange(0.0f); }
+    float getAndResetInput2Peak() { return input2Peak.exchange(0.0f); } // the live INPUT 2 (raw), for its meter
 
     // device input + output latency (from the audio device, in samples)
     void setDeviceLatencyProvider(std::function<int()> f) { deviceLatency = std::move(f); }
     void setOffsetMs(float ms) { offsetMs.store(ms); }
     float getOffsetMs() const { return offsetMs.load(); }
-    double getCompensationMs() const; // what the next / current take is shifted by
+    double getCompensationMs(int track = 0) const; // what the next / current take is shifted by
 
     void exportAudio(const juce::File& dest, ExportOptions, std::function<void(const juce::String& error)> done);
     void bounce(std::function<void(const juce::String& error)> done);
@@ -190,15 +215,18 @@ public:
     void addClicks(double* L, double* R, int n, double s0, int source) noexcept; // source: 0 free, 1 song, 2 count-in
 
 private:
-    void startPass();
-    void endPass();                     // closes the pass file and adds its punched parts as clips
-    void closePunch();
-    void commitClips(std::vector<Clip> next); // undo point + render
+    static bool validTrack(int t) { return t >= 0 && t < kTracks; }
+    void startPass(int track);
+    void startArmedPasses(bool onlyWithMaterial); // a pass for every armed track (only those with a take: false)
+    // closes the passes (all tracks, or one) and adds their punched parts as clips - ONE undo step
+    void endPasses(int onlyTrack = -1);
+    void closePunches();
+    void commitClips(int track, std::vector<Clip> next); // undo point + render
     void scheduleRender();
-    juce::String renderComposite(const std::vector<Clip>& list, juce::File& result, juce::int64& start);
-    void adoptComposite(const juce::File& f, juce::int64 start);
-    juce::int64 compensationSamples() const;
-    void loadTakeForPlayback();
+    juce::String renderComposite(int track, const std::vector<Clip>& list, juce::File& result, juce::int64& start);
+    void adoptComposite(int track, const juce::File& f, juce::int64 start);
+    juce::int64 compensationSamples(int track) const;
+    void loadTakeForPlayback(int track);
     void positionTransports(juce::int64 pos);
     juce::String runExport(const juce::File& dest, ExportOptions o);
     juce::File newBounceFile() const;
@@ -221,41 +249,61 @@ private:
     void readTrack(Track&, juce::AudioBuffer<float>&, int n, bool offline) noexcept; // audio thread, trackLock held
     void swapTrack(std::unique_ptr<Track>& slot, std::unique_ptr<Track> next);
 
-    juce::File backingFile, takeFile;
+    juce::File backingFile;
     juce::CriticalSection trackLock;
-    std::unique_ptr<Track> backing, take;
-    std::atomic<bool> backingReady { false }, takeReady { false };
+    std::unique_ptr<Track> backing;
+    std::atomic<bool> backingReady { false };
     std::atomic<juce::int64> backingLength { 0 }; // session samples
-    std::atomic<juce::int64> takeStart { 0 }, takeLength { 0 };
 
-    juce::CriticalSection writerLock;
-    std::unique_ptr<juce::AudioFormatWriter::ThreadedWriter> writer;
+    juce::CriticalSection writerLock; // guards every lane's writer
+
+    // one recording track (GUITAR / INPUT 2)
+    struct Lane
+    {
+        // the composite take (what plays)
+        juce::File takeFile;
+        std::unique_ptr<Track> take;
+        std::atomic<bool> takeReady { false };
+        std::atomic<juce::int64> takeStart { 0 }, takeLength { 0 };
+        std::vector<Clip> clips;
+        std::vector<Clip> renderedClips;     // the clips the current composite was made of (unchanged = no new render)
+        // the pass being recorded
+        std::unique_ptr<juce::AudioFormatWriter::ThreadedWriter> writer; // writerLock
+        std::atomic<bool> passActive { false }, passStartPending { false };
+        std::atomic<bool> rec { false };     // punched in now (REC)
+        std::atomic<bool> armed { false };
+        std::atomic<juce::int64> passStart { 0 };       // timeline position of the pass file's first sample
+        std::atomic<int> pendingCompensation { 0 };
+        juce::int64 recSkip = 0;
+        juce::File passFile;
+        juce::int64 punchIn = -1;                        // timeline; -1 = from the pass start (first take)
+        std::vector<std::pair<juce::int64, juce::int64>> passPunches;
+        std::atomic<juce::int64> muteTakeFrom { std::numeric_limits<juce::int64>::max() }; // song position
+        // levels
+        std::atomic<float> gainDb { 0.0f }, pan { 0.0f }, peak { 0.0f };
+        double g = 1.0;
+        std::unique_ptr<juce::AudioThumbnail> takeThumb, passThumb;
+    };
+    std::array<Lane, kTracks> lanes;
+    std::atomic<bool> input2Available { false };
+    std::atomic<float> input2Peak { 0.0f };
+    double mon2L = 0.0, mon2R = 0.0;     // smoothed monitor gains of the live INPUT 2
 
     std::atomic<int> state { (int) State::stopped };
     std::atomic<juce::int64> songPos { 0 };
     juce::int64 playStartPos = 0;       // STOP returns here
 
-    // the pass being recorded
-    std::atomic<bool> passActive { false }, passStartPending { false };
     std::atomic<juce::int64> passWallMs { 0 }, passWallPos { 0 }; // wall clock (epoch ms) and song position when the pass started
     juce::File takeVideo;
     double videoFrame0Timeline = 0.0;
     std::atomic<float> videoOffsetMs { 0.0f };
-    std::atomic<juce::int64> passStart { 0 };       // timeline position of the pass file's first sample
-    std::atomic<int> pendingCompensation { 0 };
-    juce::int64 recSkip = 0;
-    juce::File passFile;
-    juce::int64 punchIn = -1;                        // timeline; -1 = from the pass start (first take)
-    std::vector<std::pair<juce::int64, juce::int64>> passPunches;
-    std::atomic<juce::int64> muteTakeFrom { std::numeric_limits<juce::int64>::max() }; // song position
 
     // clips + composite
-    std::vector<Clip> clips;
     struct Snapshot
     {
         juce::File backing;                    // none = no backing track
         float backingGainDb = 0.0f;
-        std::vector<Clip> clips;
+        std::array<std::vector<Clip>, kTracks> clips;
         juce::File video;
         double videoFrame0 = 0.0;
     };
@@ -268,13 +316,12 @@ private:
     juce::ThreadPool renderJobs { juce::ThreadPoolOptions {}.withThreadName("AMPSURD composite").withNumberOfThreads(1) };
 
     juce::AudioThumbnailCache thumbCache { 8 };
-    juce::AudioThumbnail backingThumb { 256, formats, thumbCache }, takeThumb { 256, formats, thumbCache }, passThumb { 256, formats, thumbCache };
+    juce::AudioThumbnail backingThumb { 256, formats, thumbCache };
 
     std::function<int()> deviceLatency;
-    std::atomic<float> offsetMs { 0.0f }, backingGainDb { 0.0f }, takeGainDb { 0.0f };
-    std::atomic<float> backingPeak { 0.0f }, takePeak { 0.0f };
-    double gB = 1.0, gT = 1.0;
-    std::atomic<float> takePan { 0.0f };
+    std::atomic<float> offsetMs { 0.0f }, backingGainDb { 0.0f };
+    std::atomic<float> backingPeak { 0.0f };
+    double gB = 1.0;
     double liveL = 1.0, liveR = 1.0;      // smoothed monitor gains of the live guitar (recording only)
     double panLiveL = 1.0, panLiveR = 1.0; // smoothed GUITAR PAN on the live guitar (before recording)
     // metronome

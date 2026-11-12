@@ -6,6 +6,32 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-12 — Session 5h: player INPUT 2 track, R / Ctrl+R / Space - Claude (Opus 5.5)
+
+- Owner: record a second input (mic, guitar, keyboard...) both together with the guitar and one after the other;
+  input 1 pre-armed, the second armable; REC with R and Ctrl+R, STOP with Space while recording, also video takes.
+- PlayerRecorder: two recording tracks (0 = GUITAR = AMPSURD's output, 1 = INPUT 2 = the interface's other input, raw).
+  Each track has its own clips / punch-ins / composite / VOL / PAN / ARM. GUITAR is armed at start, INPUT 2 by hand.
+  REC records the armed tracks; tracks recorded together = one undo step. An armed INPUT 2 is heard (VOL, PAN) and
+  recorded with its PAN. INPUT 2 is lined up without AMPSURD's latency (device + limiter + OFFSET only). ARM cannot
+  change while recording. Export / video / BOUNCE mix both tracks; GUITAR ONLY / GUITAR + BACKING are now WITHOUT
+  BACKING / WITH BACKING. A video take replaces the armed tracks only.
+- Processor: the other input channel goes to the player as INPUT 2 when it is chosen (sanitised like the guitar).
+  Standalone: INPUT 2 = any input of the interface, chosen by clicking INPUT 2 in the timeline (menu of the device's
+  inputs); both device inputs are opened, the guitar stays the guitar (rank stored as before). Setting "playerInput2"
+  in AMPSURD.settings. The "Guitar on input 2?" hint is off while INPUT 2 is in use.
+- UI: timeline with three tracks (BACKING, GUITAR, INPUT 2), ARM circle (red = armed), PAN per track, X per track,
+  INPUT 2 VOL + meter (live input while armed). Rows a little more compact; the backing's REMOVE button is gone (its X
+  does it). R / Ctrl+R (Cmd+R on Mac) = REC and open the player; Space = STOP while playing / recording; the camera
+  window forwards its keys to the same handler.
+- Tests: recorder_test ALL PASS (new: INPUT 2 together - both tracks' notes exactly on the clicks, ARM defaults,
+  monitoring only when armed, ARM locked while recording; INPUT 2 after the guitar - guitar take kept and heard;
+  UNDO / BOUNCE; keys Ctrl+R, R, Space). ui_snapshot: new 19c_player_input2.png + PLAYER INPUT 2 PASS, DELETE BOXES
+  updated to three tracks; the 4 known capture-dependent failures (lstm.nam) unchanged. Standalone builds on Linux.
+- Not tested: a real audio interface with two inputs (Windows / Mac); the camera window keys with a real camera.
+
+---
+
 ## 2026-11-10 — Session 5g: CLOSE is red - Claude (Opus 5.5)
 
 - Owner: the CLOSE button of the middle section red, like MUTE when active. New button property "redAlways" (Theme.cpp:

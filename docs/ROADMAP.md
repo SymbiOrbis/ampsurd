@@ -84,6 +84,10 @@ preset whose files moved is found again by file name (next to the preset, then i
 
 ## 3k. Metronome in the recorder — IMPLEMENTED 2026-10-17, awaiting test
 
+## 3k2. Recorder INPUT 2 track + REC / STOP keys — IMPLEMENTED 2026-11-12, awaiting test with a real interface
+A second recording track for another input of the interface (mic, keyboard...), ARM per track (GUITAR armed by
+default), recorded together with the guitar or one after the other; R / Ctrl+R = REC, Space = STOP (also video).
+
 ## 3l. Preset banks for MIDI pedals — PROPOSED 2026-10-17 (waiting for the owner's pedal details)
 Bank = sub-folder of the preset folder; footswitch actions Bank up / down and Preset 1..N of the bank;
 standard Bank Select (CC 0 / 32) + Program Change; banks as groups in the preset menu; header shows

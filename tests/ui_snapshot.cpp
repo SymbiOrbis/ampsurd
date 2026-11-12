@@ -1910,15 +1910,18 @@ int main(int argc, char** argv)
             collect(*ed);
             pl->renderNow();
             const bool hadTake = pl->hasTake();
-            bool ok = boxes.size() == 2 && hadTake && findButton("CLEAR TAKE") == nullptr;
+            // three tracks: BACKING, GUITAR, INPUT 2 (owner 2026-11-12)
+            ampsurd::ui::DeleteBox* guitarBox = nullptr;
+            for (auto* b : boxes) if (b->getTooltip().contains("guitar track")) guitarBox = b;
+            bool ok = boxes.size() == 3 && guitarBox != nullptr && hadTake && findButton("CLEAR TAKE") == nullptr;
             if (ok)
             {
-                boxes[1]->onClick(); // GUITAR (the second track)
+                guitarBox->onClick(); // GUITAR
                 auto* no = findButton("CANCEL");
                 ok = no != nullptr && findButton("DELETE") != nullptr;
                 if (no) no->onClick();
                 ok = ok && pl->hasTake() && findButton("DELETE") == nullptr;
-                boxes[1]->onClick();
+                guitarBox->onClick();
                 save(*ed, out.getChildFile("19b_player_delete.png"));
                 if (auto* yes = findButton("DELETE")) yes->onClick();
                 pl->renderNow();
@@ -1961,6 +1964,38 @@ int main(int argc, char** argv)
             std::cout << (u1 && u2 && u3 && r2 && r3 ? "[PASS]" : "[FAIL]") << " ONE HISTORY: sound, take deleted, sound -> Ctrl+Z x3 in reverse order, "
                       << "Ctrl+Y x3 forward (" << u1 << u2 << u3 << r2 << r3 << ")\n";
             setP(*proc, "output", o0);
+        }
+        // INPUT 2: a second interface input on its own track, armed, recorded together with the guitar
+        {
+            pl->stop();
+            pl->clearTake();
+            pl->renderNow();
+            pl->toStart();
+            pl->setInput2Available(true);
+            pl->setArmed(1, true);
+            pl->record();
+            for (int k = 0; k < 48000 * 3 / 256; ++k)
+            {
+                buf.clear();
+                for (int i = 0; i < buf.getNumSamples(); ++i)
+                {
+                    const double t = (double) (k * 256 + i) / 48000.0;
+                    buf.setSample(0, i, (float) (0.3 * std::sin(2 * juce::MathConstants<double>::pi * 196 * t) * std::exp(-3.0 * std::fmod(t, 0.5))));
+                    buf.setSample(1, i, (float) (0.25 * std::sin(2 * juce::MathConstants<double>::pi * 330 * t) * (std::fmod(t, 1.0) < 0.6 ? 1.0 : 0.05)));
+                }
+                proc->processBlock(buf, midi);
+            }
+            pl->stop();
+            pl->renderNow();
+            pl->setPositionSeconds(1.2);
+            e->refreshAll();
+            save(*ed, out.getChildFile("19c_player_input2.png"));
+            const bool ok = pl->hasTake(0) && pl->hasTake(1) && pl->isArmed(0) && pl->isArmed(1);
+            std::cout << (ok ? "[PASS]" : "[FAIL]") << " PLAYER INPUT 2: its own track with ARM, recorded together with the guitar\n";
+            pl->setArmed(1, false);
+            pl->setInput2Available(false);
+            pl->clearTake();
+            pl->renderNow();
         }
         proc->setNonRealtime(false);
         wavFile.deleteFile();

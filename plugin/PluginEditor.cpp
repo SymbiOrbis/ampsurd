@@ -164,6 +164,7 @@ AmpsurdEditor::AmpsurdEditor(AmpsurdProcessor& p) : AudioProcessorEditor(&p), pr
     if (content.playerPanel)
     {
         content.playerPanel->onClose = [this] { showPlayer(false); };
+        content.playerPanel->onKey = [this](const juce::KeyPress& k) { return keyPressed(k); };
         content.playerButton.onClick = [this] { showPlayer(!playerOpen); };
     }
     content.master.onFrankClick = [this] { frankensteinPressed(); };
@@ -221,14 +222,22 @@ bool AmpsurdEditor::keyPressed(const juce::KeyPress& key)
     const auto st = pl->getState();
     if (key == juce::KeyPress::spaceKey)
     {
+        // Space: STOP while playing or recording (also a VIDEO take: the panel finishes it), otherwise PLAY
         if (st == S::playing || st == S::recording) pl->stop();
         else pl->play(); // also CONTINUE after a pause
         return true;
     }
     const auto c = juce::CharacterFunctions::toLowerCase(key.getTextCharacter());
-    if (c == 'r' && !key.getModifiers().isAnyModifierKeyDown())
+    // R or Ctrl+R (Cmd+R on a Mac): REC - audio take / punch in / out, or a VIDEO take (owner 2026-11-12: both keys).
+    // With Ctrl the key code is used (Ctrl+R gives no text character on Windows).
+    const bool ctrl = mods.isCtrlDown() || mods.isCommandDown();
+    if ((c == 'r' && !mods.isAnyModifierKeyDown()) || (ctrl && !mods.isAltDown() && kc == 'r'))
     {
-        if (content.playerPanel) content.playerPanel->recordPressed(); // take / punch in / out, or a VIDEO take
+        if (content.playerPanel)
+        {
+            if (!playerOpen) showPlayer(true); // you see what is recorded
+            content.playerPanel->recordPressed();
+        }
         else pl->record();
         return true;
     }

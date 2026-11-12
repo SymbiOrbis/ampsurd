@@ -21,6 +21,10 @@ VIDEO in the player).
 
 ## Next version (not released yet)
 
+- PLAYER: a second recording track, INPUT 2 - a mic, a keyboard or another instrument on another input of your audio
+  interface (click INPUT 2 to choose the input). Each track has an ARM switch: GUITAR is armed from the start, INPUT 2
+  when you arm it. Record both together, or the guitar first and INPUT 2 later (GUITAR's ARM off). Own VOL and PAN.
+- PLAYER keys: R or Ctrl+R (Cmd+R on Mac) starts recording (also a video take), Space stops it.
 - CLOSE in the middle section (EDIT, IR, IR map, GLOBAL, PLAYER, ROOT, DOUBLER, LOG) is red, like an active MUTE.
 - LOG: each dropout now says where the time went - for each amp its pedals, capture (GAIN captures), tone + cabinet
   IR and EQ, plus mixing, input / PITCH, effects and output (the biggest parts first).

@@ -637,12 +637,24 @@ public:
     void paintButton(juce::Graphics&, bool highlighted, bool down) override;
 };
 
+// ARM of a recording track: a round switch, red when armed (REC records the armed tracks)
+class ArmButton final : public juce::Button
+{
+public:
+    ArmButton() : juce::Button("arm") { setClickingTogglesState(false); setWantsKeyboardFocus(false); }
+    void paintButton(juce::Graphics&, bool highlighted, bool down) override;
+};
+
 class Timeline final : public juce::Component, private juce::ScrollBar::Listener
 {
 public:
     explicit Timeline(PlayerRecorder&);
-    // the X before each track: the panel deletes (backing: removeBacking, guitar: clearTake - UNDO brings it back)
-    std::function<void()> onDeleteBacking, onDeleteGuitar;
+    // the X before each track: the panel deletes (backing: removeBacking, a recording track: clearTake(track) - UNDO brings it back)
+    std::function<void()> onDeleteBacking;
+    std::function<void(int track)> onDeleteTrack;
+    std::function<void(int track)> onArm;     // the ARM switch of a recording track was clicked
+    std::function<void()> onInput2Source;     // the INPUT 2 name was clicked: choose the interface input
+    std::function<juce::String()> input2SourceName; // the interface input INPUT 2 records ("" = none chosen)
     void refreshDeleteBoxes(bool recording); // ~30 Hz from the panel: enabled when there is something to delete
     void paint(juce::Graphics&) override;
     void resized() override;
@@ -659,27 +671,31 @@ public:
     void followPlayhead();
 
 private:
-    struct EdgeHit { int clip = -1; bool start = true; };
+    static constexpr int kTracks = PlayerRecorder::kTracks;
+    struct EdgeHit { int track = 0, clip = -1; bool start = true; };
     EdgeHit hitEdge(juce::Point<int>) const;
     double xToTime(float x) const { return viewStart + (double) (x - (float) laneArea().getX()) * secondsPerPixel; }
     float timeToX(double t) const { return (float) laneArea().getX() + (float) ((t - viewStart) / secondsPerPixel); }
     double centreSeconds() const { return viewStart + 0.5 * secondsPerPixel * laneArea().getWidth(); }
     static constexpr int kBoxW = 22;   // the delete box right before each track
-    static constexpr int kLabelW = 100; // left column: track names, the GUITAR track's PAN, the delete boxes next to the tracks
-    void askDelete(int which);         // 0 backing, 1 guitar: shows DELETE / CANCEL over that track
+    static constexpr int kLabelW = 176; // left column: ARM, track name, PAN, the delete boxes next to the tracks
+    void askDelete(int which);         // 0 backing, 1 + track: shows DELETE / CANCEL over that track
     juce::Rectangle<int> laneArea() const { return getLocalBounds().withTrimmedLeft(kLabelW).withTrimmedBottom(kScrollH + 4); }
     static constexpr int kScrollH = 8; // half of the first version (owner, 2026-10-22)
     void scrollBarMoved(juce::ScrollBar*, double newRangeStart) override;
     void updateScrollBar();
     juce::Rectangle<int> rulerArea() const { return laneArea().removeFromTop(16); }
     juce::Rectangle<int> backingLane() const;
-    juce::Rectangle<int> guitarLane() const;
+    juce::Rectangle<int> trackLane(int track) const; // 0 GUITAR, 1 INPUT 2
+    juce::Rectangle<int> nameArea(int track) const;  // the track's name in the left column (INPUT 2: click = choose the input)
     void clampView();
 
     PlayerRecorder& player;
-    juce::ScrollBar scroll { false }; // wide horizontal bar under the guitar track: drag to move along the song
-    juce::Slider guitarPan;           // PAN of the GUITAR track (under its name)
-    DeleteBox delBacking, delGuitar;
+    juce::ScrollBar scroll { false }; // wide horizontal bar under the tracks: drag to move along the song
+    std::array<juce::Slider, kTracks> pans; // PAN of each recording track (next to its name)
+    std::array<ArmButton, kTracks> arms;
+    DeleteBox delBacking;
+    std::array<DeleteBox, kTracks> delTracks;
     juce::TextButton confirmYes { "DELETE" }, confirmNo { "CANCEL" };
     int confirming = -1;              // which track asks "delete?" (-1 none)
     double viewStart = 0.0, secondsPerPixel = 0.02;
@@ -698,6 +714,7 @@ public:
     void refresh();
     void recordPressed(bool fromCameraWindow = false); // REC (player, camera window) and the R key: audio take / punch, or a VIDEO take (VIDEO on)
     std::function<void()> onClose;
+    std::function<bool(const juce::KeyPress&)> onKey; // the main window's keys, also from the camera window
 
 private:
     void loadBacking();
@@ -707,6 +724,9 @@ private:
     void finishVideoTake();   // after a video take stopped: the camera file joins the take
     void startVideoTake();    // camera file + recording from STOP
     void setStatus(const juce::String& s);
+    void armPressed(int track);        // the ARM switch of GUITAR / INPUT 2
+    void chooseInput2(bool armAfter);  // which interface input INPUT 2 records (a menu)
+    juce::String input2Name() const;   // its name, "" = none chosen / not available
 
     AmpsurdProcessor& proc;
     PlayerRecorder& player;
@@ -715,7 +735,7 @@ private:
                      zoomOutButton { "-" }, zoomInButton { "+" }, fitButton { "FIT" },
                      loadButton { "LOAD BACKING" }, removeButton { "REMOVE" }, saveButton { "SAVE AS..." }, bounceButton { "BOUNCE" },
                      closeButton { "CLOSE" };
-    juce::Slider backVol, takeVol, offset;
+    juce::Slider backVol, takeVol, input2Vol, offset;
     juce::ComboBox formatBox, rateBox, contentBox;
     // metronome row: CLICK, tempo (shared with delay SYNC), TAP, time signature, volume, count-in
     void applyMetronome();
@@ -727,8 +747,9 @@ private:
     juce::Rectangle<int> beatArea;
     std::unique_ptr<juce::FileChooser> chooser;
     juce::String status;
-    float backLevel = 0.0f, takeLevel = 0.0f;
-    juce::Rectangle<int> backMeter, takeMeter, statusArea, infoArea;
+    float backLevel = 0.0f, takeLevel = 0.0f, input2Level = 0.0f;
+    juce::Rectangle<int> backMeter, takeMeter, input2Meter, statusArea, infoArea;
+    int input2Check = 0;               // the INPUT 2 device input is checked about once a second
     // VIDEO takes (camera in its own window)
     juce::TextButton videoButton { "VIDEO" };
     VideoCapture camera;

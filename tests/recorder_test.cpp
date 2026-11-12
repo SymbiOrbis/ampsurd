@@ -697,6 +697,137 @@ int main()
                   + " s), CLEAR TAKE drops it");
     }
 
+    // INPUT 2 (owner 2026-11-12): a second interface input (mic, keyboard...) on its own track. GUITAR is armed by
+    // default, INPUT 2 by hand. Both armed = recorded together; GUITAR off + INPUT 2 on = recorded to the guitar take.
+    // INPUT 2 does not pass through AMPSURD: it is lined up without AMPSURD's latency.
+    {
+        pl->stop();
+        pl->clearTake();
+        pl->removeBacking();
+        pl->toStart();
+        auto run2 = [&](double seconds, const std::function<float(juce::int64)>& guitar, const std::function<float(juce::int64)>& in2) {
+            const int total = (int) (seconds * sr);
+            juce::AudioBuffer<float> out(2, total);
+            static juce::int64 clock2 = 0;
+            for (int p = 0; p < total; p += block)
+            {
+                const int n = std::min(block, total - p);
+                juce::AudioBuffer<float> chunk(2, n);
+                for (int i = 0; i < n; ++i)
+                {
+                    chunk.setSample(0, i, guitar ? guitar(clock2 + i) : 0.0f);
+                    chunk.setSample(1, i, in2 ? in2(clock2 + i) : 0.0f);
+                }
+                proc->processBlock(chunk, midi);
+                out.copyFrom(0, p, chunk, 0, 0, n);
+                out.copyFrom(1, p, chunk, 1, 0, n);
+                clock2 += n;
+            }
+            return out;
+        };
+        const bool defaults = pl->isArmed(0) && !pl->isArmed(1);
+        pl->setInput2Available(true);
+        const bool compOk = std::abs(pl->getCompensationMs(1) - (deviceLatency + limLat) * 1000.0 / sr) < 0.01 && pl->getCompensationMs(0) > pl->getCompensationMs(1);
+
+        // monitoring: an armed INPUT 2 is heard, a disarmed one is not
+        auto tone2 = [&](juce::int64 t) { return 0.2f * (float) std::sin(2 * juce::MathConstants<double>::pi * 440 * (double) t / sr); };
+        const float heardOff = run2(0.3, nullptr, tone2).getMagnitude(0, (int) (0.2 * sr), (int) (0.1 * sr));
+        pl->setArmed(1, true);
+        const float heardOn = run2(0.3, nullptr, tone2).getMagnitude(0, (int) (0.2 * sr), (int) (0.1 * sr));
+
+        // together: the musician plays guitar and INPUT 2 exactly on the backing clicks they hear
+        check(pl->loadBacking(back48).isEmpty(), "INPUT 2: backing loaded");
+        run2(0.05, nullptr, nullptr);
+        pl->record();
+        juce::int64 zero = -1;
+        auto onClick = [&](juce::int64 clock, float v) {
+            if (zero < 0) zero = clock;
+            const juce::int64 heardAt = clock - zero - limLat - deviceLatency;
+            return (heardAt > 0 && heardAt % 24000 == 0) ? v : 0.0f;
+        };
+        run2(2.6, [&](juce::int64 c) { return onClick(c, 0.3f); }, [&](juce::int64 c) { return onClick(c, 0.2f); });
+        const bool armLocked = !pl->setArmed(1, false) && pl->isArmed(1); // not while recording
+        pl->stop();
+        pl->renderNow();
+        const bool both = pl->hasTake(0) && pl->hasTake(1) && pl->getClips(0).size() == 1 && pl->getClips(1).size() == 1;
+        auto notesOf = [&](int track) {
+            pl->setTakeGainDb(-100.0f, 1 - track); // the other track silent
+            juce::AudioBuffer<float> b;
+            int off = 0;
+            pl->renderMix(false, b, off);
+            pl->setTakeGainDb(0.0f, 1 - track);
+            juce::String w;
+            auto pk = peaks(b, 0.1f);
+            bool ok = pk.size() >= 3;
+            for (size_t k = 0; k < pk.size() && k < 4; ++k) { w << (pk[k] + off) << " "; ok = ok && pk[k] + off == (int) (24000 * (k + 1)); }
+            return std::make_pair(ok, w);
+        };
+        const auto g = notesOf(0), i2 = notesOf(1);
+        check(defaults && compOk && heardOff < 1e-4f && std::abs(heardOn - 0.2f) < 0.01f && both && armLocked && g.first && i2.first,
+              "INPUT 2 together: GUITAR armed / INPUT 2 not by default (" + juce::String((int) defaults) + "), INPUT 2 heard only when armed ("
+                  + juce::String(heardOff, 4) + " / " + juce::String(heardOn, 3) + "), both tracks recorded (" + juce::String((int) both)
+                  + "), ARM locked while recording, notes on the clicks: guitar " + g.second + "/ INPUT 2 " + i2.second
+                  + "(INPUT 2 lined up without AMPSURD's latency: " + juce::String((int) compOk) + ")");
+
+        // one after the other: GUITAR off, INPUT 2 again (a new take) while the guitar take plays
+        pl->clearTake(1);
+        pl->renderNow();
+        const bool guitarKept = pl->hasTake(0) && !pl->hasTake(1);
+        pl->setArmed(0, false);
+        pl->toStart();
+        run2(0.05, nullptr, nullptr);
+        pl->record();
+        zero = -1;
+        const auto o = run2(2.6, nullptr, [&](juce::int64 c) { return onClick(c, 0.2f); });
+        pl->stop();
+        pl->renderNow();
+        const auto i2b = notesOf(1);
+        const bool guitarSame = pl->getClips(0).size() == 1 && pl->hasTake(1);
+        // what was heard while recording: backing click + the guitar take (0.5 + 0.3) at 0.5 s
+        const float heardTake = std::abs(o.getSample(0, 24000 + limLat));
+        check(guitarKept && guitarSame && i2b.first && std::abs(heardTake - 0.8f) < 0.03f,
+              "INPUT 2 after the guitar: GUITAR disarmed keeps its take (" + juce::String((int) guitarSame) + "), heard while recording ("
+                  + juce::String(heardTake, 3) + " = 0.5 + 0.3), INPUT 2 notes on the clicks " + i2b.second);
+
+        // UNDO takes back the INPUT 2 take only; BOUNCE mixes both tracks into the backing
+        proc->undo();
+        pl->renderNow();
+        const bool undone = pl->hasTake(0) && !pl->hasTake(1);
+        proc->redo();
+        pl->renderNow();
+        const auto berr = pl->bounceNow();
+        check(undone && berr.isEmpty() && !pl->hasAnyTake() && pl->hasBacking(),
+              "INPUT 2: UNDO takes back only the INPUT 2 take; BOUNCE puts both tracks into the backing " + berr);
+
+        // keys: R and Ctrl+R start recording, Space stops it
+        {
+            pl->removeBacking();
+            pl->clearTake();
+            pl->setArmed(0, true);
+            pl->setArmed(1, false);
+            pl->toStart();
+            std::unique_ptr<juce::AudioProcessorEditor> ed(proc->createEditor());
+            using S = PlayerRecorder::State;
+            const bool ctrlR = ed->keyPressed(juce::KeyPress('r', juce::ModifierKeys::commandModifier, 0)) && pl->getState() == S::recording;
+            run2(0.3, tone2, nullptr);
+            const bool spaceStops = ed->keyPressed(juce::KeyPress(juce::KeyPress::spaceKey)) && pl->getState() == S::stopped;
+            pl->renderNow();
+            const bool recorded = pl->hasTake(0);
+            pl->clearTake();
+            pl->renderNow();
+            const bool rKey = ed->keyPressed(juce::KeyPress('r', {}, 'r')) && pl->getState() == S::recording;
+            run2(0.3, tone2, nullptr);
+            const bool spaceStops2 = ed->keyPressed(juce::KeyPress(juce::KeyPress::spaceKey)) && pl->getState() == S::stopped;
+            check(ctrlR && spaceStops && recorded && rKey && spaceStops2,
+                  "KEYS: Ctrl+R and R start recording, Space stops it (" + juce::String((int) ctrlR) + juce::String((int) spaceStops)
+                      + juce::String((int) recorded) + juce::String((int) rKey) + juce::String((int) spaceStops2) + ")");
+            ed.reset();
+        }
+        pl->setInput2Available(false);
+        pl->clearTake();
+        pl->renderNow();
+    }
+
     proc.reset();
     tmp.deleteRecursively();
     std::cout << (failures == 0 ? "\nALL PASS\n" : "\n" + juce::String(failures) + " FAILURE(S)\n");

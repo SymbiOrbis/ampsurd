@@ -648,6 +648,7 @@ void AmpsurdProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     outBufferR.assign((size_t) maxBlock, 0.0);
     dryBuffer.assign((size_t) maxBlock, 0.0);
     rawBuffer.assign((size_t) maxBlock, 0.0f);
+    input2Buffer.assign((size_t) maxBlock, 0.0f);
     gate.prepare(sampleRate);
     pitch.prepare(sampleRate);
     tuner.prepare(sampleRate);
@@ -931,8 +932,20 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
             L[i] = ((1.0 - bypassMix) * L[i] + dry) * (1.0 - muteMix);
             R[i] = ((1.0 - bypassMix) * R[i] + dry) * (1.0 - muteMix);
         }
-        // standalone: record the guitar, add backing track + take, limit the sum
-        if (player) player->process(L, R, n, latency, isNonRealtime());
+        // standalone: record the guitar (and INPUT 2), add backing track + takes, limit the sum
+        if (player)
+        {
+            // INPUT 2 of the player = the interface's other input (a mic, a keyboard...), as it comes in
+            const float* in2 = nullptr;
+            if (numIn > 1 && player->isInput2Available())
+            {
+                const float* src = buffer.getReadPointer(1 - inCh) + start;
+                for (int i = 0; i < n; ++i)
+                    input2Buffer[(size_t) i] = std::isfinite(src[i]) ? juce::jlimit(-64.0f, 64.0f, src[i]) : 0.0f;
+                in2 = input2Buffer.data();
+            }
+            player->process(L, R, n, latency, isNonRealtime(), in2);
+        }
         {
             // MUTE: everything (amps, effects, player) to silence
             const double target = outputMuted.load(std::memory_order_relaxed) ? 1.0 : 0.0;

@@ -239,6 +239,8 @@ public:
         std::function<juce::StringArray()> inputNames;   // the device's input channel names
         std::function<int()> guitarDeviceInput;          // index into inputNames, -1 = unknown
         std::function<void(int)> setGuitarDeviceInput;   // makes that device input the guitar input
+        std::function<int()> input2DeviceInput;          // the player's INPUT 2 (index into inputNames), -1 = none
+        std::function<void(int)> setInput2DeviceInput;   // -1 = none
         std::function<void()> showAudioSettings;
     };
     void setStandaloneAudio(StandaloneAudio a) { standaloneAudio = std::move(a); }
@@ -479,6 +481,7 @@ private:
     std::atomic<float>* pitchOnParam = nullptr, *pitchSemiParam = nullptr, *pitchCentsParam = nullptr;
     ampsurd::PitchDetector tuner;
     std::vector<float> rawBuffer;
+    std::vector<float> input2Buffer; // the player's INPUT 2 (standalone), sanitised
     std::atomic<bool> tunerVisible { false };
     double muteMix = 0.0;
     double outMuteMix = 0.0; // MUTE (master row): whole output to silence, 20 ms fade

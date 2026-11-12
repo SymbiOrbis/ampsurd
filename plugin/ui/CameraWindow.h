@@ -28,6 +28,8 @@ public:
     void setStatus(const juce::String& s);      // the player's status line, shown here too
     void setSoundChoice(int id);                // 1 = GUITAR + BACKING, 2 = GUITAR ONLY (as in the player)
     std::function<void()> onRec, onShowFile;    // REC / STOP, SHOW FILE (the player panel does the work)
+    std::function<bool(const juce::KeyPress&)> onKey; // R / Ctrl+R / Space here too: the main window's keys
+    bool keyPressed(const juce::KeyPress& k) override { return onKey && onKey(k); }
     std::function<void(int)> onSoundChoice;
     std::function<bool()> replaceArmed;         // REC pressed once with a take there: shows REPLACE?
     std::function<bool()> hasSavedFile;         // SHOW FILE is enabled
@@ -72,6 +74,7 @@ public:
     ~CameraWindow() override;
     void closeButtonPressed() override { if (closed) closed(); }
     CameraView& view() { return *contentView; }
+    bool keyPressed(const juce::KeyPress& k) override { return contentView != nullptr && contentView->keyPressed(k); }
 
 private:
     LookAndFeel lnf; // a window of its own: AMPSURD's look set here

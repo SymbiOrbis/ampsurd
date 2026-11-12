@@ -49,7 +49,8 @@ CameraView::CameraView(VideoCapture& c, PlayerRecorder& p) : camera(c), player(p
     addAndMakeVisible(offsetSlider);
 
     addAndMakeVisible(recButton);
-    recButton.setTooltip("Starts a video take from the beginning (with count-in if it is on). Press again to stop. Shortcut: R");
+    recButton.setTooltip("Starts a video take from the beginning (with count-in if it is on), recording the armed tracks. Press again to stop. "
+                         "Keys: R or Ctrl+R start, Space stops");
     recButton.onClick = [this] { if (onRec) onRec(); };
     addAndMakeVisible(playButton);
     playButton.setTooltip("Plays the video take with AMPSURD's sound (the same as the saved video will have). Again: stop");
@@ -62,10 +63,10 @@ CameraView::CameraView(VideoCapture& c, PlayerRecorder& p) : camera(c), player(p
         else if (onShowFile) onShowFile();
     };
     addAndMakeVisible(soundBox);
-    soundBox.addItem("GUITAR + BACKING", 1);
-    soundBox.addItem("GUITAR ONLY", 2);
+    soundBox.addItem("WITH BACKING", 1);
+    soundBox.addItem("WITHOUT BACKING", 2);
     soundBox.setSelectedId(1, juce::dontSendNotification);
-    soundBox.setTooltip("The sound of the saved videos: guitar with the backing track, or guitar only (every take is saved automatically)");
+    soundBox.setTooltip("The sound of the saved videos: your recorded tracks with the backing track, or without it (every take is saved automatically)");
     soundBox.onChange = [this] { if (onSoundChoice) onSoundChoice(soundBox.getSelectedId()); };
     addAndMakeVisible(watchBox);
     watchBox.setTooltip("What PLAY shows here: the last take (with AMPSURD's sound, before or after saving) or one of your saved videos");
