@@ -29,6 +29,10 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
   UNDO / BOUNCE; keys Ctrl+R, R, Space). ui_snapshot: new 19c_player_input2.png + PLAYER INPUT 2 PASS, DELETE BOXES
   updated to three tracks; the 4 known capture-dependent failures (lstm.nam) unchanged. Standalone builds on Linux.
 - Not tested: a real audio interface with two inputs (Windows / Mac); the camera window keys with a real camera.
+- Owner (same night): a video take always started at the song's beginning. Now it starts at the playhead (the vertical
+  line; while playing: where the song is), from the player or the camera window alike. The sync (frame 0 on the
+  timeline), the camera PLAY and the MP4 (sound before frame 0 is cut) already worked from any position. Not tested
+  with a real camera here.
 
 ---
 

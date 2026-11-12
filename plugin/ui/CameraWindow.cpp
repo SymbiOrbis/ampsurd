@@ -49,7 +49,7 @@ CameraView::CameraView(VideoCapture& c, PlayerRecorder& p) : camera(c), player(p
     addAndMakeVisible(offsetSlider);
 
     addAndMakeVisible(recButton);
-    recButton.setTooltip("Starts a video take from the beginning (with count-in if it is on), recording the armed tracks. Press again to stop. "
+    recButton.setTooltip("Starts a video take at the playhead - where the vertical line is in the player's timeline (with count-in if it is on), recording the armed tracks. Press again to stop. "
                          "Keys: R or Ctrl+R start, Space stops");
     recButton.onClick = [this] { if (onRec) onRec(); };
     addAndMakeVisible(playButton);

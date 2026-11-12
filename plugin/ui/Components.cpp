@@ -2742,7 +2742,7 @@ PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), pla
     videoButton.setEnabled(VideoCapture::isSupported());
     videoButton.setTooltip(VideoCapture::isSupported()
                                ? juce::String("VIDEO on: REC also films you with the computer's camera (its own window). A video take is one "
-                                              "continuous take from STOP; SAVE AS... -> MP4 VIDEO saves it with AMPSURD's sound")
+                                              "continuous take from the playhead (click in the timeline to choose where); SAVE AS... -> MP4 VIDEO saves it with AMPSURD's sound")
                                : juce::String("Video recording is not available on this system"));
     timeline.onDeleteTrack = [this](int t) {
         if (videoRecording) return;
@@ -3194,9 +3194,12 @@ void PlayerPanel::startVideoTake()
 {
     using S = PlayerRecorder::State;
     if (player.isBusy() || videoSaving) { setStatus("Still saving - REC works again in a moment."); return; }
+    // a video take is one continuous take from the playhead (owner 2026-11-12: anywhere in the song, not only
+    // from the start); while playing: from where the song is now
+    const double at = player.getPositionSeconds();
     if (player.getState() != S::stopped) player.stop();
     player.renderNow(); // a take that was just cleared must really be gone, or REC would punch into it
-    player.toStart(); // a video take is one continuous take from the start of the song
+    player.setPositionSeconds(at);
     const auto err = camera.startRecording(player.getRecordingsFolder().getChildFile("Takes"));
     if (err.isNotEmpty()) { setStatus(err); return; }
     videoRecording = true;
@@ -3207,6 +3210,7 @@ void PlayerPanel::startVideoTake()
 
 void PlayerPanel::recordPressed(bool fromCameraWindow)
 {
+    juce::ignoreUnused(fromCameraWindow); // REC in the camera window and in the player do the same since 2026-11-12
     if (player.isBusy())
     {
         setStatus("Still saving / bouncing (" + juce::String(juce::roundToInt(player.getProgress() * 100.0f)) + " %) - REC works again when it is done.");
@@ -3234,7 +3238,6 @@ void PlayerPanel::recordPressed(bool fromCameraWindow)
     {
         if (cameraWindow != nullptr) cameraWindow->view().stopPlayback();
         if (st == S::recording || st == S::pausedRec) { player.stop(); return; } // a video take ends with REC or STOP
-        if (player.getState() != S::stopped && !fromCameraWindow) { setStatus("VIDEO: a video take starts from STOP (one continuous take)."); return; }
         if (!camera.isOpen()) { setStatus("VIDEO: no camera is open - see the camera window."); return; }
         const bool saved = player.takeHasVideo() && player.getTakeVideo() == savedTakeVideo;
         if (saved)
