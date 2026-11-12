@@ -2268,11 +2268,29 @@ Timeline::Timeline(PlayerRecorder& p) : player(p)
     scroll.setColour(juce::ScrollBar::trackColourId, raised);
     addAndMakeVisible(scroll);
 
+    auto panText = [](double v) {
+        const int p = juce::roundToInt(v);
+        return p == 0 ? juce::String("C") : (p < 0 ? "L" : "R") + juce::String(std::abs(p));
+    };
+    backPan.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+    backPan.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+    backPan.setRange(-100.0, 100.0, 1.0);
+    backPan.setValue(player.getBackingPan() * 100.0, juce::dontSendNotification);
+    backPan.setDoubleClickReturnValue(true, 0.0);
+    backPan.setWantsKeyboardFocus(false);
+    backPan.setPopupDisplayEnabled(true, true, nullptr);
+    backPan.textFromValueFunction = panText;
+    backPan.setTooltip("BALANCE of the backing track: turn left / right to hear more of its left / right side. Double-click: centre");
+    backPan.onValueChange = [this] { player.setBackingPan((float) backPan.getValue() / 100.0f); };
+    addAndMakeVisible(backPan);
+
     for (int t = 0; t < kTracks; ++t)
     {
         auto& pan = pans[(size_t) t];
-        pan.setSliderStyle(juce::Slider::LinearHorizontal);
+        pan.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
         pan.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+        pan.setPopupDisplayEnabled(true, true, nullptr);
+        pan.textFromValueFunction = panText;
         pan.setRange(-100.0, 100.0, 1.0);
         pan.setValue(player.getTakePan(t) * 100.0, juce::dontSendNotification);
         pan.setDoubleClickReturnValue(true, 0.0);
@@ -2287,9 +2305,11 @@ Timeline::Timeline(PlayerRecorder& p) : player(p)
         addAndMakeVisible(pan);
 
         auto& arm = arms[(size_t) t];
-        arm.setTooltip(t == 0 ? "ARM the GUITAR track: REC records it (on from the start). Switch it off to record only INPUT 2 to your guitar take"
+        arm.setTooltip(t == 0 ? "ARM the GUITAR track: REC records it (on from the start). Switch it off to record only INPUT 2 to your guitar take. "
+                                "While recording: switch it off / on to stop / start recording this track alone"
                               : "ARM INPUT 2 (a mic, a keyboard... on another input of your interface): REC records it - together with "
-                                "the guitar, or alone (GUITAR's ARM off). An armed INPUT 2 is heard");
+                                "the guitar, or alone (GUITAR's ARM off). An armed INPUT 2 is heard. While recording: switch it off / on to "
+                                "stop / start recording this track alone");
         arm.onClick = [this, t] { if (onArm) onArm(t); };
         addAndMakeVisible(arm);
 
@@ -2363,13 +2383,15 @@ void Timeline::refreshDeleteBoxes(bool recording)
         ok[t] = !recording && player.hasMaterial(t);
         delTracks[(size_t) t].setEnabled(ok[t]);
         auto& arm = arms[(size_t) t];
-        arm.setEnabled(!recording);
+        arm.setEnabled(true); // also while recording: that track alone punches in / out
         if (arm.getToggleState() != player.isArmed(t)) { arm.setToggleState(player.isArmed(t), juce::dontSendNotification); repaint(); }
         // the PAN can change elsewhere (tests, a future preset): follow it unless it is being dragged
         auto& pan = pans[(size_t) t];
         if (!pan.isMouseButtonDown() && std::abs(pan.getValue() - player.getTakePan(t) * 100.0) > 0.5)
             pan.setValue(player.getTakePan(t) * 100.0, juce::dontSendNotification);
     }
+    if (!backPan.isMouseButtonDown() && std::abs(backPan.getValue() - player.getBackingPan() * 100.0) > 0.5)
+        backPan.setValue(player.getBackingPan() * 100.0, juce::dontSendNotification);
     if ((confirming == 0 && !b) || (confirming >= 1 && !ok[confirming - 1])) askDelete(-1);
 }
 
@@ -2378,15 +2400,14 @@ void Timeline::resized()
     scroll.setBounds(getLocalBounds().withTrimmedLeft(kLabelW).removeFromBottom(kScrollH));
     const auto bl = backingLane();
     const int bs = juce::jlimit(10, 14, juce::jmin(bl.getHeight(), trackLane(0).getHeight()) - 2);
-    // right next to each track, centred on it (owner 2026-10-23)
-    delBacking.setBounds(kLabelW - bs - 4, bl.getCentreY() - bs / 2, bs, bs);
+    // right next to each track, centred on it (owner 2026-10-23); knobs in the strips (owner 2026-11-12)
+    delBacking.setBounds(stripCell(0, 6).withSizeKeepingCentre(bs, bs));
+    backPan.setBounds(stripCell(0, 2));
     for (int t = 0; t < kTracks; ++t)
     {
-        const auto lane = trackLane(t);
-        const int cy = lane.getCentreY();
-        arms[(size_t) t].setBounds(2, cy - 8, 16, 16);
-        pans[(size_t) t].setBounds(84, cy - 8, 42, 16);
-        delTracks[(size_t) t].setBounds(kLabelW - bs - 4, cy - bs / 2, bs, bs);
+        arms[(size_t) t].setBounds(stripCell(1 + t, 5).withSizeKeepingCentre(16, 16));
+        pans[(size_t) t].setBounds(stripCell(1 + t, 2));
+        delTracks[(size_t) t].setBounds(stripCell(1 + t, 6).withSizeKeepingCentre(bs, bs));
     }
     if (confirming >= 0)
     {
@@ -2415,27 +2436,41 @@ void Timeline::updateScrollBar()
     scroll.setCurrentRange(viewStart, span, juce::dontSendNotification);
 }
 
-// BACKING (a little lower) above GUITAR and INPUT 2
+// BACKING, GUITAR (PLAYER 1), INPUT 2 (PLAYER 2): three lanes of the same height (each has its strip of knobs)
 juce::Rectangle<int> Timeline::backingLane() const
 {
     auto r = laneArea().withTrimmedTop(18);
-    return r.removeFromTop((r.getHeight() - 8) * 26 / 100);
+    return r.removeFromTop((r.getHeight() - 8) / 3);
 }
 
 juce::Rectangle<int> Timeline::trackLane(int track) const
 {
     auto r = laneArea().withTrimmedTop(18);
-    r.removeFromTop((r.getHeight() - 8) * 26 / 100 + 4);
-    const int h = (r.getHeight() - 4) / 2;
+    const int h = (r.getHeight() - 8) / 3;
+    r.removeFromTop(h + 4);
     if (track == 0) return r.removeFromTop(h);
     r.removeFromTop(h + 4);
     return r;
 }
 
+juce::Rectangle<int> Timeline::stripCell(int lane, int column) const
+{
+    const auto l = laneRect(lane);
+    static constexpr int xs[] = { 4, 94, 124, 156, 164, 218, 0 };
+    static constexpr int ws[] = { 88, 28, 28, 6, 50, 18, 0 };
+    const int c = juce::jlimit(0, 6, column);
+    if (c == 6)
+    {
+        const int bs = juce::jlimit(10, 14, l.getHeight() - 2);
+        return { kLabelW - bs - 4, l.getY(), bs, l.getHeight() };
+    }
+    const int h = juce::jmin(l.getHeight(), c == 1 || c == 2 ? 28 : l.getHeight());
+    return { xs[c], l.getCentreY() - h / 2, ws[c], c == 4 ? juce::jmin(22, l.getHeight()) : h };
+}
+
 juce::Rectangle<int> Timeline::nameArea(int track) const
 {
-    const auto lane = trackLane(track);
-    return { 20, lane.getCentreY() - 9, 62, 18 };
+    return stripCell(1 + track, 0);
 }
 
 void Timeline::clampView()
@@ -2494,7 +2529,7 @@ Timeline::EdgeHit Timeline::hitEdge(juce::Point<int> p) const
 void Timeline::mouseMove(const juce::MouseEvent& e)
 {
     const auto h = hitEdge(e.getPosition());
-    const bool overName = nameArea(1).contains(e.getPosition());
+    const bool overName = nameArea(0).contains(e.getPosition()) || nameArea(1).contains(e.getPosition());
     if (h.clip != hover.clip || h.start != hover.start || h.track != hover.track)
     {
         hover = h;
@@ -2513,11 +2548,12 @@ void Timeline::mouseDown(const juce::MouseEvent& e)
 {
     using S = PlayerRecorder::State;
     const bool recording = player.getState() == S::recording || player.getState() == S::pausedRec;
-    if (nameArea(1).contains(e.getPosition()))
-    {
-        if (!recording && onInput2Source) onInput2Source(); // which interface input INPUT 2 records
-        return;
-    }
+    for (int t = 0; t < kTracks; ++t)
+        if (nameArea(t).contains(e.getPosition()))
+        {
+            if (!recording && onInputSource) onInputSource(t); // which interface input the track records
+            return;
+        }
     const auto h = hitEdge(e.getPosition());
     if (e.mods.isPopupMenu())
     {
@@ -2601,32 +2637,52 @@ void Timeline::paint(juce::Graphics& g)
     const auto st = player.getState();
     const bool recording = st == S::recording || st == S::pausedRec;
 
-    // labels: BACKING; per recording track ARM, name, PAN (value next to the slider)
-    g.setFont(Fonts::get().semibold(10.5f));
-    g.setColour(textDim);
-    g.drawText("BACKING", backingLane().withX(20).withWidth(kLabelW - kBoxW - 24), juce::Justification::centredLeft, false);
-    const juce::String src = input2SourceName ? input2SourceName() : juce::String();
-    for (int t = 0; t < kTracks; ++t)
+    // the strips: column titles in the ruler row, then per lane its name (+ the input it records) and meter
     {
-        const auto na = nameArea(t);
-        const bool armed = player.isArmed(t);
-        g.setFont(Fonts::get().semibold(10.5f));
-        g.setColour(armed ? text : textDim);
-        g.drawText(PlayerRecorder::trackName(t, player.isTwoPlayers()), na, juce::Justification::centredLeft, false);
-        if (t == 1)
-        {
-            // a small arrow: click to choose the interface input
-            const float ax = (float) na.getX() + 48.0f, ay = (float) na.getCentreY() - 1.5f;
-            juce::Path tri;
-            tri.addTriangle(ax, ay, ax + 7.0f, ay, ax + 3.5f, ay + 4.0f);
-            g.setColour(textDim);
-            g.fillPath(tri);
-        }
-        const int p = juce::roundToInt(pans[(size_t) t].getValue());
-        g.setFont(Fonts::get().regular(10.0f));
+        g.setFont(Fonts::get().semibold(9.0f));
         g.setColour(textFaint);
-        g.drawText(p == 0 ? juce::String("C") : (p < 0 ? "L" : "R") + juce::String(std::abs(p)),
-                   juce::Rectangle<int>(128, trackLane(t).getCentreY() - 7, 28, 14), juce::Justification::centredLeft, false);
+        const auto row = rulerArea();
+        auto title = [&](int col, const juce::String& t2) {
+            const auto c = stripCell(0, col);
+            g.drawText(t2, juce::Rectangle<int>(c.getCentreX() - 20, row.getY(), 40, row.getHeight()), juce::Justification::centred, false);
+        };
+        title(1, "VOL");
+        title(2, "PAN");
+        title(5, "ARM");
+        for (int lane = 0; lane < 1 + kTracks; ++lane)
+        {
+            const auto na = stripCell(lane, 0);
+            const bool armed = lane > 0 && player.isArmed(lane - 1);
+            const juce::String name = lane == 0 ? juce::String("BACKING") : PlayerRecorder::trackName(lane - 1, player.isTwoPlayers());
+            const juce::String src = lane == 0 ? juce::String() : (inputSourceName ? inputSourceName(lane - 1) : juce::String());
+            const bool two = na.getHeight() >= 24;
+            g.setFont(Fonts::get().semibold(10.5f));
+            g.setColour(lane == 0 || armed ? text : textDim);
+            g.drawText(name, two && lane > 0 ? na.withHeight(na.getHeight() / 2 + 2) : na, two && lane > 0 ? juce::Justification::bottomLeft : juce::Justification::centredLeft, true);
+            if (lane > 0 && two)
+            {
+                // the input (click: choose) with a small arrow
+                g.setFont(Fonts::get().regular(9.5f));
+                g.setColour(textFaint);
+                const auto sa = na.withTrimmedTop(na.getHeight() / 2 + 2).withTrimmedRight(10);
+                const juce::String shown = src.isNotEmpty() ? src : juce::String(lane == 1 ? "input" : "choose input");
+                g.drawText(shown, sa, juce::Justification::topLeft, true);
+                const float ax = (float) juce::jmin(sa.getRight(), sa.getX() + juce::GlyphArrangement::getStringWidthInt(Fonts::get().regular(9.5f), shown) + 4);
+                const float ay = (float) sa.getY() + 4.0f;
+                juce::Path tri;
+                tri.addTriangle(ax, ay, ax + 6.0f, ay, ax + 3.0f, ay + 3.5f);
+                g.fillPath(tri);
+            }
+            // the meter: a thin upright bar
+            const auto m = stripCell(lane, 3).reduced(0, 3);
+            g.setColour(line);
+            g.drawRect(m.toFloat(), 1.0f);
+            const float lvl = meterLevel ? meterLevel(lane) : 0.0f;
+            const float db = juce::Decibels::gainToDecibels(lvl, -60.0f);
+            const float h = juce::jlimit(0.0f, 1.0f, (db + 60.0f) / 60.0f) * (float) (m.getHeight() - 2);
+            g.setColour(db > -1.0f ? accent : textDim);
+            g.fillRect((float) m.getX() + 1.0f, (float) m.getBottom() - 1.0f - h, (float) m.getWidth() - 2.0f, h);
+        }
     }
 
     // ruler: a tick step that leaves >= 70 px between labels
@@ -2738,7 +2794,7 @@ void Timeline::paint(juce::Graphics& g)
             if (t == 0)
                 hint = "REC records the armed tracks. With a take: PLAY, then REC = punch in a correction, REC again = punch out. "
                        "Drag the edges of a recording to move its start / end - the joins are crossfaded.";
-            else if (src.isEmpty())
+            else if (const juce::String src = inputSourceName ? inputSourceName(1) : juce::String(); src.isEmpty())
                 hint = "INPUT 2: a mic, a keyboard... on another input of your interface. Click INPUT 2 (left) to choose the input, "
                        "then ARM it - recorded with the guitar, or alone.";
             else
@@ -2833,8 +2889,9 @@ PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), pla
         setStatus(juce::String(t == 0 ? "Guitar" : "INPUT 2") + " track deleted (Ctrl+Z brings it back).");
     };
     timeline.onArm = [this](int t) { armPressed(t); };
-    timeline.onInput2Source = [this] { chooseInput2(false); };
-    timeline.input2SourceName = [this] { return input2Name(); };
+    timeline.onInputSource = [this](int t) { if (t == 1) chooseInput2(false); else chooseGuitarInput(); };
+    timeline.inputSourceName = [this](int t) { return t == 1 ? input2Name() : guitarInputName(); };
+    timeline.meterLevel = [this](int lane) { return lane == 0 ? backLevel : lane == 1 ? takeLevel : input2Level; };
     timeline.onDeleteBacking = [this] {
         if (cameraWindow != nullptr) cameraWindow->view().stopPlayback();
         player.deleteBacking();
@@ -2883,8 +2940,25 @@ PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), pla
     takeVol.setTooltip("GUITAR VOL: the GUITAR track's level - the take when it plays, and your guitar on the monitors while "
                        "recording. The recording itself is not changed");
     setupDb(input2Vol, -40.0, 6.0, [this](float v) { player.setTakeGainDb(v, 1); }, player.getTakeGainDb(1), "dB");
+    // the track volumes are knobs in the tracks' strips (owner 2026-11-12), with LOAD (backing) and LISTEN (INPUT 2)
+    for (auto* k : { &backVol, &takeVol, &input2Vol })
+    {
+        k->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+        k->setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+        k->setPopupDisplayEnabled(true, true, nullptr);
+        k->setWantsKeyboardFocus(false);
+        timeline.addAndMakeVisible(*k);
+    }
+    backVol.setTooltip("VOL of the backing track. Double-click: 0 dB");
     input2Vol.setTooltip("INPUT 2 VOL: the INPUT 2 track's level - its take when it plays, and the live INPUT 2 while it is armed. "
                          "The recording itself is not changed");
+    loadButton.setButtonText("LOAD");
+    timeline.addAndMakeVisible(loadButton);
+    timeline.addAndMakeVisible(twoPlayersButton);
+    twoPlayersButton.setWantsKeyboardFocus(false);
+    twoPlayersButton.setTooltip("2 PLAYERS: a second guitarist plays into INPUT 2's input, through their own amps (P1 / P2 on the amp cards). "
+                                "Both are recorded together, each on their own track");
+    twoPlayersButton.onClick = [this] { if (onSetTwoPlayers) onSetTwoPlayers(!proc.isTwoPlayersOn()); };
     setupDb(offset, -50.0, 50.0, [this](float v) { player.setOffsetMs(v); }, player.getOffsetMs(), "ms");
     offset.setTooltip("Fine-tune where recordings land, if your audio driver reports its latency slightly wrong");
 
@@ -2905,7 +2979,7 @@ PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), pla
     po.applicationName = "AMPSURD"; po.filenameSuffix = ".settings"; po.osxLibrarySubFolder = "Application Support";
     juce::PropertiesFile pf(po);
     // INPUT 2 LISTEN: remembered on this computer
-    addAndMakeVisible(listenButton);
+    timeline.addAndMakeVisible(listenButton);
     listenButton.setWantsKeyboardFocus(false);
     listenButton.setClickingTogglesState(false);
     listenButton.setTooltip("LISTEN: hear INPUT 2 on your speakers / headphones while it is armed. Switch it off (MUTED) for a microphone "
@@ -3020,35 +3094,23 @@ void PlayerPanel::resized()
     transport.removeFromRight(14);
     infoArea = transport;
 
-    // compact rows: the timeline needs the room for three tracks (BACKING, GUITAR, INPUT 2)
+    // compact rows: the timeline needs the room for three tracks (BACKING, GUITAR, INPUT 2) and their strips
     auto save = r.removeFromBottom(24);
-    r.removeFromBottom(4);
-    auto mix = r.removeFromBottom(24);
     r.removeFromBottom(4);
     auto click = r.removeFromBottom(24);
     r.removeFromBottom(6);
     r.removeFromTop(2);
     timeline.setBounds(r);
 
-    // row: backing + track volumes / offset (the backing's REMOVE = the X next to its track)
-    {
-        auto row = mix;
-        loadButton.setBounds(row.removeFromLeft(118));
-        removeButton.setBounds({});
-        row.removeFromLeft(14);
-        backVol.setBounds(row.removeFromLeft(170).withTrimmedLeft(34));
-        backMeter = row.removeFromLeft(46).withSizeKeepingCentre(46, 8);
-        row.removeFromLeft(18);
-        takeVol.setBounds(row.removeFromLeft(214).withTrimmedLeft(74));
-        takeMeter = row.removeFromLeft(46).withSizeKeepingCentre(46, 8);
-        row.removeFromLeft(18);
-        input2Vol.setBounds(row.removeFromLeft(204).withTrimmedLeft(82));
-        input2Meter = row.removeFromLeft(46).withSizeKeepingCentre(46, 8);
-        row.removeFromLeft(4);
-        listenButton.setBounds(row.removeFromLeft(62));
-        row.removeFromLeft(12);
-        offset.setBounds(row.removeFromLeft(190).withTrimmedLeft(52));
-    }
+    // the strips left of the tracks: VOL knobs, LOAD (backing), LISTEN (INPUT 2) - in the timeline's coordinates
+    removeButton.setBounds({});
+    backVol.setBounds(timeline.stripCell(0, 1));
+    takeVol.setBounds(timeline.stripCell(1, 1));
+    input2Vol.setBounds(timeline.stripCell(2, 1));
+    loadButton.setBounds(timeline.stripCell(0, 4));
+    listenButton.setBounds(timeline.stripCell(2, 4));
+    twoPlayersButton.setBounds(4, 0, 82, 16); // the strips' title row
+    backMeter = takeMeter = input2Meter = {};
     // row: metronome
     {
         auto row = click;
@@ -3081,6 +3143,8 @@ void PlayerPanel::resized()
         row.removeFromLeft(6);
         bounceButton.setBounds(row.removeFromLeft(84));
         row.removeFromLeft(12);
+        offset.setBounds(row.removeFromRight(180).withTrimmedLeft(52));
+        row.removeFromRight(10);
         statusArea = row;
     }
 }
@@ -3112,10 +3176,8 @@ void PlayerPanel::paint(juce::Graphics& g)
     // labels of the control rows
     g.setColour(textDim);
     g.setFont(Fonts::get().semibold(10.5f));
-    g.drawText("VOL", backVol.getBounds().withX(backVol.getX() - 34).withWidth(30), juce::Justification::centredLeft, false);
-    const bool twoP = player.isTwoPlayers();
-    g.drawText(twoP ? "PLAYER 1" : "GUITAR VOL", takeVol.getBounds().withX(takeVol.getX() - 74).withWidth(72), juce::Justification::centredLeft, false);
-    g.drawText(twoP ? "PLAYER 2" : "INPUT 2 VOL", input2Vol.getBounds().withX(input2Vol.getX() - 82).withWidth(80), juce::Justification::centredLeft, false);
+
+
     g.drawText("OFFSET", offset.getBounds().withX(offset.getX() - 52).withWidth(50), juce::Justification::centredLeft, false);
     g.drawText("VOL", clickVol.getBounds().withX(clickVol.getX() - 34).withWidth(30), juce::Justification::centredLeft, false);
 
@@ -3148,9 +3210,7 @@ void PlayerPanel::paint(juce::Graphics& g)
         g.setColour(textDim);
         g.fillRect((float) m.getX() + 1.0f, (float) m.getY() + 1.0f, w, (float) m.getHeight() - 2.0f);
     };
-    meter(backMeter, backLevel);
-    meter(takeMeter, takeLevel);
-    meter(input2Meter, input2Level);
+    juce::ignoreUnused(meter); // the meters are in the tracks' strips (Timeline)
 
     g.setColour(textFaint);
     g.setFont(Fonts::get().regular(11.5f));
@@ -3219,6 +3279,8 @@ void PlayerPanel::refresh()
         if (auto* sa = proc.getStandaloneAudio(); sa != nullptr && sa->input2DeviceInput) sa->input2DeviceInput();
     }
     timeline.followPlayhead();
+    if (twoPlayersButton.getToggleState() != proc.isTwoPlayersOn()) twoPlayersButton.setToggleState(proc.isTwoPlayersOn(), juce::dontSendNotification);
+    twoPlayersButton.setVisible(onSetTwoPlayers != nullptr);
     timeline.repaint();
     repaint();
 }
@@ -3421,9 +3483,17 @@ void PlayerPanel::armPressed(int t)
 {
     using S = PlayerRecorder::State;
     const auto st = player.getState();
-    if (st == S::recording || st == S::pausedRec) { setStatus("ARM changes when the recording has stopped."); return; }
     const bool on = !player.isArmed(t);
     if (t == 1 && on && !player.isInput2Available()) { chooseInput2(true); return; } // first: which input
+    if (st == S::recording || st == S::pausedRec)
+    {
+        // while recording: this track alone starts / stops recording now (owner 2026-11-12)
+        const auto name = PlayerRecorder::trackName(t, player.isTwoPlayers());
+        if (!player.setArmed(t, on)) { setStatus(name + " could not start recording (the Takes folder is not writable?)."); return; }
+        setStatus(on ? name + " records from here on." : name + " stopped recording here - the other track goes on.");
+        timeline.repaint();
+        return;
+    }
     player.setArmed(t, on);
     if (t == 1)
         setStatus(on ? "INPUT 2 armed (" + input2Name() + "): " + (player.isInput2Listen() ? "you hear it now, " : "MUTED - not heard, ") + "REC records it"
@@ -3447,6 +3517,40 @@ juce::String PlayerPanel::input2Name() const
     return "input " + juce::String(2 - proc.getGuitarInput()); // no device names (tests)
 }
 
+juce::String PlayerPanel::guitarInputName() const
+{
+    if (auto* sa = proc.getStandaloneAudio(); sa != nullptr && sa->guitarDeviceInput)
+    {
+        const int i = sa->guitarDeviceInput();
+        const auto names = sa->inputNames();
+        if (i >= 0 && i < names.size()) return names[i];
+    }
+    return "input " + juce::String(proc.getGuitarInput() + 1);
+}
+
+void PlayerPanel::chooseGuitarInput()
+{
+    auto* sa = proc.getStandaloneAudio();
+    if (sa == nullptr || !sa->setGuitarDeviceInput)
+    {
+        setStatus("The guitar input is chosen in your DAW (the track's input).");
+        return;
+    }
+    const auto names = sa->inputNames();
+    const int cur = sa->guitarDeviceInput(), in2 = player.isInput2Available() && sa->input2DeviceInput ? sa->input2DeviceInput() : -1;
+    juce::PopupMenu m;
+    m.addSectionHeader(player.isTwoPlayers() ? "PLAYER 1 plays into:" : "The guitar is on:");
+    for (int i = 0; i < names.size() && i < 64; ++i)
+        m.addItem(10 + i, names[i] + (i == in2 ? (player.isTwoPlayers() ? "  (player 2)" : "  (INPUT 2)") : ""), i != in2, i == cur);
+    if (names.isEmpty()) m.addItem(1, "No inputs (audio settings)", false, false);
+    m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&timeline), [sp = juce::Component::SafePointer<PlayerPanel>(this)](int r) {
+        if (sp == nullptr || r < 10) return;
+        if (auto* a = sp->proc.getStandaloneAudio(); a != nullptr && a->setGuitarDeviceInput) a->setGuitarDeviceInput(r - 10);
+        sp->setStatus((sp->player.isTwoPlayers() ? "PLAYER 1 = " : "Guitar = ") + sp->guitarInputName() + ".");
+        sp->timeline.repaint();
+    });
+}
+
 void PlayerPanel::chooseInput2(bool armAfter)
 {
     auto* sa = proc.getStandaloneAudio();
@@ -3460,15 +3564,22 @@ void PlayerPanel::chooseInput2(bool armAfter)
     juce::PopupMenu m;
     m.addSectionHeader("INPUT 2 records (a mic, a keyboard...):");
     for (int i = 0; i < names.size() && i < 64; ++i)
-        m.addItem(10 + i, names[i] + (i == guitar ? "  (the guitar)" : ""), i != guitar, i == cur);
+        m.addItem(10 + i, names[i] + (i == guitar ? (player.isTwoPlayers() ? "  (player 1)" : "  (guitar)") : ""), i != guitar, i == cur);
     if (names.size() < 2) m.addItem(1, "Your interface has only one input", false, false);
     m.addSeparator();
     m.addItem(2, "None (INPUT 2 off)", true, cur < 0);
+    m.addSeparator();
+    m.addItem(3, "TWO PLAYERS: a second guitarist here, through the amps marked P2", onSetTwoPlayers != nullptr, proc.isTwoPlayersOn());
     m.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&timeline),
                     [sp = juce::Component::SafePointer<PlayerPanel>(this), armAfter](int r) {
         if (sp == nullptr || r == 0) return;
         auto* a = sp->proc.getStandaloneAudio();
         if (a == nullptr) return;
+        if (r == 3)
+        {
+            if (sp->onSetTwoPlayers) sp->onSetTwoPlayers(!sp->proc.isTwoPlayersOn());
+            return;
+        }
         if (r == 2)
         {
             a->setInput2DeviceInput(-1);

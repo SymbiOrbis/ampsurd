@@ -119,8 +119,12 @@ juce::String composeScreenBox(const juce::File& video, const ampsurd::screen::Ov
         [sr addOutput: so];
         if (![cr startReading] || ![sr startReading]) return "The recordings cannot be read.";
         const CGSize size = ct[0].naturalSize;
-        const int w = ((int) size.width) & ~1, h = ((int) size.height) & ~1;
-        if (w < 16 || h < 16) return "The camera file has no picture.";
+        const int cw0 = ((int) size.width) & ~1, ch0 = ((int) size.height) & ~1;
+        if (cw0 < 16 || ch0 < 16) return "The camera file has no picture.";
+        // SWAP somewhere: the saved picture bigger than the camera's (the screen keeps its detail), the camera scaled up
+        const auto os = ampsurd::screen::outputSize(cw0, ch0, &o, (int) st[0].naturalSize.height);
+        const int w = os.x, h = os.y;
+        const bool upscale = w != cw0 || h != ch0;
         result.deleteFile();
         AVAssetWriter* writer = [AVAssetWriter assetWriterWithURL: urlFor(result) fileType: AVFileTypeMPEG4 error: &e];
         if (writer == nil) return "Cannot write a temporary file.";
@@ -166,8 +170,13 @@ juce::String composeScreenBox(const juce::File& video, const ampsurd::screen::Ov
                 auto* dst = (uint8_t*) CVPixelBufferGetBaseAddress(outPb);
                 const size_t dp = CVPixelBufferGetBytesPerRow(outPb), sp = CVPixelBufferGetBytesPerRow(cpb);
                 const auto* src = (const uint8_t*) CVPixelBufferGetBaseAddress(cpb);
-                const int ch = std::min(h, (int) CVPixelBufferGetHeight(cpb)), cw = std::min(w, (int) CVPixelBufferGetWidth(cpb));
-                for (int y = 0; y < ch; ++y) memcpy(dst + (size_t) y * dp, src + (size_t) y * sp, (size_t) cw * 4);
+                if (upscale)
+                    ampsurd::screen::scaleBilinear(src, (int) CVPixelBufferGetWidth(cpb), (int) CVPixelBufferGetHeight(cpb), (int) sp, dst, w, h, (int) dp, 4);
+                else
+                {
+                    const int ch = std::min(h, (int) CVPixelBufferGetHeight(cpb)), cw = std::min(w, (int) CVPixelBufferGetWidth(cpb));
+                    for (int y = 0; y < ch; ++y) memcpy(dst + (size_t) y * dp, src + (size_t) y * sp, (size_t) cw * 4);
+                }
                 CVPixelBufferUnlockBaseAddress(cpb, kCVPixelBufferLock_ReadOnly);
                 const auto key = ampsurd::screen::boxAt(o.keys, tc);
                 CVImageBufferRef spb = scrCur != nullptr ? CMSampleBufferGetImageBuffer(scrCur) : nullptr;

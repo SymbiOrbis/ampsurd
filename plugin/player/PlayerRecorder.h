@@ -181,6 +181,10 @@ public:
     juce::AudioThumbnail& getPassThumbnail(int track = 0) { return *lanes[(size_t) track].passThumb; }
 
     void setBackingGainDb(float db) { backingGainDb.store(db); }
+    // the backing's balance (owner 2026-11-12: knobs on every track): -1 = left only .. 0 = as it is .. +1 = right only
+    void setBackingPan(float p) { backingPan.store(juce::jlimit(-1.0f, 1.0f, p)); }
+    float getBackingPan() const { return backingPan.load(); }
+    static std::pair<double, double> balanceGains(float p) { return { p > 0.0f ? 1.0 - p : 1.0, p < 0.0f ? 1.0 + p : 1.0 }; }
     void setTakeGainDb(float db, int track = 0) { lanes[(size_t) track].gainDb.store(db); }
     // GUITAR PAN (-1 = left .. +1 = right; same law as the amps' PAN): where your guitar sits, always, and
     // it is RECORDED with it (panned left -> the take is in the left channel; for stereo layering with
@@ -339,7 +343,7 @@ private:
     juce::AudioThumbnail backingThumb { 256, formats, thumbCache };
 
     std::function<int()> deviceLatency;
-    std::atomic<float> offsetMs { 0.0f }, backingGainDb { 0.0f };
+    std::atomic<float> offsetMs { 0.0f }, backingGainDb { 0.0f }, backingPan { 0.0f };
     std::atomic<float> backingPeak { 0.0f };
     double gB = 1.0;
     double liveL = 1.0, liveR = 1.0;      // smoothed monitor gains of the live guitar (recording only)

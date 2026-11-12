@@ -163,6 +163,7 @@ AmpsurdEditor::AmpsurdEditor(AmpsurdProcessor& p) : AudioProcessorEditor(&p), pr
     content.header.onShowLog = [this] { showLog(true); };
     // TWO PLAYERS (owner 2026-11-12): settings menu; the cards then show P1 / P2
     content.header.onToggleTwoPlayers = [this] { setTwoPlayers(!proc.isTwoPlayersOn()); };
+    if (content.playerPanel) content.playerPanel->onSetTwoPlayers = [this](bool on) { setTwoPlayers(on); };
     if (juce::JUCEApplicationBase::isStandaloneApp())
     {
         content.header.onToggleFullScreen = [this] { setFullScreen(!fullScreen); };

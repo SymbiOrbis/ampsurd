@@ -14,6 +14,58 @@ bool Overlay::isUsed() const
     return false;
 }
 
+bool Overlay::anySwapped() const
+{
+    if (file == juce::File()) return false;
+    for (const auto& k : keys)
+        if (k.swapped) return true;
+    return false;
+}
+
+juce::Point<int> outputSize(int camW, int camH, const Overlay* o, int screenH)
+{
+    camW &= ~1;
+    camH &= ~1;
+    if (o == nullptr || !o->anySwapped() || camW < 16 || camH < 16) return { camW, camH };
+    const int target = juce::jlimit(camH, juce::jmax(camH, 1080), screenH > 0 ? juce::jmax(screenH, 720) : 1080);
+    double s = (double) target / camH;
+    if (camW * s > 2560.0) s = 2560.0 / camW;
+    s = juce::jmax(1.0, s);
+    return { (int) std::lround(camW * s) & ~1, (int) std::lround(camH * s) & ~1 };
+}
+
+void scaleBilinear(const uint8_t* src, int srcW, int srcH, int srcPitch, uint8_t* dst, int dstW, int dstH, int dstPitch, int channels)
+{
+    if (srcW <= 0 || srcH <= 0 || dstW <= 0 || dstH <= 0) return;
+    if (dstW < srcW || dstH < srcH) { scalePlane(src, srcW, srcH, srcPitch, dst, dstW, dstH, dstPitch, channels); return; } // smaller: averaging
+    std::vector<int> x0((size_t) dstW), x1((size_t) dstW), fx((size_t) dstW);
+    for (int dx = 0; dx < dstW; ++dx)
+    {
+        const double sx = juce::jlimit(0.0, (double) (srcW - 1), (dx + 0.5) * srcW / dstW - 0.5);
+        x0[(size_t) dx] = (int) sx;
+        x1[(size_t) dx] = juce::jmin(srcW - 1, x0[(size_t) dx] + 1);
+        fx[(size_t) dx] = (int) ((sx - x0[(size_t) dx]) * 256.0);
+    }
+    for (int dy = 0; dy < dstH; ++dy)
+    {
+        const double sy = juce::jlimit(0.0, (double) (srcH - 1), (dy + 0.5) * srcH / dstH - 0.5);
+        const int y0 = (int) sy, y1 = juce::jmin(srcH - 1, y0 + 1), fy = (int) ((sy - y0) * 256.0);
+        const uint8_t* r0 = src + (size_t) y0 * (size_t) srcPitch;
+        const uint8_t* r1 = src + (size_t) y1 * (size_t) srcPitch;
+        uint8_t* out = dst + (size_t) dy * (size_t) dstPitch;
+        for (int dx = 0; dx < dstW; ++dx)
+        {
+            const int a = x0[(size_t) dx] * channels, b = x1[(size_t) dx] * channels, f = fx[(size_t) dx];
+            for (int c = 0; c < channels; ++c)
+            {
+                const int top = r0[a + c] * (256 - f) + r0[b + c] * f;
+                const int bot = r1[a + c] * (256 - f) + r1[b + c] * f;
+                out[dx * channels + c] = (uint8_t) ((top * (256 - fy) + bot * fy + 32768) >> 16);
+            }
+        }
+    }
+}
+
 BoxKey boxAt(const std::vector<BoxKey>& keys, double t)
 {
     BoxKey b;
@@ -260,7 +312,7 @@ void drawPointer(uint8_t* bgra, int w, int h, int pitch, int x, int y, float sca
 juce::Point<int> recordSize(int w, int h)
 {
     if (w <= 0 || h <= 0) return {};
-    const double s = std::min({ 1.0, 1280.0 / w, 720.0 / h });
+    const double s = std::min({ 1.0, 1920.0 / w, 1080.0 / h }); // up to 1080p (owner 2026-11-12: SWAP needs the detail)
     return { std::max(16, (int) std::lround(w * s) & ~1), std::max(16, (int) std::lround(h * s) & ~1) };
 }
 } // namespace ampsurd::screen

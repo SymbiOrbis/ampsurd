@@ -34,6 +34,7 @@ struct Overlay
     double previewAspect = 16.0 / 9.0; // width / height of the preview area the box rectangles refer to
     std::vector<BoxKey> keys;        // sorted by time
     bool isUsed() const;             // a file, and the box shown or SWAP on at some moment
+    bool anySwapped() const;         // SWAP on at some moment (the saved video is then made bigger)
     bool operator==(const Overlay& o) const
     {
         return file == o.file && juce::exactlyEqual(offsetSeconds, o.offsetSeconds) && juce::exactlyEqual(previewAspect, o.previewAspect) && keys == o.keys;
@@ -63,6 +64,13 @@ void drawBoxNv12(uint8_t* dstY, int dstYPitch, uint8_t* dstUV, int dstUVPitch, i
                  const uint8_t* srcY, int srcYPitch, const uint8_t* srcUV, int srcUVPitch, int srcW, int srcH, juce::Rectangle<int> box);
 void drawBoxBgra(uint8_t* dst, int dstW, int dstH, int dstPitch, const uint8_t* src, int srcW, int srcH, int srcPitch, juce::Rectangle<int> box);
 
+// The saved video's picture size (owner 2026-11-12: with SWAP the large screen looked like the small box blown up):
+// with SWAP somewhere in the take the camera's proportions at up to 1080 pixels high (the screen's own height), so
+// the screen keeps its detail; otherwise the camera's own size.
+juce::Point<int> outputSize(int camW, int camH, const Overlay* overlay, int screenH);
+// smooth (bilinear) scaling of an 8-bit plane with 1, 2 (NV12 UV) or 4 (BGRA) values per pixel
+void scaleBilinear(const uint8_t* src, int srcW, int srcH, int srcPitch, uint8_t* dst, int dstW, int dstH, int dstPitch, int channels);
+
 // SWAP: the whole frame black, the screen picture fitted into it (centred)
 void drawFullNv12(uint8_t* dstY, int dstYPitch, uint8_t* dstUV, int dstUVPitch, int dstW, int dstH,
                   const uint8_t* srcY, int srcYPitch, const uint8_t* srcUV, int srcUVPitch, int srcW, int srcH);
@@ -80,7 +88,7 @@ bool composeBgra(const BoxKey& key, double previewAspect, uint8_t* frame, int w,
 // the mouse pointer drawn into a BGRA frame at (x, y) (a white arrow with a dark outline; Windows' capture has none)
 void drawPointer(uint8_t* bgra, int w, int h, int pitch, int x, int y, float scale);
 
-// the screen's size for recording: at most 1280 x 720 (sharp enough in a box, light on the computer), even
+// the screen's size for recording: at most 1920 x 1080 (sharp also large with SWAP), even
 juce::Point<int> recordSize(int screenW, int screenH);
 constexpr int kFramesPerSecond = 15;
 } // namespace ampsurd::screen

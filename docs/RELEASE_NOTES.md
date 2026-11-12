@@ -21,7 +21,13 @@ VIDEO in the player).
 
 ## Next version (not released yet)
 
-(nothing yet)
+- Every track has its own strip: VOL and PAN knobs (the backing gets a balance knob), a level meter, the input it
+  records (click to choose), LOAD (backing) / LISTEN-MUTED (INPUT 2), and ARM at the right.
+- ARM while recording: switch one track off or on during a recording - only that track stops / starts recording.
+- SWAP videos are much sharper: the screen is recorded at up to 1920 x 1080 and the video is saved at up to
+  1080p when SWAP was used.
+- The screen box keeps its shape when the video window is maximised.
+- A "2 PLAYERS" button above the tracks.
 
 ## AMPSURD 0.9.19 (beta)
 

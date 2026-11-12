@@ -753,7 +753,6 @@ int main()
             return (heardAt > 0 && heardAt % 24000 == 0) ? v : 0.0f;
         };
         run2(2.6, [&](juce::int64 c) { return onClick(c, 0.3f); }, [&](juce::int64 c) { return onClick(c, 0.2f); });
-        const bool armLocked = !pl->setArmed(1, false) && pl->isArmed(1); // not while recording
         pl->stop();
         pl->renderNow();
         const bool both = pl->hasTake(0) && pl->hasTake(1) && pl->getClips(0).size() == 1 && pl->getClips(1).size() == 1;
@@ -770,10 +769,10 @@ int main()
             return std::make_pair(ok, w);
         };
         const auto g = notesOf(0), i2 = notesOf(1);
-        check(defaults && compOk && heardOff < 1e-4f && std::abs(heardOn - 0.2f) < 0.01f && both && armLocked && g.first && i2.first,
+        check(defaults && compOk && heardOff < 1e-4f && std::abs(heardOn - 0.2f) < 0.01f && both && g.first && i2.first,
               "INPUT 2 together: GUITAR armed / INPUT 2 not by default (" + juce::String((int) defaults) + "), INPUT 2 heard only when armed ("
                   + juce::String(heardOff, 4) + " / " + juce::String(heardOn, 3) + "), both tracks recorded (" + juce::String((int) both)
-                  + "), ARM locked while recording, notes on the clicks: guitar " + g.second + "/ INPUT 2 " + i2.second
+                  + "), notes on the clicks: guitar " + g.second + "/ INPUT 2 " + i2.second
                   + "(INPUT 2 lined up without AMPSURD's latency: " + juce::String((int) compOk) + ")");
 
         // one after the other: GUITAR off, INPUT 2 again (a new take) while the guitar take plays
@@ -856,6 +855,47 @@ int main()
             run2(0.05, nullptr, nullptr);
         }
 
+        // ARM while recording (owner 2026-11-12): INPUT 2 stops at 1 s and starts again at 2 s, the guitar goes on
+        {
+            pl->clearTake();
+            pl->renderNow();
+            pl->toStart();
+            pl->setArmed(0, true);
+            pl->setArmed(1, true);
+            run2(0.1, nullptr, nullptr);
+            pl->toStart();
+            pl->record();
+            auto steady = [](juce::int64 c) { return (float) (0.2 * std::sin((double) c * 0.05)); };
+            run2(1.0, steady, steady);
+            const bool off = pl->setArmed(1, false) && pl->getState() == PlayerRecorder::State::recording;
+            run2(1.0, steady, steady);
+            const bool on = pl->setArmed(1, true) && pl->isTrackRecording(1);
+            run2(1.0, steady, steady);
+            pl->stop();
+            pl->renderNow();
+            const auto& c0 = pl->getClips(0);
+            const auto& c1 = pl->getClips(1);
+            const juce::int64 tol = (juce::int64) (0.05 * sr);
+            const bool guitar = c0.size() == 1 && c0[0].out - c0[0].in > (juce::int64) (2.8 * sr);
+            const bool split = c1.size() == 2 && std::llabs(c1[0].out - (juce::int64) (1.0 * sr)) < tol && std::llabs(c1[1].in - (juce::int64) (2.0 * sr)) < tol;
+            // everything disarmed while recording: playback goes on
+            pl->toStart();
+            pl->record();
+            run2(0.3, nullptr, nullptr);
+            pl->setArmed(0, false);
+            pl->setArmed(1, false);
+            const bool playing = pl->getState() == PlayerRecorder::State::playing;
+            pl->stop();
+            pl->setArmed(0, true);
+            check(off && on && guitar && split && playing,
+                  "ARM WHILE RECORDING: INPUT 2 off at 1 s / on at 2 s (" + juce::String((int) off) + juce::String((int) on) + "), its clips "
+                      + (c1.size() == 2 ? juce::String(c1[0].out / sr, 2) + " s / " + juce::String(c1[1].in / sr, 2) + " s" : juce::String((int) c1.size()) + " clips")
+                      + ", the guitar one clip (" + juce::String((int) guitar) + "), all off = playback goes on (" + juce::String((int) playing) + ")");
+            pl->clearTake();
+            pl->renderNow();
+            run2(0.05, nullptr, nullptr);
+        }
+
         // keys: R and Ctrl+R start recording, Space stops it
         {
             pl->removeBacking();
@@ -923,10 +963,34 @@ int main()
         const bool drawn = camY[(size_t) (10 * cw + 10)] == 100 && camY[(size_t) (140 * cw + 200)] == 200
                            && camY[(size_t) (pic.getCentreY() * cw + pic.getCentreX())] == 50 && std::abs(pic.getWidth() * 9 - pic.getHeight() * 16) < 40;
         const auto rs = sc::recordSize(2560, 1440);
-        check(timing && inside && colours && average && drawn && rs.x == 1280 && rs.y == 720,
+        check(timing && inside && colours && average && drawn && rs.x == 1920 && rs.y == 1080,
               "SCREEN BOX maths: box shown / hidden at its times (" + juce::String((int) timing) + "), kept inside a 4:3 picture ("
                   + b.toString() + "), colours to NV12 (" + juce::String(Y) + "/" + juce::String(Y2) + "/" + juce::String(Y3) + "), area average "
                   + juce::String(half[0]) + ", box drawn (" + juce::String((int) drawn) + "), screen recorded at " + juce::String(rs.x) + " x " + juce::String(rs.y));
+    }
+    // the saved video's size (owner 2026-11-12: SWAP looked blown up) and smooth scaling
+    {
+        namespace sc = ampsurd::screen;
+        sc::Overlay ov;
+        ov.file = juce::File::getCurrentWorkingDirectory();
+        sc::BoxKey k;
+        k.visible = true;
+        ov.keys = { k };
+        const auto boxOnly = sc::outputSize(640, 480, &ov, 1080);
+        ov.keys[0].swapped = true;
+        const auto swapped = sc::outputSize(640, 480, &ov, 1080), wide = sc::outputSize(1280, 720, &ov, 1080), hd = sc::outputSize(1920, 1080, &ov, 1080);
+        const auto rs = sc::recordSize(2560, 1440);
+        // a ramp scaled up 4x stays a smooth ramp (no steps of 4)
+        std::vector<uint8_t> src(16), dst(64);
+        for (int i = 0; i < 16; ++i) src[(size_t) i] = (uint8_t) (i * 16);
+        sc::scaleBilinear(src.data(), 16, 1, 16, dst.data(), 64, 1, 64, 1);
+        int maxStep = 0;
+        for (int i = 9; i < 55; ++i) maxStep = std::max(maxStep, std::abs((int) dst[(size_t) i + 1] - (int) dst[(size_t) i]));
+        check(boxOnly == juce::Point<int>(640, 480) && swapped == juce::Point<int>(1440, 1080) && wide == juce::Point<int>(1920, 1080)
+                  && hd == juce::Point<int>(1920, 1080) && rs == juce::Point<int>(1920, 1080) && maxStep <= 5,
+              "VIDEO SIZE: box only = the camera's size, with SWAP 640x480 -> " + juce::String(swapped.x) + "x" + juce::String(swapped.y) + ", 1280x720 -> "
+                  + juce::String(wide.x) + "x" + juce::String(wide.y) + "; the screen recorded at " + juce::String(rs.x) + "x" + juce::String(rs.y)
+                  + "; scaling up is smooth (largest step " + juce::String(maxStep) + ")");
     }
     // SWAP (owner 2026-11-12): the screen large and the camera in the box; box hidden = the screen alone
     {

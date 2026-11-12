@@ -101,7 +101,8 @@ private:
     void rebuildBox();                 // the box again (its kind follows SWAP)
     void layoutPictures();             // camera / screen / box / playback: where and whether shown
     void placeBox();                   // the box where boxRect says (in the preview area)
-    juce::Rectangle<int> boxBoundsLocal() const; // the box in this view's coordinates
+    juce::Rectangle<int> boxBoundsLocal() const; // the box in this view's coordinates (keeps the picture's shape)
+    juce::Rectangle<float> normalisedBox() const; // that, as parts of the preview area (for the saved video)
     void boxMoved(bool finished);
     void pushKey();                    // while recording: the box's state now
     ScreenCapture& screen;

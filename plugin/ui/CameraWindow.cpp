@@ -352,10 +352,24 @@ void CameraView::rebuildBox()
 
 juce::Rectangle<int> CameraView::boxBoundsLocal() const
 {
+    // the box keeps its picture's shape whatever the window's shape (owner 2026-11-12: maximised, it went ultra wide):
+    // its width follows the preview, its height follows from the picture's proportions
     const auto a = previewArea.toFloat();
-    return juce::Rectangle<float>(a.getX() + boxRect.getX() * a.getWidth(), a.getY() + boxRect.getY() * a.getHeight(),
-                                  boxRect.getWidth() * a.getWidth(), boxRect.getHeight() * a.getHeight()).toNearestInt()
+    const auto img = swapped ? juce::Image() : screen.latestFrame();
+    const double aspect = img.isValid() ? (double) img.getWidth() / juce::jmax(1, img.getHeight()) : 16.0 / 9.0;
+    float w = boxRect.getWidth() * a.getWidth(), h = (float) (w / aspect);
+    if (h > a.getHeight()) { h = a.getHeight(); w = (float) (h * aspect); }
+    if (w > a.getWidth()) { w = a.getWidth(); h = (float) (w / aspect); }
+    return juce::Rectangle<float>(a.getX() + boxRect.getX() * a.getWidth(), a.getY() + boxRect.getY() * a.getHeight(), w, h).toNearestInt()
         .constrainedWithin(previewArea);
+}
+
+juce::Rectangle<float> CameraView::normalisedBox() const
+{
+    const auto a = previewArea.toFloat();
+    if (a.isEmpty()) return boxRect;
+    const auto b = boxBoundsLocal().toFloat();
+    return { (b.getX() - a.getX()) / a.getWidth(), (b.getY() - a.getY()) / a.getHeight(), b.getWidth() / a.getWidth(), b.getHeight() / a.getHeight() };
 }
 
 void CameraView::layoutPictures()
@@ -429,7 +443,7 @@ void CameraView::pushKey()
     ampsurd::screen::BoxKey k;
     k.visible = boxShown && screen.isOpen();
     k.swapped = swapped && screen.isOpen();
-    k.rect = boxRect;
+    k.rect = normalisedBox(); // as it is shown (its height follows the picture's proportions)
     liveKeys.push_back({ juce::Time::currentTimeMillis(), k });
 }
 

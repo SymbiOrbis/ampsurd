@@ -1,4 +1,4 @@
-// SCREEN BOX on Windows: DXGI desktop duplication (one monitor) -> scaled to at most 1280 x 720 -> the box's preview,
+// SCREEN BOX on Windows: DXGI desktop duplication (one monitor) -> scaled to at most 1920 x 1080 -> the box's preview,
 // and while recording H.264 into an MP4 with Media Foundation. The mouse pointer is drawn in (desktop duplication
 // leaves it out). Windows marked with excludeWindow() are left out of the capture (Windows 10 2004 or newer).
 #include "ScreenCapture.h"
@@ -279,7 +279,7 @@ struct ScreenCapture::Impl final : public juce::Thread
         MFCreateMediaType(&outT);
         outT->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
         outT->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264);
-        outT->SetUINT32(MF_MT_AVG_BITRATE, 3000000);
+        outT->SetUINT32(MF_MT_AVG_BITRATE, (UINT32) juce::jlimit(3000000, 8000000, recW * recH * 4)); // ~8 Mbit/s at 1080p: text stays sharp
         outT->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
         MFSetAttributeSize(outT.Get(), MF_MT_FRAME_SIZE, (UINT32) recW, (UINT32) recH);
         MFSetAttributeRatio(outT.Get(), MF_MT_FRAME_RATE, ampsurd::screen::kFramesPerSecond, 1);

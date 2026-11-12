@@ -56,7 +56,7 @@ https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.0
 
 **Public beta v0.9.19 released 2026-11-12:** TWO PLAYERS (settings menu): two guitarists on two inputs, P1 / P2 per amp, shared effects, each player on their own track (PLAYER 1 / PLAYER 2), one song or video; the tuner follows the player who plays. Not tested with real hardware yet.
 
-**In main, not released yet:** (nothing yet)
+**In main, not released yet:** track strips (VOL / PAN knobs, meter, input, LOAD / LISTEN, ARM on the right); ARM while recording (one track punches in / out); sharper SWAP videos (screen up to 1080p, video saved up to 1080p); the box keeps its shape when the camera window is maximised; a 2 PLAYERS button above the tracks.
 
 **Public beta v0.9.16 released 2026-11-09:** Copy / Paste tone (slot menu), Save tone - SAVE AS..., log: sudden spikes named correctly. https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.16 - Windows files to be signed by the owner.
 

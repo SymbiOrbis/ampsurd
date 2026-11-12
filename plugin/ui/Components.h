@@ -664,9 +664,14 @@ public:
     // the X before each track: the panel deletes (backing: removeBacking, a recording track: clearTake(track) - UNDO brings it back)
     std::function<void()> onDeleteBacking;
     std::function<void(int track)> onDeleteTrack;
-    std::function<void(int track)> onArm;     // the ARM switch of a recording track was clicked
-    std::function<void()> onInput2Source;     // the INPUT 2 name was clicked: choose the interface input
-    std::function<juce::String()> input2SourceName; // the interface input INPUT 2 records ("" = none chosen)
+    std::function<void(int track)> onArm;     // the ARM switch of a recording track was clicked (also while recording)
+    std::function<void(int track)> onInputSource;        // a track's name was clicked: choose its interface input
+    std::function<juce::String(int track)> inputSourceName; // the interface input a track records ("" = none chosen)
+    std::function<float(int lane)> meterLevel; // 0 backing, 1 + track: the level (gain) for the strip's meter
+    // the strip left of each track (owner 2026-11-12: knobs on every track): lane 0 = BACKING, 1 + track;
+    // columns: 0 name / input, 1 VOL knob, 2 PAN knob, 3 meter, 4 button (LOAD / LISTEN), 5 ARM, 6 delete
+    juce::Rectangle<int> stripCell(int lane, int column) const;
+    void repaintStrips() { repaint(0, 0, kLabelW, getHeight()); }
     void refreshDeleteBoxes(bool recording); // ~30 Hz from the panel: enabled when there is something to delete
     void paint(juce::Graphics&) override;
     void resized() override;
@@ -690,7 +695,8 @@ private:
     float timeToX(double t) const { return (float) laneArea().getX() + (float) ((t - viewStart) / secondsPerPixel); }
     double centreSeconds() const { return viewStart + 0.5 * secondsPerPixel * laneArea().getWidth(); }
     static constexpr int kBoxW = 22;   // the delete box right before each track
-    static constexpr int kLabelW = 176; // left column: ARM, track name, PAN, the delete boxes next to the tracks
+    static constexpr int kLabelW = 272; // left column: the strips (name / input, VOL, PAN, meter, button, ARM, delete)
+    juce::Rectangle<int> laneRect(int lane) const { return lane == 0 ? backingLane() : trackLane(lane - 1); }
     void askDelete(int which);         // 0 backing, 1 + track: shows DELETE / CANCEL over that track
     juce::Rectangle<int> laneArea() const { return getLocalBounds().withTrimmedLeft(kLabelW).withTrimmedBottom(kScrollH + 4); }
     static constexpr int kScrollH = 8; // half of the first version (owner, 2026-10-22)
@@ -704,7 +710,8 @@ private:
 
     PlayerRecorder& player;
     juce::ScrollBar scroll { false }; // wide horizontal bar under the tracks: drag to move along the song
-    std::array<juce::Slider, kTracks> pans; // PAN of each recording track (next to its name)
+    std::array<juce::Slider, kTracks> pans; // PAN of each recording track (knob in its strip)
+    juce::Slider backPan;                   // the backing's balance
     std::array<ArmButton, kTracks> arms;
     DeleteBox delBacking;
     std::array<DeleteBox, kTracks> delTracks;
@@ -725,6 +732,7 @@ public:
     void resized() override;
     void refresh();
     void twoPlayersChanged(bool on); // TWO PLAYERS switched: INPUT 2 = player 2 (asks for the input if none is chosen)
+    std::function<void(bool)> onSetTwoPlayers; // INPUT 2's input menu: TWO PLAYERS on / off (the editor does it)
     void recordPressed(bool fromCameraWindow = false); // REC (player, camera window) and the R key: audio take / punch, or a VIDEO take (VIDEO on)
     std::function<void()> onClose;
     std::function<bool(const juce::KeyPress&)> onKey; // the main window's keys, also from the camera window
@@ -740,6 +748,8 @@ private:
     void armPressed(int track);        // the ARM switch of GUITAR / INPUT 2
     void chooseInput2(bool armAfter);  // which interface input INPUT 2 records (a menu)
     juce::String input2Name() const;   // its name, "" = none chosen / not available
+    void chooseGuitarInput();          // which interface input the guitar (PLAYER 1) is on (a menu)
+    juce::String guitarInputName() const;
 
     AmpsurdProcessor& proc;
     PlayerRecorder& player;
@@ -754,6 +764,7 @@ private:
     void applyMetronome();
     juce::TextButton clickButton { "CLICK" }, tapButton { "TAP" };
     juce::TextButton listenButton { "LISTEN" }; // INPUT 2 on the speakers or not (a mic would feed back)
+    juce::TextButton twoPlayersButton { "2 PLAYERS" }; // TWO PLAYERS on / off, above the strips (owner 2026-11-12: easy to find)
     void setInput2Listen(bool on);
     juce::Slider bpmSlider, clickVol;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> bpmAtt;

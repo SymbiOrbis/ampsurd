@@ -6,6 +6,33 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-12 — Session 5l: track strips, ARM while recording, sharper SWAP video, box shape - Claude (Opus 5.5)
+
+- Owner (testing 0.9.19):
+  - "The resolution of the screen video is extremely low when swapped": the screen was recorded at <= 1280x720 and
+    then fitted into the CAMERA's frame size (often 640x480). Now: the screen is recorded at up to 1920x1080
+    (bitrate up to 8 Mbit/s); a take with SWAP is saved bigger - the camera's proportions at up to 1080 pixels high
+    (ScreenOverlay::outputSize: 640x480 -> 1440x1080, 1280x720 -> 1920x1080), the camera scaled up smoothly
+    (scaleBilinear), the screen at its own detail. Windows: NV12 at the bigger size into the H.264 writer; Mac: the
+    BGRA compose pass at the bigger size. Takes without SWAP keep the camera's size.
+  - "(the guitar)" in the input menu -> "(guitar)" / "(player 1)".
+  - Track strips (left of each track: BACKING, GUITAR / PLAYER 1, INPUT 2 / PLAYER 2): name + the input it records
+    (click: choose - the guitar input too), VOL knob, PAN knob (backing: a new BALANCE), an upright meter, LOAD
+    (backing) / LISTEN-MUTED (INPUT 2), ARM at the right, the delete X. The row of VOL faders under the tracks is
+    gone (OFFSET moved to the bottom row); the three lanes have the same height. Interpretation of "move the
+    recorder to the right": the ARM (record) switch moved to the right end of the strip.
+  - ARM while recording: switching a track's ARM off / on while recording punches that track alone out / in at that
+    moment (PlayerRecorder::setArmed); the other track goes on; everything off = playback goes on.
+  - The LISTEN / MUTED button is now in INPUT 2's strip (was in the faders row, which he did not see).
+  - The screen box keeps its shape when the camera window is maximised (its height follows from the picture's
+    proportions; the saved key stores the box as shown).
+  - TWO PLAYERS easier to find: a "2 PLAYERS" button above the strips, and an item in INPUT 2's input menu.
+- Tested (Linux): recorder_test ALL PASS (new: ARM WHILE RECORDING, VIDEO SIZE; old "ARM locked while recording"
+  check removed); ui_snapshot. Not tested on real hardware: the bigger SWAP video (Windows / Mac encoders at 1080p),
+  the strips with a real interface, maximised camera window.
+
+---
+
 ## 2026-11-12 — Release 0.9.19 - Claude (Opus 5.5)
 
 - Owner: "yes" - 0.9.19 published (TWO PLAYERS). Windows files to be signed by the owner.

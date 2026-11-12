@@ -205,7 +205,12 @@ juce::String muxVideoToMp4(const juce::File& video, const juce::AudioBuffer<floa
         screen = std::make_unique<ScreenReader>();
         if (!screen->open(overlay->file)) screen.reset(); // without the box rather than no video
     }
-    std::vector<uint8_t> composed, scratch;
+    std::vector<uint8_t> composed, scratch, big;
+    // SWAP somewhere: the saved picture bigger than the camera's (the screen keeps its detail), the camera scaled up
+    const auto os = ampsurd::screen::outputSize((int) w, (int) h, screen != nullptr ? overlay : nullptr, screen != nullptr ? screen->h : 0);
+    const UINT32 ow = (UINT32) os.x, oh = (UINT32) os.y;
+    const bool upscale = screen != nullptr && (ow != w || oh != h);
+    if (upscale) big.assign((size_t) ow * oh * 3 / 2, 0);
     LONGLONG duration = 0; // 100 ns units
     {
         PROPVARIANT v;
@@ -228,15 +233,19 @@ juce::String muxVideoToMp4(const juce::File& video, const juce::AudioBuffer<floa
     MFCreateMediaType(&vOut);
     vOut->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
     vOut->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264);
-    vOut->SetUINT32(MF_MT_AVG_BITRATE, std::max<UINT32>(2000000, w * h * 6)); // ~5.5 Mbit/s at 720p
+    vOut->SetUINT32(MF_MT_AVG_BITRATE, std::max<UINT32>(2000000, ow * oh * 6)); // ~5.5 Mbit/s at 720p, ~12 at 1080p
     vOut->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
-    MFSetAttributeSize(vOut.Get(), MF_MT_FRAME_SIZE, w, h);
+    MFSetAttributeSize(vOut.Get(), MF_MT_FRAME_SIZE, ow, oh);
     MFSetAttributeRatio(vOut.Get(), MF_MT_FRAME_RATE, fn, fd);
     MFSetAttributeRatio(vOut.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
     DWORD vStream = 0;
     hr = writer->AddStream(vOut.Get(), &vStream);
     if (FAILED(hr)) return failed("Setting up the H.264 picture", hr);
-    hr = writer->SetInputMediaType(vStream, nv12.Get(), nullptr);
+    ComPtr<IMFMediaType> nv12In; // what the writer gets: the camera's size, or the bigger one
+    MFCreateMediaType(&nv12In);
+    nv12->CopyAllItems(nv12In.Get());
+    MFSetAttributeSize(nv12In.Get(), MF_MT_FRAME_SIZE, ow, oh);
+    hr = writer->SetInputMediaType(vStream, nv12In.Get(), nullptr);
     if (FAILED(hr)) return failed("Connecting the picture to H.264", hr);
 
     ComPtr<IMFMediaType> aOut, aIn;
@@ -331,26 +340,40 @@ juce::String muxVideoToMp4(const juce::File& video, const juce::AudioBuffer<floa
             const LONGLONG st = (LONGLONG) ((tc - overlay->offsetSeconds) * 1.0e7);
             // (screen->at() reads the screen file up to this moment; always, so it keeps up)
             const bool haveScreen = st >= 0 && screen->at(st);
-            if ((key.visible || key.swapped) && haveScreen && copyNv12(s.Get(), (int) w, (int) h, camPlaneH, composed)
-                && ampsurd::screen::composeNv12(key, overlay->previewAspect, composed.data(), (int) w, (int) h, screen->frame.data(), screen->w,
-                                                screen->h, scratch))
-            {
+            auto replaceWith = [&](const std::vector<uint8_t>& pic) {
                 ComPtr<IMFMediaBuffer> nb;
-                if (SUCCEEDED(MFCreateMemoryBuffer((DWORD) composed.size(), &nb)))
+                if (FAILED(MFCreateMemoryBuffer((DWORD) pic.size(), &nb))) return;
+                BYTE* d = nullptr;
+                nb->Lock(&d, nullptr, nullptr);
+                memcpy(d, pic.data(), pic.size());
+                nb->Unlock();
+                nb->SetCurrentLength((DWORD) pic.size());
+                ComPtr<IMFSample> ns;
+                MFCreateSample(&ns);
+                ns->AddBuffer(nb.Get());
+                LONGLONG dur = 0;
+                if (SUCCEEDED(s->GetSampleDuration(&dur))) ns->SetSampleDuration(dur);
+                s = ns;
+            };
+            if (upscale)
+            {
+                // every frame at the bigger size: the camera scaled up smoothly, then the screen / box at full detail
+                if (copyNv12(s.Get(), (int) w, (int) h, camPlaneH, composed))
                 {
-                    BYTE* d = nullptr;
-                    nb->Lock(&d, nullptr, nullptr);
-                    memcpy(d, composed.data(), composed.size());
-                    nb->Unlock();
-                    nb->SetCurrentLength((DWORD) composed.size());
-                    ComPtr<IMFSample> ns;
-                    MFCreateSample(&ns);
-                    ns->AddBuffer(nb.Get());
-                    LONGLONG dur = 0;
-                    if (SUCCEEDED(s->GetSampleDuration(&dur))) ns->SetSampleDuration(dur);
-                    s = ns;
+                    const size_t cy = (size_t) w * h, by = (size_t) ow * oh;
+                    ampsurd::screen::scaleBilinear(composed.data(), (int) w, (int) h, (int) w, big.data(), (int) ow, (int) oh, (int) ow, 1);
+                    ampsurd::screen::scaleBilinear(composed.data() + cy, (int) w / 2, (int) h / 2, (int) w, big.data() + by, (int) ow / 2, (int) oh / 2,
+                                                   (int) ow, 2);
+                    if ((key.visible || key.swapped) && haveScreen)
+                        ampsurd::screen::composeNv12(key, overlay->previewAspect, big.data(), (int) ow, (int) oh, screen->frame.data(), screen->w,
+                                                     screen->h, scratch);
                 }
+                replaceWith(big); // (a frame that could not be read: the previous picture again)
             }
+            else if ((key.visible || key.swapped) && haveScreen && copyNv12(s.Get(), (int) w, (int) h, camPlaneH, composed)
+                     && ampsurd::screen::composeNv12(key, overlay->previewAspect, composed.data(), (int) w, (int) h, screen->frame.data(), screen->w,
+                                                     screen->h, scratch))
+                replaceWith(composed);
         }
         s->SetSampleTime(t);
         hr = writeAudioUntil(t + 5000000LL);

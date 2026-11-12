@@ -1,4 +1,4 @@
-// SCREEN BOX on macOS 12.3 or newer: ScreenCaptureKit (one display, scaled by the system to at most 1280 x 720, with
+// SCREEN BOX on macOS 12.3 or newer: ScreenCaptureKit (one display, scaled by the system to at most 1920 x 1080, with
 // the mouse pointer) -> the box's preview, and while recording H.264 into an MP4 with AVAssetWriter. The first time,
 // macOS asks for the permission to record the screen (System Settings > Privacy & Security > Screen Recording).
 // Windows marked with excludeWindow() (the camera window, the box) are left out. Manual retain / release (no ARC).
@@ -130,7 +130,7 @@ struct ScreenCapture::Impl
         NSDictionary* settings = @{ AVVideoCodecKey: AVVideoCodecTypeH264,
                                     AVVideoWidthKey: @(recW),
                                     AVVideoHeightKey: @(recH),
-                                    AVVideoCompressionPropertiesKey: @{ AVVideoAverageBitRateKey: @(3000000) } };
+                                    AVVideoCompressionPropertiesKey: @{ AVVideoAverageBitRateKey: @(juce::jlimit(3000000, 8000000, recW * recH * 4)) } };
         input = [[AVAssetWriterInput alloc] initWithMediaType: AVMediaTypeVideo outputSettings: settings];
         input.expectsMediaDataInRealTime = YES;
         NSDictionary* attrs = @{ (id) kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA),

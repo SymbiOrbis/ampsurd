@@ -1,7 +1,7 @@
 #pragma once
 
 // SCREEN BOX (standalone, VIDEO takes): records a computer screen while the camera records you. The screen's picture
-// is shown live in a box over the camera preview and recorded into its own file (H.264, at most 1280 x 720, 15 frames
+// is shown live in a box over the camera preview and recorded into its own file (H.264, at most 1920 x 1080, 15 frames
 // per second); the two are combined when the MP4 is saved (VideoMux + ScreenOverlay).
 //   Windows 10 / 11: DXGI desktop duplication + Media Foundation. The camera window is left out of the recording.
 //   macOS 12.3 or newer: ScreenCaptureKit + AVFoundation (the first time, macOS asks for the permission to record

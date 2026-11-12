@@ -1,5 +1,7 @@
 #include "PlayerRecorder.h"
 
+#include <tuple>
+
 #include <cmath>
 
 #include "ampsurd/Resampler.h"
@@ -422,11 +424,12 @@ void PlayerRecorder::process(double* L, double* R, int n, int ampsurdLatency, bo
             const float* a = bufA.getReadPointer(0);
             const float* b = bufA.getReadPointer(1);
             float pk = 0.0f;
+            const auto [balL, balR] = balanceGains(backingPan.load(std::memory_order_relaxed));
             for (int i = 0; i < n; ++i)
             {
                 gB += (tB - gB) * 0.002;
-                L[i] += gB * a[i];
-                R[i] += gB * b[i];
+                L[i] += gB * balL * a[i];
+                R[i] += gB * balR * b[i];
                 pk = std::max(pk, std::max(std::abs(a[i]), std::abs(b[i])) * (float) gB);
             }
             if (pk > backingPeak.load(std::memory_order_relaxed)) backingPeak.store(pk, std::memory_order_relaxed);
@@ -718,9 +721,35 @@ bool PlayerRecorder::setArmed(int t, bool on)
 {
     if (!validTrack(t)) return false;
     const auto st = getState();
-    if (st == State::recording || st == State::pausedRec) return false;
     auto& ln = lanes[(size_t) t];
     if (ln.armed.load() == on) return true;
+    if (st == State::recording || st == State::pausedRec)
+    {
+        // while recording (owner 2026-11-12): this track alone punches in (armed) or out (disarmed) right now;
+        // the other track goes on. The punched parts become clips when the recording stops (one undo step).
+        if (!on)
+        {
+            ln.armed.store(false);
+            if (ln.rec.exchange(false))
+            {
+                ln.passPunches.push_back({ ln.punchIn, songPos.load() - compensationSamples(t) });
+                ln.punchIn = -1;
+                ln.muteTakeFrom.store(std::numeric_limits<juce::int64>::max());
+            }
+            bool anyRec = false;
+            for (const auto& l : lanes) anyRec = anyRec || l.rec.load();
+            if (!anyRec && st == State::recording) state.store((int) State::playing, std::memory_order_release); // nothing records: playback goes on
+            return true;
+        }
+        ln.armed.store(true);
+        const bool fresh = !ln.passActive.load();
+        startPass(t);
+        if (!ln.passActive.load()) return false; // no file could be written
+        ln.punchIn = fresh ? -1 : std::max<juce::int64>(0, songPos.load() - compensationSamples(t));
+        ln.muteTakeFrom.store(songPos.load());
+        ln.rec.store(true);
+        return true;
+    }
     ln.armed.store(on);
     if (!on)
         endPasses(t); // corrections punched while playing are kept
@@ -1217,7 +1246,7 @@ struct MixSpec
 {
     bool backing = false;
     juce::File backingFile;
-    double backingGain = 1.0;
+    double backingGain = 1.0, backingBalL = 1.0, backingBalR = 1.0;
     struct Take { bool on = false; juce::File file; double gain = 1.0; juce::int64 start = 0; };
     std::array<Take, PlayerRecorder::kTracks> takes;
     juce::int64 start = 0, end = 0;
@@ -1259,7 +1288,11 @@ juce::String renderTimeline(juce::AudioFormatManager& fm, const MixSpec& m, doub
         if (back)
         {
             back->read(bl.data(), br.data(), n);
-            for (int i = 0; i < n; ++i) { L[(size_t) i] += m.backingGain * bl[(size_t) i]; R[(size_t) i] += m.backingGain * br[(size_t) i]; }
+            for (int i = 0; i < n; ++i)
+            {
+                L[(size_t) i] += m.backingGain * m.backingBalL * bl[(size_t) i];
+                R[(size_t) i] += m.backingGain * m.backingBalR * br[(size_t) i];
+            }
         }
         for (size_t t = 0; t < takes.size(); ++t)
         {
@@ -1305,6 +1338,7 @@ juce::String PlayerRecorder::renderMix(bool withBacking, juce::AudioBuffer<float
     m.backing = withBacking && backingReady.load();
     m.backingFile = backingFile;
     m.backingGain = juce::Decibels::decibelsToGain((double) backingGainDb.load(), -100.0);
+    std::tie(m.backingBalL, m.backingBalR) = balanceGains(backingPan.load());
     juce::int64 firstTake = std::numeric_limits<juce::int64>::max(), takeEnd = 0;
     for (int t = 0; t < kTracks; ++t)
     {
@@ -1337,6 +1371,7 @@ juce::String PlayerRecorder::runExport(const juce::File& dest, ExportOptions o)
     m.backing = o.withBacking && backingReady.load();
     m.backingFile = backingFile;
     m.backingGain = juce::Decibels::decibelsToGain((double) backingGainDb.load(), -100.0);
+    std::tie(m.backingBalL, m.backingBalR) = balanceGains(backingPan.load());
     juce::int64 firstTake = std::numeric_limits<juce::int64>::max(), takeEnd = 0;
     for (int t = 0; t < kTracks; ++t)
     {
