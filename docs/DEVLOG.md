@@ -6,6 +6,13 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-12 — Release 0.9.18 - Claude (Opus 5.5)
+
+- Owner: "Yes, please" - 0.9.18 published (full screen button, video window SWAP / seek bar / maximise, INPUT 2
+  LISTEN, screen recording fixes). Windows files to be signed by the owner.
+
+---
+
 ## 2026-11-12 — Session 5j: full screen button, video window SWAP / seek bar / maximise, INPUT 2 LISTEN, screen fix - Claude (Opus 5.5)
 
 - Owner (testing 0.9.17 on Windows):
