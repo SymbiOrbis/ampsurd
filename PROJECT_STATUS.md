@@ -54,7 +54,9 @@ https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.0
 
 **Public beta v0.9.18 released 2026-11-12:** full screen button in the title bar + EXIT FULL SCREEN; video window: seek bar, SWAP (screen large / camera in the box), maximise; INPUT 2 LISTEN / MUTED (mic feedback); SCREEN BOX errors shown + logged, fallbacks (wait for the first picture, software H.264 encoder, GDI capture) - the owner's 0.9.17 test wrote no screen file at all. All awaiting a test on Windows / Mac.
 
-**In main, not released yet:** TWO PLAYERS (settings menu): two guitarists on two inputs, P1 / P2 per amp, shared effects, each player on their own track (PLAYER 1 / PLAYER 2), one song or video; the tuner follows the player who plays. Not tested with real hardware yet.
+**Public beta v0.9.19 released 2026-11-12:** TWO PLAYERS (settings menu): two guitarists on two inputs, P1 / P2 per amp, shared effects, each player on their own track (PLAYER 1 / PLAYER 2), one song or video; the tuner follows the player who plays. Not tested with real hardware yet.
+
+**In main, not released yet:** (nothing yet)
 
 **Public beta v0.9.16 released 2026-11-09:** Copy / Paste tone (slot menu), Save tone - SAVE AS..., log: sudden spikes named correctly. https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.16 - Windows files to be signed by the owner.
 

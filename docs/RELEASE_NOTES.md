@@ -21,6 +21,15 @@ VIDEO in the player).
 
 ## Next version (not released yet)
 
+(nothing yet)
+
+## AMPSURD 0.9.19 (beta)
+
+**Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the standalone app.
+**macOS 10.15 or newer:** AMPSURD-macOS.pkg installs the app, the VST3 plugin and the Audio Unit. Installing over an
+older version is fine: presets and recordings (Documents/AMPSURD) stay untouched.
+
+New in 0.9.19:
 - TWO PLAYERS (settings menu): two guitarists, each with their own amps - P1 / P2 on every amp card. Player 2 plugs
   into the second input of the interface. Both go through the same effects (gate, EQ, delay, reverb...). The
   player records PLAYER 1 and PLAYER 2 on their own tracks, together, into one song or video. The tuner follows

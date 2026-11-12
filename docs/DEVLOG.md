@@ -6,6 +6,12 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-12 — Release 0.9.19 - Claude (Opus 5.5)
+
+- Owner: "yes" - 0.9.19 published (TWO PLAYERS). Windows files to be signed by the owner.
+
+---
+
 ## 2026-11-12 — Session 5k: TWO PLAYERS - Claude (Opus 5.5)
 
 - Owner: two guitarists, each with their own set of captures, one recording (with or without video). Approved the
