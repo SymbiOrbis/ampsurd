@@ -52,7 +52,7 @@ footswitches (program change, MIDI learn), preset packs, undo / redo, A/B, fast 
 https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.0
 **Public beta v0.9.17 released 2026-11-12:** full screen mode (F11); per-amp noise gate (GATE on the card, settings in EDIT); SCREEN BOX for video takes (screen recording in a box over the camera picture, show / hide any time).
 
-**In main, not released yet (2026-11-12):** video takes start at the playhead; player INPUT 2 track (second interface input, ARM per track, together or one after the other), R / Ctrl+R record and Space stop (also video); red CLOSE in the middle section; the log shows for each dropout where the time went (per amp: pedals, capture, tone + cabinet IR, EQ; mixing, input, effects, output).
+**In main, not released yet (2026-11-12, after 0.9.17):** full screen button in the title bar + EXIT FULL SCREEN; video window: seek bar, SWAP (screen large / camera in the box), maximise; INPUT 2 LISTEN / MUTED (mic feedback); SCREEN BOX errors shown + logged, fallbacks (wait for the first picture, software H.264 encoder, GDI capture) - the owner's 0.9.17 test wrote no screen file at all. All awaiting a test on Windows / Mac.
 
 **Public beta v0.9.16 released 2026-11-09:** Copy / Paste tone (slot menu), Save tone - SAVE AS..., log: sudden spikes named correctly. https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.16 - Windows files to be signed by the owner.
 

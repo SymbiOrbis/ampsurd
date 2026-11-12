@@ -25,10 +25,12 @@ namespace ampsurd::ui
 class ScreenBoxView final : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
 {
 public:
-    explicit ScreenBoxView(ScreenCapture&);
+    // frameOnly (SWAP): only the frame and the resize corner are drawn - the camera picture shows through it
+    ScreenBoxView(ScreenCapture&, bool frameOnly = false);
     ~ScreenBoxView() override { stopTimer(); }
     std::function<void(bool finished)> onMoved;   // while dragging (false) and at the end (true)
     std::function<juce::Rectangle<int>()> limits; // where it may be: the preview area, in its own parent's / the screen's coordinates
+    bool isFrameOnly() const { return frameOnly; }
     void paint(juce::Graphics&) override;
     void mouseMove(const juce::MouseEvent&) override;
     void mouseDown(const juce::MouseEvent&) override;
@@ -39,10 +41,25 @@ private:
     void timerCallback() override;
     bool inCorner(juce::Point<int> p) const { return p.x > getWidth() - 16 && p.y > getHeight() - 16; }
     ScreenCapture& screen;
+    const bool frameOnly;
     int shownFrame = -1;
     juce::Point<int> downPos;
     juce::Rectangle<int> downBounds;
     bool resizing = false;
+};
+
+// SWAP: the screen's live picture large, behind the camera picture (which is then in the box)
+class ScreenPictureView final : public juce::Component, private juce::Timer
+{
+public:
+    explicit ScreenPictureView(ScreenCapture& s) : screen(s) { setOpaque(true); setInterceptsMouseClicks(false, false); startTimerHz(15); }
+    ~ScreenPictureView() override { stopTimer(); }
+    void paint(juce::Graphics&) override;
+
+private:
+    void timerCallback() override { if (screen.getFrameCount() != shownFrame) { shownFrame = screen.getFrameCount(); repaint(); } }
+    ScreenCapture& screen;
+    int shownFrame = -1;
 };
 
 class CameraView final : public juce::Component
@@ -80,13 +97,19 @@ private:
     void listScreens();
     void chooseScreen(int index);      // -1 = none
     void setBoxShown(bool on);
+    void setSwapped(bool on);          // SWAP: the screen large, the camera in the box
+    void rebuildBox();                 // the box again (its kind follows SWAP)
+    void layoutPictures();             // camera / screen / box / playback: where and whether shown
     void placeBox();                   // the box where boxRect says (in the preview area)
+    juce::Rectangle<int> boxBoundsLocal() const; // the box in this view's coordinates
     void boxMoved(bool finished);
     void pushKey();                    // while recording: the box's state now
     ScreenCapture& screen;
     juce::ComboBox screenBox;
-    juce::TextButton boxButton { "SCREEN BOX" };
+    juce::TextButton boxButton { "SCREEN BOX" }, swapButton { "SWAP" };
     std::unique_ptr<ScreenBoxView> boxView;
+    ScreenPictureView bigScreen { screen };
+    bool swapped = false;
     juce::Rectangle<float> boxRect { 0.63f, 0.66f, 0.34f, 0.29f }; // in the preview area, 0..1
     bool boxShown = false;
     juce::Rectangle<int> previewArea;
@@ -109,8 +132,16 @@ private:
     juce::Result loadPlayback(const juce::File& f); // creates the player in the window, then loads (Windows needs both)
     std::unique_ptr<juce::VideoComponent> playback; // the recorded take (muted; the sound comes from the player)
     juce::File loadedVideo;
+    juce::File preloadTried;                        // loaded in the background once (for the bar under the video)
    #endif
     bool playingBack = false;
+    // the bar under the video (owner 2026-11-12): where the video is, drag / click to go anywhere in it
+    juce::Slider seekBar;
+    juce::Rectangle<int> seekTimeArea;
+    double seekStart = -1.0;           // stopped: PLAY starts here (video seconds); -1 = from the beginning
+    double lastScrubMs = 0.0;
+    void seekTo(double videoSeconds, bool withSound);
+    double videoDuration() const;
     juce::String status;
     juce::Slider offsetSlider;
     std::unique_ptr<juce::Component> preview;

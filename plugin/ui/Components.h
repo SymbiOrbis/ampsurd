@@ -749,6 +749,8 @@ private:
     // metronome row: CLICK, tempo (shared with delay SYNC), TAP, time signature, volume, count-in
     void applyMetronome();
     juce::TextButton clickButton { "CLICK" }, tapButton { "TAP" };
+    juce::TextButton listenButton { "LISTEN" }; // INPUT 2 on the speakers or not (a mic would feed back)
+    void setInput2Listen(bool on);
     juce::Slider bpmSlider, clickVol;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> bpmAtt;
     juce::ComboBox meterBox, countInBox, soundBox;
@@ -763,6 +765,7 @@ private:
     juce::TextButton videoButton { "VIDEO" };
     VideoCapture camera;
     ScreenCapture screenCap; // SCREEN BOX: the screen recorded with a video take
+    juce::String screenProblem; // why the last video take has no screen (shown when it is saved)
     std::unique_ptr<CameraWindow> cameraWindow;
     bool videoRecording = false, videoSaving = false;
     double replaceArmedAt = -1.0;

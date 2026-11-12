@@ -188,6 +188,10 @@ public:
     float getAndResetBackingPeak() { return backingPeak.exchange(0.0f); }
     float getAndResetTakePeak(int track = 0) { return lanes[(size_t) track].peak.exchange(0.0f); }
     float getAndResetInput2Peak() { return input2Peak.exchange(0.0f); } // the live INPUT 2 (raw), for its meter
+    // INPUT 2 LISTEN (owner 2026-11-12): off = the live INPUT 2 is not on the speakers (a microphone would feed back);
+    // it is still recorded when armed. On (default) = heard while armed, as before.
+    void setInput2Listen(bool on) { input2Listen.store(on); }
+    bool isInput2Listen() const { return input2Listen.load(); }
 
     // device input + output latency (from the audio device, in samples)
     void setDeviceLatencyProvider(std::function<int()> f) { deviceLatency = std::move(f); }
@@ -292,6 +296,7 @@ private:
     std::array<Lane, kTracks> lanes;
     std::atomic<bool> input2Available { false };
     std::atomic<float> input2Peak { 0.0f };
+    std::atomic<bool> input2Listen { true };
     double mon2L = 0.0, mon2R = 0.0;     // smoothed monitor gains of the live INPUT 2
 
     std::atomic<int> state { (int) State::stopped };

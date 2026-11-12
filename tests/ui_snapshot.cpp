@@ -1899,6 +1899,11 @@ int main(int argc, char** argv)
             save(*ed, out.getChildFile("19z_full_screen_16x9.png"));
             std::cout << (fits ? "[PASS]" : "[FAIL]") << " FULL SCREEN: a 1920 x 1080 screen shows AMPSURD fitted and centred ("
                       << tl.x << "," << tl.y << " - " << br.x << "," << br.y << ")\n";
+            // EXIT FULL SCREEN (no title bar in full screen): beside AMPSURD, not over it, on the screen
+            const auto xb = e->getExitFullScreenButton().getBounds();
+            const bool beside = xb.getX() >= (int) br.x && xb.getRight() <= 1920 && xb.getY() >= 0 && xb.getY() < 60 && !xb.isEmpty();
+            std::cout << (beside ? "[PASS]" : "[FAIL]") << " FULL SCREEN: EXIT FULL SCREEN is at the top right, beside AMPSURD ("
+                      << xb.toString() << ")\n";
             ed->setSize(1200, 800);
         }
         pl->stop();
@@ -2049,7 +2054,7 @@ int main(int argc, char** argv)
         ampsurd::ui::CameraView view(cam, scr, dummy);
         ampsurd::ui::LookAndFeel lf;
         view.setLookAndFeel(&lf);
-        view.setSize(600, 622);
+        view.setSize(600, 646);
         juce::ComboBox* screens = nullptr;
         juce::TextButton* boxBtn = nullptr;
         for (auto* c : view.getChildren())
@@ -2080,6 +2085,30 @@ int main(int argc, char** argv)
         }
         std::cout << (ok ? "[PASS] " : "[FAIL] ") << "SCREEN BOX: choosing a screen shows its box over the camera picture, "
                   << "SCREEN BOX hides and shows it\n";
+        // SWAP (owner 2026-11-12): the screen large, the box becomes the camera's frame; SWAP again: back
+        {
+            juce::TextButton* swapBtn = nullptr;
+            ampsurd::ui::ScreenPictureView* big = nullptr;
+            for (auto* c : view.getChildren())
+            {
+                if (auto* b = dynamic_cast<juce::TextButton*>(c)) if (b->getButtonText() == "SWAP") swapBtn = b;
+                if (auto* p = dynamic_cast<ampsurd::ui::ScreenPictureView*>(c)) big = p;
+            }
+            bool sw = ok && swapBtn != nullptr && big != nullptr && swapBtn->isEnabled();
+            if (sw)
+            {
+                swapBtn->onClick();
+                auto* frame = findBox();
+                if (frame != nullptr) frame->setVisible(true);
+                sw = swapBtn->getToggleState() && big->isVisible() && frame != nullptr && frame->isFrameOnly()
+                     && view.getLocalBounds().contains(big->getBounds()) && big->getWidth() > 400;
+                save(view, out.getChildFile("20c_camera_swap.png"));
+                swapBtn->onClick();
+                auto* back = findBox();
+                sw = sw && !swapBtn->getToggleState() && !big->isVisible() && back != nullptr && !back->isFrameOnly();
+            }
+            std::cout << (sw ? "[PASS] " : "[FAIL] ") << "SCREEN SWAP: the screen large with the camera's box over it, SWAP again: back\n";
+        }
         screens->setSelectedId(1, juce::sendNotificationSync); // not remembered for the next tests
         view.setLookAndFeel(nullptr);
         ::setenv("AMPSURD_FAKE_SCREEN", "0", 1);

@@ -6,6 +6,43 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-12 — Session 5j: full screen button, video window SWAP / seek bar / maximise, INPUT 2 LISTEN, screen fix - Claude (Opus 5.5)
+
+- Owner (testing 0.9.17 on Windows):
+  - "F11 doesn't work - please add the direct option": the window's title bar now has a FULL SCREEN button between -
+    and X (also a double click on the title bar). Full screen has no title bar, so an EXIT FULL SCREEN button sits
+    in the free strip beside AMPSURD (Esc still works). Under Xvfb F11 did not reach the app either (no window
+    manager focus), the menu item worked; the cause on his PC is unknown (laptop Fn key? focus?) - the button does
+    not depend on keys.
+  - Video window: a bar under the video (click / drag = go anywhere; dragging moves the picture, the sound joins at
+    the end of the drag; stopped: PLAY starts there; the time is shown as m:ss / m:ss). The chosen video is loaded
+    in the background when stopped, so the bar works before the first PLAY.
+  - SWAP button (next to SCREEN BOX): the screen large, the camera in the box; again = back. Any time, also while
+    recording: a key per change (BoxKey.swapped). Box hidden + SWAP = the screen alone. Saving: composeNv12 /
+    composeBgra (ScreenOverlay) for Windows / Mac. Live: the screen picture fills the preview (ScreenPictureView),
+    the camera preview sits in the box, the box is then only a draggable frame (transparent).
+  - The video window has a maximise button (all title bar buttons; limits raised).
+  - INPUT 2 LISTEN / MUTED button (player, next to the INPUT 2 meter): a mic on INPUT 2 fed back through the
+    speakers. MUTED = not monitored, still recorded. Remembered (AMPSURD.settings "input2Listen").
+  - "The screen capture did not get merged, only camera output was saved": his Recordings/Takes folder (read via the
+    linked computer) has NO screen file at all - the screen recording never started writing, and its error went
+    nowhere (ScreenCapture::onError was not connected). Fixed / hardened:
+    - errors shown in the player and the camera window, and kept in the log (Video); a take saved without the
+      screen says so and why; "Screen recorded: N pictures" / "Screen box attached" notes in the log;
+    - REC waits up to 3 s for the first screen picture instead of failing at once;
+    - the H.264 encoder: the graphics card's first, Windows' software encoder if that fails;
+    - desktop duplication failing or giving no picture in 2 s: GDI screen copies instead (slower, work everywhere).
+    The real cause on his PC is still unknown - the log will tell on the next test.
+- Files: PluginEditor.*, standalone/StandaloneApp.cpp (AmpsurdWindow), ui/CameraWindow.*, ui/Components.*,
+  player/ScreenCapture*.{h,cpp}, player/ScreenOverlay.*, player/VideoMux_win.cpp, VideoMux_mac.mm,
+  player/PlayerRecorder.* (input2Listen), tests.
+- Tested (Linux): recorder_test ALL PASS (new: INPUT 2 MUTED, SCREEN SWAP maths); ui_snapshot: FULL SCREEN exit
+  button placement, SCREEN SWAP (20c_camera_swap.png); the same 3 capture-dependent failures as before.
+  Not tested on real hardware: full screen button, GDI / software-encoder fallbacks, SWAP with a real camera, the
+  bar with real videos, maximised video window.
+
+---
+
 ## 2026-11-12 — Release 0.9.17 - Claude (Opus 5.5)
 
 - Owner asked for the link: 0.9.17 published (INPUT 2 track, keys, video takes from the playhead, SCREEN BOX, gate per

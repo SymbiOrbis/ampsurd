@@ -735,6 +735,12 @@ int main()
         const float heardOff = run2(0.3, nullptr, tone2).getMagnitude(0, (int) (0.2 * sr), (int) (0.1 * sr));
         pl->setArmed(1, true);
         const float heardOn = run2(0.3, nullptr, tone2).getMagnitude(0, (int) (0.2 * sr), (int) (0.1 * sr));
+        // INPUT 2 MUTED (owner 2026-11-12: a mic fed back): armed but not on the speakers
+        pl->setInput2Listen(false);
+        const float heardMuted = run2(0.3, nullptr, tone2).getMagnitude(0, (int) (0.2 * sr), (int) (0.1 * sr));
+        pl->setInput2Listen(true);
+        run2(0.3, nullptr, nullptr);
+        check(heardMuted < 1e-4f, "INPUT 2 MUTED: an armed INPUT 2 is not heard when LISTEN is off (" + juce::String(heardMuted, 5) + ")");
 
         // together: the musician plays guitar and INPUT 2 exactly on the backing clicks they hear
         check(pl->loadBacking(back48).isEmpty(), "INPUT 2: backing loaded");
@@ -871,6 +877,40 @@ int main()
               "SCREEN BOX maths: box shown / hidden at its times (" + juce::String((int) timing) + "), kept inside a 4:3 picture ("
                   + b.toString() + "), colours to NV12 (" + juce::String(Y) + "/" + juce::String(Y2) + "/" + juce::String(Y3) + "), area average "
                   + juce::String(half[0]) + ", box drawn (" + juce::String((int) drawn) + "), screen recorded at " + juce::String(rs.x) + " x " + juce::String(rs.y));
+    }
+    // SWAP (owner 2026-11-12): the screen large and the camera in the box; box hidden = the screen alone
+    {
+        namespace sc = ampsurd::screen;
+        const int cw = 320, ch = 180, sw = 160, sh = 90;
+        auto camFrame = [&] { std::vector<uint8_t> f((size_t) (cw * ch * 3 / 2), 128); std::fill_n(f.begin(), cw * ch, (uint8_t) 100); return f; };
+        std::vector<uint8_t> scr((size_t) (sw * sh * 3 / 2), 128), scratch;
+        std::fill_n(scr.begin(), sw * sh, (uint8_t) 50);
+        sc::BoxKey k;
+        k.visible = true;
+        k.swapped = true;
+        k.rect = { 0.5f, 0.5f, 0.4f, 0.4f };
+        auto f = camFrame();
+        const bool did = sc::composeNv12(k, 16.0 / 9.0, f.data(), cw, ch, scr.data(), sw, sh, scratch);
+        const auto box = sc::boxInPicture(k.rect, 16.0 / 9.0, cw, ch);
+        const bool swappedOk = did && f[(size_t) (10 * cw + 10)] == 50 // the screen everywhere outside the box
+                               && f[(size_t) (box.getCentreY() * cw + box.getCentreX())] == 100; // the camera in the box
+        k.visible = false;
+        auto f2 = camFrame();
+        sc::composeNv12(k, 16.0 / 9.0, f2.data(), cw, ch, scr.data(), sw, sh, scratch);
+        const bool screenOnly = f2[(size_t) (box.getCentreY() * cw + box.getCentreX())] == 50;
+        k.swapped = false;
+        auto f3 = camFrame();
+        const bool untouched = !sc::composeNv12(k, 16.0 / 9.0, f3.data(), cw, ch, scr.data(), sw, sh, scratch) && f3[0] == 100;
+        sc::Overlay ov;
+        ov.file = juce::File::getCurrentWorkingDirectory();
+        ov.keys = { k };
+        const bool unused = !ov.isUsed();
+        ov.keys[0].swapped = true;
+        const bool used = ov.isUsed();
+        check(swappedOk && screenOnly && untouched && unused && used,
+              "SCREEN SWAP: screen large + camera in the box (" + juce::String((int) swappedOk) + "), box hidden = screen alone ("
+                  + juce::String((int) screenOnly) + "), neither = camera unchanged (" + juce::String((int) untouched) + "), SWAP alone counts as used ("
+                  + juce::String((int) (unused && used)) + ")");
     }
 
     proc.reset();

@@ -21,7 +21,13 @@ VIDEO in the player).
 
 ## Next version (not released yet)
 
-(nothing yet)
+- Full screen button in the window's title bar (between - and X); EXIT FULL SCREEN button while in full screen.
+- Video window: a bar under the video to jump to any place; SWAP (screen large, camera in the box - also while
+  recording); a maximise button.
+- INPUT 2 LISTEN / MUTED: switch off hearing INPUT 2 (a microphone near the speakers would feed back); it is still
+  recorded.
+- SCREEN BOX: problems are now shown and logged; the screen is recorded in a slower, compatible way when the fast
+  one does not work, and with Windows' own video encoder when the graphics card's fails.
 
 ## AMPSURD 0.9.17 (beta)
 

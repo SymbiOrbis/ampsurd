@@ -205,7 +205,7 @@ juce::String muxVideoToMp4(const juce::File& video, const juce::AudioBuffer<floa
         screen = std::make_unique<ScreenReader>();
         if (!screen->open(overlay->file)) screen.reset(); // without the box rather than no video
     }
-    std::vector<uint8_t> composed;
+    std::vector<uint8_t> composed, scratch;
     LONGLONG duration = 0; // 100 ns units
     {
         PROPVARIANT v;
@@ -328,13 +328,13 @@ juce::String muxVideoToMp4(const juce::File& video, const juce::AudioBuffer<floa
         {
             const double tc = (double) t / 1.0e7;
             const auto key = ampsurd::screen::boxAt(overlay->keys, tc);
-            const auto box = key.visible ? ampsurd::screen::boxInPicture(key.rect, overlay->previewAspect, (int) w, (int) h) : juce::Rectangle<int>();
             const LONGLONG st = (LONGLONG) ((tc - overlay->offsetSeconds) * 1.0e7);
-            if (!box.isEmpty() && st >= 0 && screen->at(st) && copyNv12(s.Get(), (int) w, (int) h, camPlaneH, composed))
+            // (screen->at() reads the screen file up to this moment; always, so it keeps up)
+            const bool haveScreen = st >= 0 && screen->at(st);
+            if ((key.visible || key.swapped) && haveScreen && copyNv12(s.Get(), (int) w, (int) h, camPlaneH, composed)
+                && ampsurd::screen::composeNv12(key, overlay->previewAspect, composed.data(), (int) w, (int) h, screen->frame.data(), screen->w,
+                                                screen->h, scratch))
             {
-                const size_t ySize = (size_t) w * (size_t) h, sY = (size_t) screen->w * (size_t) screen->h;
-                ampsurd::screen::drawBoxNv12(composed.data(), (int) w, composed.data() + ySize, (int) w, (int) w, (int) h,
-                                             screen->frame.data(), screen->w, screen->frame.data() + sY, screen->w, screen->w, screen->h, box);
                 ComPtr<IMFMediaBuffer> nb;
                 if (SUCCEEDED(MFCreateMemoryBuffer((DWORD) composed.size(), &nb)))
                 {

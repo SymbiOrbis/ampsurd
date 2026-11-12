@@ -287,7 +287,7 @@ void PlayerRecorder::process(double* L, double* R, int n, int ampsurdLatency, bo
         if (pk > input2Peak.load(std::memory_order_relaxed)) input2Peak.store(pk, std::memory_order_relaxed);
     }
     auto monitorInput2 = [&] {
-        const bool on = in2 != nullptr && il.armed.load(std::memory_order_relaxed);
+        const bool on = in2 != nullptr && il.armed.load(std::memory_order_relaxed) && input2Listen.load(std::memory_order_relaxed);
         const double v2 = juce::Decibels::decibelsToGain((double) il.gainDb.load(std::memory_order_relaxed), -100.0);
         const double tl = on ? pan2[0] * v2 : 0.0, tr = on ? pan2[1] * v2 : 0.0;
         if (in2 == nullptr) { mon2L = mon2R = 0.0; return; }

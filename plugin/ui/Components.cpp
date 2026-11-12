@@ -2798,6 +2798,14 @@ PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), pla
     camera.onError = [sp = juce::Component::SafePointer<PlayerPanel>(this)](const juce::String& e) {
         juce::MessageManager::callAsync([sp, e] { if (sp != nullptr) sp->setStatus("Camera: " + e); });
     };
+    // SCREEN BOX problems: shown (in the player and the camera window) and kept in the log (owner 2026-11-12: the
+    // screen was not in his video and nothing said why)
+    screenCap.onError = [this](const juce::String& e) {
+        setStatus("Screen: " + e);
+        if (cameraWindow != nullptr) cameraWindow->view().setStatus("Screen: " + e);
+        proc.getEventLog().add("Video", "Screen: " + e);
+    };
+    screenCap.onInfo = [this](const juce::String& e) { proc.getEventLog().add("Video", e); };
     videoButton.setEnabled(VideoCapture::isSupported());
     videoButton.setTooltip(VideoCapture::isSupported()
                                ? juce::String("VIDEO on: REC also films you with the computer's camera (its own window). A video take is one "
@@ -2881,6 +2889,14 @@ PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), pla
     juce::PropertiesFile::Options po;
     po.applicationName = "AMPSURD"; po.filenameSuffix = ".settings"; po.osxLibrarySubFolder = "Application Support";
     juce::PropertiesFile pf(po);
+    // INPUT 2 LISTEN: remembered on this computer
+    addAndMakeVisible(listenButton);
+    listenButton.setWantsKeyboardFocus(false);
+    listenButton.setClickingTogglesState(false);
+    listenButton.setTooltip("LISTEN: hear INPUT 2 on your speakers / headphones while it is armed. Switch it off (MUTED) for a microphone "
+                            "near the speakers - it would feed back (howl). INPUT 2 is still recorded; the recorded take still plays");
+    listenButton.onClick = [this] { setInput2Listen(!player.isInput2Listen()); };
+    setInput2Listen(pf.getBoolValue("input2Listen", true));
     for (auto* c : { (juce::Component*) &clickButton, (juce::Component*) &tapButton, (juce::Component*) &bpmSlider,
                      (juce::Component*) &clickVol, (juce::Component*) &meterBox, (juce::Component*) &countInBox })
         addAndMakeVisible(*c);
@@ -3011,9 +3027,11 @@ void PlayerPanel::resized()
         takeVol.setBounds(row.removeFromLeft(214).withTrimmedLeft(74));
         takeMeter = row.removeFromLeft(46).withSizeKeepingCentre(46, 8);
         row.removeFromLeft(18);
-        input2Vol.setBounds(row.removeFromLeft(222).withTrimmedLeft(82));
+        input2Vol.setBounds(row.removeFromLeft(204).withTrimmedLeft(82));
         input2Meter = row.removeFromLeft(46).withSizeKeepingCentre(46, 8);
-        row.removeFromLeft(18);
+        row.removeFromLeft(4);
+        listenButton.setBounds(row.removeFromLeft(62));
+        row.removeFromLeft(12);
         offset.setBounds(row.removeFromLeft(190).withTrimmedLeft(52));
     }
     // row: metronome
@@ -3271,6 +3289,7 @@ void PlayerPanel::startVideoTake()
     const auto err = camera.startRecording(player.getRecordingsFolder().getChildFile("Takes"));
     if (err.isNotEmpty()) { setStatus(err); return; }
     videoRecording = true;
+    screenProblem.clear();
     // SCREEN BOX: the chosen screen is recorded too (the box can be shown / hidden / moved during the take)
     juce::String screenErr;
     if (screenCap.isOpen()) screenErr = screenCap.startRecording(player.getRecordingsFolder().getChildFile("Takes"));
@@ -3348,6 +3367,20 @@ void PlayerPanel::recordPressed(bool fromCameraWindow)
     player.record();
 }
 
+void PlayerPanel::setInput2Listen(bool on)
+{
+    player.setInput2Listen(on);
+    listenButton.setButtonText(on ? "LISTEN" : "MUTED");
+    listenButton.setToggleState(on, juce::dontSendNotification);
+    juce::PropertiesFile::Options o;
+    o.applicationName = "AMPSURD"; o.filenameSuffix = ".settings"; o.osxLibrarySubFolder = "Application Support";
+    juce::PropertiesFile f(o);
+    if (f.getBoolValue("input2Listen", true) != on) { f.setValue("input2Listen", on); f.saveIfNeeded(); }
+    if (isShowing())
+        setStatus(on ? juce::String("INPUT 2 LISTEN: you hear INPUT 2 while it is armed.")
+                     : juce::String("INPUT 2 MUTED: not on the speakers (no feedback from a microphone) - still recorded when armed."));
+}
+
 void PlayerPanel::armPressed(int t)
 {
     using S = PlayerRecorder::State;
@@ -3357,7 +3390,7 @@ void PlayerPanel::armPressed(int t)
     if (t == 1 && on && !player.isInput2Available()) { chooseInput2(true); return; } // first: which input
     player.setArmed(t, on);
     if (t == 1)
-        setStatus(on ? "INPUT 2 armed (" + input2Name() + "): you hear it now, REC records it"
+        setStatus(on ? "INPUT 2 armed (" + input2Name() + "): " + (player.isInput2Listen() ? "you hear it now, " : "MUTED - not heard, ") + "REC records it"
                            + (player.isArmed(0) ? juce::String(" together with the guitar.") : juce::String(" alone (GUITAR is not armed)."))
                      : juce::String("INPUT 2 is not armed: not recorded, not heard."));
     else
@@ -3422,6 +3455,7 @@ void PlayerPanel::finishVideoTake()
     videoRecording = false;
     juce::File f, sf;
     const auto firstFrame = camera.stopRecording(f);
+    const bool screenWasRecording = screenCap.isRecording();
     const auto screenFirst = screenCap.stopRecording(sf);
     if (f == juce::File())
     {
@@ -3443,8 +3477,20 @@ void PlayerPanel::finishVideoTake()
             ov.keys.push_back(key);
         }
         player.setTakeScreen(ov);
+        proc.getEventLog().add("Video", "Screen box attached: " + sf.getFileName() + ", " + juce::String(ov.keys.size()) + " box states, offset "
+                                            + juce::String(ov.offsetSeconds, 2) + " s" + (ov.isUsed() ? "" : " (the box was never shown)"));
     }
-    setStatus("Video take recorded - the video with its sound is being made...");
+    else if (screenWasRecording)
+    {
+        const auto why = !sf.existsAsFile() ? (screenCap.getLastError().isNotEmpty() ? screenCap.getLastError() : juce::String("no screen file was written"))
+                                            : juce::String("the screen's or the camera's start time is missing");
+        proc.getEventLog().add("Video", "Screen box NOT in the video: " + why);
+        screenProblem = why;
+        setStatus("Video take recorded - WITHOUT the screen (" + why + "). Saving...");
+        if (cameraWindow != nullptr) cameraWindow->view().showNotice("THE SCREEN WAS NOT RECORDED - see the log", 8.0, false);
+    }
+    else
+        setStatus("Video take recorded - the video with its sound is being made...");
     // the camera finishes its file a moment after STOP: check that it really exists
     juce::Timer::callAfterDelay(2500, [sp = juce::Component::SafePointer<PlayerPanel>(this), f] {
         if (sp == nullptr) return;
@@ -3495,7 +3541,10 @@ void PlayerPanel::saveVideo()
                     sp->cameraWindow->view().refreshVideoList();
                     sp->cameraWindow->view().showNotice(juce::String::charToString((juce::juce_wchar) 0x2713) + "  VIDEO SAVED: " + f.getFileNameWithoutExtension(), 6.0);
                 }
-                sp->setStatus("Saved: " + f.getFileName() + " (Documents / AMPSURD / Recordings). SHOW FILE opens the folder.");
+                sp->setStatus("Saved: " + f.getFileName() + " (Documents / AMPSURD / Recordings)"
+                              + (sp->screenProblem.isNotEmpty() ? " - WITHOUT the screen: " + sp->screenProblem : juce::String(". SHOW FILE opens the folder.")));
+                if (sp->screenProblem.isNotEmpty() && sp->cameraWindow != nullptr)
+                    sp->cameraWindow->view().setStatus("Saved without the screen: " + sp->screenProblem + " (details: settings menu > Show log)");
             }
             else
             {

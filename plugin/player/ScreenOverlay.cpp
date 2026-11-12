@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 namespace ampsurd::screen
 {
@@ -9,7 +10,7 @@ bool Overlay::isUsed() const
 {
     if (file == juce::File()) return false;
     for (const auto& k : keys)
-        if (k.visible) return true;
+        if (k.visible || k.swapped) return true;
     return false;
 }
 
@@ -47,7 +48,11 @@ juce::Rectangle<int> boxInPicture(juce::Rectangle<float> r, double previewAspect
 
 juce::Rectangle<int> fitInBox(juce::Rectangle<int> box, int srcW, int srcH)
 {
-    const auto inner = box.reduced(2);
+    return fitInArea(box.reduced(2), srcW, srcH);
+}
+
+juce::Rectangle<int> fitInArea(juce::Rectangle<int> inner, int srcW, int srcH)
+{
     if (srcW <= 0 || srcH <= 0 || inner.getWidth() < 4 || inner.getHeight() < 4) return {};
     const double s = std::min((double) inner.getWidth() / srcW, (double) inner.getHeight() / srcH);
     int w = ((int) std::floor(srcW * s)) & ~1, h = ((int) std::floor(srcH * s)) & ~1;
@@ -167,6 +172,67 @@ void drawBoxBgra(uint8_t* dst, int dstW, int dstH, int dstPitch, const uint8_t* 
     if (pic.isEmpty() || src == nullptr) return;
     scalePlane(src, srcW, srcH, srcPitch, dst + (size_t) pic.getY() * (size_t) dstPitch + (size_t) pic.getX() * 4, pic.getWidth(), pic.getHeight(),
                dstPitch, 4);
+}
+
+void drawFullNv12(uint8_t* dstY, int dstYPitch, uint8_t* dstUV, int dstUVPitch, int dstW, int dstH,
+                  const uint8_t* srcY, int srcYPitch, const uint8_t* srcUV, int srcUVPitch, int srcW, int srcH)
+{
+    const juce::Rectangle<int> all { 0, 0, dstW & ~1, dstH & ~1 };
+    fillNv12(dstY, dstYPitch, dstUV, dstUVPitch, all, 16, 128, 128);
+    const auto pic = fitInArea(all, srcW, srcH);
+    if (pic.isEmpty() || srcY == nullptr) return;
+    scalePlane(srcY, srcW, srcH, srcYPitch, dstY + (size_t) pic.getY() * (size_t) dstYPitch + pic.getX(), pic.getWidth(), pic.getHeight(), dstYPitch, 1);
+    scalePlane(srcUV, srcW / 2, srcH / 2, srcUVPitch, dstUV + (size_t) (pic.getY() / 2) * (size_t) dstUVPitch + pic.getX(),
+               pic.getWidth() / 2, pic.getHeight() / 2, dstUVPitch, 2);
+}
+
+void drawFullBgra(uint8_t* dst, int dstW, int dstH, int dstPitch, const uint8_t* src, int srcW, int srcH, int srcPitch)
+{
+    for (int row = 0; row < dstH; ++row)
+    {
+        uint8_t* o = dst + (size_t) row * (size_t) dstPitch;
+        for (int c = 0; c < dstW; ++c) { o[c * 4] = 0; o[c * 4 + 1] = 0; o[c * 4 + 2] = 0; o[c * 4 + 3] = 255; }
+    }
+    const auto pic = fitInArea({ 0, 0, dstW, dstH }, srcW, srcH);
+    if (pic.isEmpty() || src == nullptr) return;
+    scalePlane(src, srcW, srcH, srcPitch, dst + (size_t) pic.getY() * (size_t) dstPitch + (size_t) pic.getX() * 4, pic.getWidth(), pic.getHeight(),
+               dstPitch, 4);
+}
+
+bool composeNv12(const BoxKey& key, double previewAspect, uint8_t* frame, int w, int h,
+                 const uint8_t* screenNv12, int screenW, int screenH, std::vector<uint8_t>& scratch)
+{
+    if (screenNv12 == nullptr || w < 16 || h < 16) return false;
+    const auto box = key.visible ? boxInPicture(key.rect, previewAspect, w, h) : juce::Rectangle<int>();
+    const size_t ySize = (size_t) w * (size_t) h, sY = (size_t) screenW * (size_t) screenH;
+    if (!key.swapped)
+    {
+        if (box.isEmpty()) return false;
+        drawBoxNv12(frame, w, frame + ySize, w, w, h, screenNv12, screenW, screenNv12 + sY, screenW, screenW, screenH, box);
+        return true;
+    }
+    scratch.assign(frame, frame + ySize * 3 / 2); // the camera picture, for the box
+    drawFullNv12(frame, w, frame + ySize, w, w, h, screenNv12, screenW, screenNv12 + sY, screenW, screenW, screenH);
+    if (!box.isEmpty()) drawBoxNv12(frame, w, frame + ySize, w, w, h, scratch.data(), w, scratch.data() + ySize, w, w, h, box);
+    return true;
+}
+
+bool composeBgra(const BoxKey& key, double previewAspect, uint8_t* frame, int w, int h, int pitch,
+                 const uint8_t* screenBgra, int screenW, int screenH, int screenPitch, std::vector<uint8_t>& scratch)
+{
+    if (screenBgra == nullptr || w < 16 || h < 16) return false;
+    const auto box = key.visible ? boxInPicture(key.rect, previewAspect, w, h) : juce::Rectangle<int>();
+    if (!key.swapped)
+    {
+        if (box.isEmpty()) return false;
+        drawBoxBgra(frame, w, h, pitch, screenBgra, screenW, screenH, screenPitch, box);
+        return true;
+    }
+    scratch.resize((size_t) w * (size_t) h * 4);
+    for (int y = 0; y < h; ++y) memcpy(scratch.data() + (size_t) y * (size_t) w * 4, frame + (size_t) y * (size_t) pitch, (size_t) w * 4);
+    drawFullBgra(frame, w, h, pitch, screenBgra, screenW, screenH, screenPitch);
+    if (!box.isEmpty()) drawBoxBgra(frame, w, h, pitch, scratch.data(), w, h, w * 4, box);
+    return true;
 }
 
 void drawPointer(uint8_t* bgra, int w, int h, int pitch, int x, int y, float scale)

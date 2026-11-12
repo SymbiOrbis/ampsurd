@@ -38,6 +38,15 @@ juce::Image ScreenCapture::latestFrame() const
 void ScreenCapture::reportError(const juce::String& e)
 {
     juce::MessageManager::callAsync([this, e, a = alive] {
-        if (a->load() && onError) onError(e);
+        if (!a->load()) return;
+        lastError = e;
+        if (onError) onError(e);
+    });
+}
+
+void ScreenCapture::reportInfo(const juce::String& e)
+{
+    juce::MessageManager::callAsync([this, e, a = alive] {
+        if (a->load() && onInfo) onInfo(e);
     });
 }

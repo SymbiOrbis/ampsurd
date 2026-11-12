@@ -39,9 +39,11 @@ public:
     ampsurd::ui::CabIrMatrix& getCabIrMatrix() { return content.cabIrs; } // tests
     void showPlayer(bool show);
     // FULL SCREEN (standalone app, owner 2026-11-12): the window fills the whole screen, AMPSURD scaled to fit
-    // (F11, on a Mac also Ctrl+Cmd+F; Esc leaves it; settings menu). In a DAW the DAW handles its windows.
+    // (the window's full screen button between - and X, a double click on the title bar, F11, on a Mac also
+    // Ctrl+Cmd+F; Esc or the EXIT FULL SCREEN button leaves it; settings menu). In a DAW the DAW handles its windows.
     void setFullScreen(bool on);
     bool isFullScreen() const { return fullScreen; }
+    juce::Button& getExitFullScreenButton() { return exitFullScreen; } // tests
     void showRoot(bool show); // ROOT panel (experimental module; does nothing without it)
     void showDoubler(bool show); // DOUBLER panel (experimental module; does nothing without it)
     void showFxPage(int which) { content.globalEq.selectFx(which); } // tests / screenshots
@@ -87,6 +89,7 @@ private:
     int selected = -1;
     bool globalEqOpen = false, playerOpen = false, rootOpen = false, doublerOpen = false, lastFrankOn = false;
     bool fullScreen = false;
+    juce::TextButton exitFullScreen { "EXIT FULL SCREEN" }; // shown only in full screen (no title bar then)
     juce::Rectangle<int> windowBoundsBeforeFullScreen;
     int titleBarBeforeFullScreen = 26;
     double cpuAverage = -1.0;     // CPU display: averaged, updated once per second (readable)

@@ -42,6 +42,8 @@ public:
     void excludeWindow(juce::Component* topLevelWindow);
 
     std::function<void(const juce::String&)> onError; // called on the message thread
+    std::function<void(const juce::String&)> onInfo;  // notes for the log (how the screen is recorded), message thread
+    juce::String getLastError() const { return lastError; } // the last problem (message thread), cleared by open()
 
     // a preview picture (about 480 px wide) from a BGRA frame
     static juce::Image makePreview(const uint8_t* bgra, int w, int h, int pitch);
@@ -49,11 +51,13 @@ public:
     struct Impl; // the platform's part (also used by its frame callback)
     void publishPreview(const juce::Image& img);       // from the capture thread
     void reportError(const juce::String& e);           // from any thread
+    void reportInfo(const juce::String& e);            // from any thread
 
 private:
     std::unique_ptr<Impl> impl;
     int openIndex = -1;
     bool recording = false;
+    juce::String lastError;
     mutable juce::SpinLock previewLock;
     juce::Image preview;
     std::atomic<int> frames { 0 };

@@ -20,6 +20,7 @@
 
 #include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
 
+#include "../PluginEditor.h"
 #include "../PluginProcessor.h"
 
 namespace ampsurd
@@ -177,6 +178,26 @@ void showAudioSettings(juce::StandalonePluginHolder& h, AmpsurdProcessor& p)
 }
 } // namespace
 
+// JUCE's standalone window with a FULL SCREEN button between - and X (owner 2026-11-12: "please add the direct
+// option" - F11 did not work for him). The button, and a double click on the title bar, switch AMPSURD's full screen.
+struct AmpsurdWindow final : public juce::StandaloneFilterWindow
+{
+    using juce::StandaloneFilterWindow::StandaloneFilterWindow;
+
+    void maximiseButtonPressed() override
+    {
+        if (auto* e = findEditor(*this)) e->setFullScreen(!e->isFullScreen());
+    }
+
+    static AmpsurdEditor* findEditor(juce::Component& c)
+    {
+        if (auto* e = dynamic_cast<AmpsurdEditor*>(&c)) return e;
+        for (auto* ch : c.getChildren())
+            if (auto* e = findEditor(*ch)) return e;
+        return nullptr;
+    }
+};
+
 // covers JUCE's Options button and takes its clicks (follows the button's size)
 struct ClickCatcher final : public juce::Component
 {
@@ -265,7 +286,9 @@ public:
             headless = std::move(holder);
             return;
         }
-        mainWindow = std::make_unique<juce::StandaloneFilterWindow>(getApplicationName(), juce::Colour(0xff1d1e20), std::move(holder));
+        mainWindow = std::make_unique<AmpsurdWindow>(getApplicationName(), juce::Colour(0xff1d1e20), std::move(holder));
+        mainWindow->setTitleBarButtonsRequired(juce::DocumentWindow::allButtons, false); // - FULL SCREEN X
+        if (auto* b = mainWindow->getMaximiseButton()) b->setTooltip("Full screen (F11; Esc leaves it)");
         // the window's Options menu opens AMPSURD's Audio / MIDI settings instead of JUCE's (same items
         // otherwise): a transparent catcher on top of JUCE's Options button takes its clicks
         for (auto* c : mainWindow->getChildren())

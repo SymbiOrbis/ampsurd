@@ -24,6 +24,7 @@
 #pragma comment(lib, "mfreadwrite.lib")
 #pragma comment(lib, "mfuuid.lib")
 #pragma comment(lib, "user32.lib")
+#pragma comment(lib, "gdi32.lib")
 
 using Microsoft::WRL::ComPtr;
 
@@ -90,6 +91,87 @@ struct ScreenCapture::Impl final : public juce::Thread
     DWORD stream = 0;
     double recStartMs = 0.0;
     LONGLONG lastTime = -1;
+    int framesWritten = 0;
+    double startAskedMs = 0.0;   // when REC asked for the recording (it waits up to 3 s for the first picture)
+
+    // the fallback when desktop duplication gives no picture (some graphics drivers, remote desktop, a second
+    // graphics card): GDI copies of the screen - slower, but they work everywhere (owner 2026-11-12: the screen
+    // was not recorded on his PC, only the camera)
+    bool gdi = false;
+    HDC gdiScreen = nullptr, gdiMem = nullptr;
+    HBITMAP gdiBmp = nullptr;
+    HGDIOBJ gdiOld = nullptr;
+    void* gdiBits = nullptr;
+    double gdiLast = 0.0;
+
+    void freeGdi()
+    {
+        if (gdiMem != nullptr) { SelectObject(gdiMem, gdiOld); DeleteDC(gdiMem); gdiMem = nullptr; }
+        if (gdiBmp != nullptr) { DeleteObject(gdiBmp); gdiBmp = nullptr; }
+        if (gdiScreen != nullptr) { ReleaseDC(nullptr, gdiScreen); gdiScreen = nullptr; }
+        gdiBits = nullptr;
+    }
+
+    bool useGdi()
+    {
+        freeGdi();
+        dupl.Reset();
+        auto outs = listOutputs();
+        if (index < 0 || index >= (int) outs.size()) return false;
+        desc = outs[(size_t) index].desc;
+        const auto& r = desc.DesktopCoordinates;
+        srcW = (int) (r.right - r.left);
+        srcH = (int) (r.bottom - r.top);
+        if (srcW < 16 || srcH < 16) return false;
+        const auto rs = ampsurd::screen::recordSize(srcW, srcH);
+        if (rs.x != recW || rs.y != recH) haveFrame = false;
+        recW = rs.x;
+        recH = rs.y;
+        frame.resize((size_t) recW * (size_t) recH * 4);
+        gdiScreen = GetDC(nullptr);
+        gdiMem = CreateCompatibleDC(gdiScreen);
+        BITMAPINFO bi {};
+        bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        bi.bmiHeader.biWidth = srcW;
+        bi.bmiHeader.biHeight = -srcH; // top-down
+        bi.bmiHeader.biPlanes = 1;
+        bi.bmiHeader.biBitCount = 32;
+        bi.bmiHeader.biCompression = BI_RGB;
+        gdiBmp = CreateDIBSection(gdiScreen, &bi, DIB_RGB_COLORS, &gdiBits, nullptr, 0);
+        if (gdiScreen == nullptr || gdiMem == nullptr || gdiBmp == nullptr || gdiBits == nullptr) { freeGdi(); return false; }
+        gdiOld = SelectObject(gdiMem, gdiBmp);
+        gdi = true;
+        return true;
+    }
+
+    bool grabGdi()
+    {
+        // 15 pictures a second (GDI has no "new picture" signal)
+        const double interval = 1000.0 / ampsurd::screen::kFramesPerSecond;
+        const double wait = gdiLast + interval - juce::Time::getMillisecondCounterHiRes();
+        if (wait > 0.0) juce::Thread::sleep((int) std::ceil(wait));
+        gdiLast = juce::Time::getMillisecondCounterHiRes();
+        const auto& r = desc.DesktopCoordinates;
+        if (!BitBlt(gdiMem, 0, 0, srcW, srcH, gdiScreen, r.left, r.top, SRCCOPY | CAPTUREBLT)) return false;
+        GdiFlush();
+        ampsurd::screen::scalePlane((const uint8_t*) gdiBits, srcW, srcH, srcW * 4, frame.data(), recW, recH, recW * 4, 4);
+        drawCursor();
+        haveFrame = true;
+        return true;
+    }
+
+    void drawCursor()
+    {
+        CURSORINFO ci { sizeof(CURSORINFO) };
+        if (GetCursorInfo(&ci) && (ci.flags & CURSOR_SHOWING) != 0)
+        {
+            const auto& r = desc.DesktopCoordinates;
+            const double sx = (double) recW / std::max<LONG>(1, r.right - r.left), sy = (double) recH / std::max<LONG>(1, r.bottom - r.top);
+            if (ci.ptScreenPos.x >= r.left && ci.ptScreenPos.x < r.right && ci.ptScreenPos.y >= r.top && ci.ptScreenPos.y < r.bottom)
+                ampsurd::screen::drawPointer(frame.data(), recW, recH, recW * 4, (int) ((ci.ptScreenPos.x - r.left) * sx),
+                                             (int) ((ci.ptScreenPos.y - r.top) * sy), (float) std::max(0.6, sx * 1.4));
+        }
+    }
 
     juce::String setUp()
     {
@@ -134,6 +216,7 @@ struct ScreenCapture::Impl final : public juce::Thread
     // the desktop picture -> `frame` (scaled) + the mouse pointer
     bool grab(UINT timeoutMs)
     {
+        if (gdi) return grabGdi();
         if (dupl == nullptr) return false;
         DXGI_OUTDUPL_FRAME_INFO info;
         ComPtr<IDXGIResource> res;
@@ -163,26 +246,33 @@ struct ScreenCapture::Impl final : public juce::Thread
         dupl->ReleaseFrame();
         if (ok)
         {
-            CURSORINFO ci { sizeof(CURSORINFO) };
-            if (GetCursorInfo(&ci) && (ci.flags & CURSOR_SHOWING) != 0)
-            {
-                const auto& r = desc.DesktopCoordinates;
-                const double sx = (double) recW / std::max<LONG>(1, r.right - r.left), sy = (double) recH / std::max<LONG>(1, r.bottom - r.top);
-                if (ci.ptScreenPos.x >= r.left && ci.ptScreenPos.x < r.right && ci.ptScreenPos.y >= r.top && ci.ptScreenPos.y < r.bottom)
-                    ampsurd::screen::drawPointer(frame.data(), recW, recH, recW * 4, (int) ((ci.ptScreenPos.x - r.left) * sx),
-                                                 (int) ((ci.ptScreenPos.y - r.top) * sy), (float) std::max(0.6, sx * 1.4));
-            }
+            drawCursor();
             haveFrame = true;
         }
         return ok;
     }
 
+    // H.264 into an MP4; the graphics card's encoder first, Windows' own (software) encoder if that fails
     HRESULT openWriter(const juce::File& f)
+    {
+        HRESULT hr = openWriterWith(f, true);
+        if (FAILED(hr))
+        {
+            writer.Reset();
+            f.deleteFile();
+            const HRESULT hw = hr;
+            hr = openWriterWith(f, false);
+            if (SUCCEEDED(hr)) owner.reportInfo("Screen recording: the graphics card's video encoder failed (0x" + juce::String::toHexString((juce::uint32) hw) + "), Windows' own encoder is used.");
+        }
+        return hr;
+    }
+
+    HRESULT openWriterWith(const juce::File& f, bool hardware)
     {
         writer.Reset();
         ComPtr<IMFAttributes> wa;
         MFCreateAttributes(&wa, 1);
-        wa->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, TRUE);
+        wa->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, hardware ? TRUE : FALSE);
         HRESULT hr = MFCreateSinkWriterFromURL(f.getFullPathName().toWideCharPointer(), nullptr, wa.Get(), &writer);
         if (FAILED(hr)) return hr;
         ComPtr<IMFMediaType> outT, inT;
@@ -228,7 +318,7 @@ struct ScreenCapture::Impl final : public juce::Thread
         s->AddBuffer(buf.Get());
         s->SetSampleTime(t);
         s->SetSampleDuration(10000000LL / ampsurd::screen::kFramesPerSecond);
-        if (SUCCEEDED(writer->WriteSample(stream, s.Get()))) lastTime = t;
+        if (SUCCEEDED(writer->WriteSample(stream, s.Get()))) { lastTime = t; ++framesWritten; }
     }
 
     void run() override
@@ -236,13 +326,24 @@ struct ScreenCapture::Impl final : public juce::Thread
         const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
         const HRESULT mf = MFStartup(MF_VERSION);
         const auto err = setUp();
-        if (err.isNotEmpty()) owner.reportError(err);
+        if (err.isNotEmpty())
+        {
+            if (useGdi()) owner.reportInfo("Screen recording: " + err + " - the slower way (GDI) is used instead.");
+            else owner.reportError(err);
+        }
+        const double openedMs = juce::Time::getMillisecondCounterHiRes();
         double lastShown = 0.0, lastWritten = 0.0;
         const double interval = 1000.0 / ampsurd::screen::kFramesPerSecond;
         while (!threadShouldExit())
         {
             const bool fresh = grab(30);
             const double now = juce::Time::getMillisecondCounterHiRes();
+            // desktop duplication gave no picture in 2 s: the GDI way
+            if (!gdi && !haveFrame && now - openedMs > 2000.0)
+            {
+                if (useGdi()) owner.reportInfo("Screen recording: the fast way (desktop duplication) gave no picture - the slower way (GDI) is used.");
+                else { owner.reportError("This screen gives no picture (neither desktop duplication nor GDI)."); juce::Thread::sleep(500); }
+            }
             if (fresh && now - lastShown >= interval)
             {
                 lastShown = now;
@@ -250,14 +351,17 @@ struct ScreenCapture::Impl final : public juce::Thread
             }
             {
                 std::unique_lock<std::mutex> sl(lock);
-                if (startRequested)
+                // (waits up to 3 s for the first picture - right after choosing the screen there may be none yet)
+                if (startRequested && (haveFrame || now - startAskedMs > 3000.0))
                 {
                     startRequested = false;
                     recStartMs = now;
                     lastTime = -1;
                     firstFrameMs = 0;
+                    framesWritten = 0;
                     writtenFile = juce::File();
-                    if (haveFrame && SUCCEEDED(openWriter(requestFile)))
+                    const HRESULT hr = haveFrame ? openWriter(requestFile) : E_FAIL;
+                    if (SUCCEEDED(hr))
                     {
                         writtenFile = requestFile;
                         firstFrameMs = juce::Time::currentTimeMillis(); // the current picture is written right away
@@ -267,17 +371,21 @@ struct ScreenCapture::Impl final : public juce::Thread
                     else
                     {
                         writer.Reset();
-                        owner.reportError("The screen could not be recorded (no picture yet, or the encoder is missing).");
+                        owner.reportError(haveFrame ? "The screen could not be recorded: the video encoder failed (0x" + juce::String::toHexString((juce::uint32) hr) + ")."
+                                                    : juce::String("The screen could not be recorded: no picture from the screen."));
                     }
                 }
                 if (stopRequested)
                 {
                     stopRequested = false;
+                    startRequested = false; // a start still waiting for its first picture: not any more
                     if (writer != nullptr)
                     {
                         writeFrame(); // the screen as it is now: the recording lasts until the end of the take
-                        writer->Finalize();
+                        const HRESULT fin = writer->Finalize();
                         writer.Reset();
+                        owner.reportInfo("Screen recorded: " + juce::String(framesWritten) + " pictures" + (gdi ? " (GDI)" : "")
+                                         + (FAILED(fin) ? ", finishing the file failed (0x" + juce::String::toHexString((juce::uint32) fin) + ")" : juce::String()));
                     }
                     stopDone = true;
                     stopEvent.signal();
@@ -292,6 +400,7 @@ struct ScreenCapture::Impl final : public juce::Thread
             if (!fresh) juce::Thread::sleep(5);
         }
         if (writer != nullptr) { writer->Finalize(); writer.Reset(); }
+        freeGdi();
         dupl.Reset();
         staging.Reset();
         context.Reset();
@@ -333,6 +442,7 @@ juce::String ScreenCapture::open(int index)
 {
     close();
     if (index < 0 || index >= (int) listOutputs().size()) return "This screen is not there any more.";
+    lastError.clear();
     impl = std::make_unique<Impl>(*this, index);
     impl->startThread();
     openIndex = index;
@@ -357,6 +467,7 @@ juce::String ScreenCapture::startRecording(const juce::File& folder)
     {
         std::lock_guard<std::mutex> sl(impl->lock);
         impl->requestFile = f;
+        impl->startAskedMs = juce::Time::getMillisecondCounterHiRes();
         impl->startRequested = true;
         impl->stopRequested = false;
         impl->stopDone = false;

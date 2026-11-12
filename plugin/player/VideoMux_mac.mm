@@ -141,6 +141,7 @@ juce::String composeScreenBox(const juce::File& video, const ampsurd::screen::Ov
         CMSampleBufferRef scrNext = [so copyNextSampleBuffer], scrCur = nullptr;
         double scrFirst = scrNext != nullptr ? CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(scrNext)) : 0.0;
         double camFirst = -1.0;
+        std::vector<uint8_t> scratch;
         for (;;)
         {
             CMSampleBufferRef cs = [co copyNextSampleBuffer];
@@ -169,13 +170,14 @@ juce::String composeScreenBox(const juce::File& video, const ampsurd::screen::Ov
                 for (int y = 0; y < ch; ++y) memcpy(dst + (size_t) y * dp, src + (size_t) y * sp, (size_t) cw * 4);
                 CVPixelBufferUnlockBaseAddress(cpb, kCVPixelBufferLock_ReadOnly);
                 const auto key = ampsurd::screen::boxAt(o.keys, tc);
-                const auto box = key.visible ? ampsurd::screen::boxInPicture(key.rect, o.previewAspect, w, h) : juce::Rectangle<int>();
                 CVImageBufferRef spb = scrCur != nullptr ? CMSampleBufferGetImageBuffer(scrCur) : nullptr;
-                if (!box.isEmpty() && spb != nullptr && ts >= 0.0)
+                if ((key.visible || key.swapped) && spb != nullptr && ts >= 0.0)
                 {
+                    // the screen box, or SWAP: the screen large and the camera in the box
                     CVPixelBufferLockBaseAddress(spb, kCVPixelBufferLock_ReadOnly);
-                    ampsurd::screen::drawBoxBgra(dst, w, h, (int) dp, (const uint8_t*) CVPixelBufferGetBaseAddress(spb), (int) CVPixelBufferGetWidth(spb),
-                                                 (int) CVPixelBufferGetHeight(spb), (int) CVPixelBufferGetBytesPerRow(spb), box);
+                    ampsurd::screen::composeBgra(key, o.previewAspect, dst, w, h, (int) dp, (const uint8_t*) CVPixelBufferGetBaseAddress(spb),
+                                                 (int) CVPixelBufferGetWidth(spb), (int) CVPixelBufferGetHeight(spb),
+                                                 (int) CVPixelBufferGetBytesPerRow(spb), scratch);
                     CVPixelBufferUnlockBaseAddress(spb, kCVPixelBufferLock_ReadOnly);
                 }
                 CVPixelBufferUnlockBaseAddress(outPb, 0);

@@ -20,23 +20,37 @@ juce::PropertiesFile::Options settingsOptions()
 } // namespace
 
 // ---------------------------------------------------------------------------------------------
-ScreenBoxView::ScreenBoxView(ScreenCapture& s) : screen(s)
+ScreenBoxView::ScreenBoxView(ScreenCapture& s, bool frame) : screen(s), frameOnly(frame)
 {
-    setOpaque(true);
+    setOpaque(!frameOnly);
     setRepaintsOnMouseActivity(false);
-    setTooltip("The screen you record. Drag it to move it, drag its lower right corner to change its size. "
-               "SCREEN BOX shows / hides it - also while recording");
+    setTooltip(frameOnly ? "The camera picture (SWAP is on). Drag it to move it, drag its lower right corner to change its size. "
+                           "SCREEN BOX shows / hides it, SWAP puts the camera back large - also while recording"
+                         : "The screen you record. Drag it to move it, drag its lower right corner to change its size. "
+                           "SCREEN BOX shows / hides it - also while recording");
     startTimerHz(15);
 }
 
 void ScreenBoxView::timerCallback()
 {
+    if (frameOnly) return;
     if (screen.getFrameCount() != shownFrame) { shownFrame = screen.getFrameCount(); repaint(); }
 }
 
 void ScreenBoxView::paint(juce::Graphics& g)
 {
     auto r = getLocalBounds();
+    if (frameOnly)
+    {
+        // SWAP: the camera picture is underneath - only the frame (as in the saved video) and the corner
+        g.setColour(juce::Colour(0xffd6d6d6));
+        g.drawRect(r, 2);
+        g.setColour(juce::Colours::white.withAlpha(0.85f));
+        for (int i = 0; i < 3; ++i)
+            g.drawLine((float) getWidth() - 4.0f - (float) i * 4.0f, (float) getHeight() - 3.0f, (float) getWidth() - 3.0f,
+                       (float) getHeight() - 4.0f - (float) i * 4.0f, 1.2f);
+        return;
+    }
     g.fillAll(juce::Colour(0xffd6d6d6)); // the light frame (as in the saved video)
     r.reduce(2, 2);
     g.setColour(juce::Colours::black);
@@ -79,8 +93,8 @@ void ScreenBoxView::mouseDrag(const juce::MouseEvent& e)
     auto b = downBounds;
     if (resizing)
     {
-        // keeps the screen's proportions (16:9 for most screens)
-        const auto img = screen.latestFrame();
+        // keeps the screen's proportions (16:9 for most screens); SWAP (the camera in the box): 16:9
+        const auto img = frameOnly ? juce::Image() : screen.latestFrame();
         const double aspect = img.isValid() ? (double) img.getWidth() / juce::jmax(1, img.getHeight()) : 16.0 / 9.0;
         const int w = juce::jlimit(90, juce::jmax(90, lim.getRight() - b.getX()), downBounds.getWidth() + d.x);
         const int h = juce::jlimit(54, juce::jmax(54, lim.getBottom() - b.getY()), (int) std::lround((w - 4) / aspect) + 4);
@@ -100,6 +114,17 @@ void ScreenBoxView::mouseUp(const juce::MouseEvent&)
     if (onMoved) onMoved(true);
 }
 
+void ScreenPictureView::paint(juce::Graphics& g)
+{
+    g.fillAll(juce::Colours::black);
+    const auto img = screen.latestFrame();
+    if (img.isValid())
+    {
+        g.setImageResamplingQuality(juce::Graphics::mediumResamplingQuality);
+        g.drawImageWithin(img, 0, 0, getWidth(), getHeight(), juce::RectanglePlacement::centred);
+    }
+}
+
 // ---------------------------------------------------------------------------------------------
 CameraView::CameraView(VideoCapture& c, ScreenCapture& sc, PlayerRecorder& p) : screen(sc), camera(c), player(p)
 {
@@ -109,6 +134,7 @@ CameraView::CameraView(VideoCapture& c, ScreenCapture& sc, PlayerRecorder& p) : 
         const auto saved = juce::Rectangle<float>::fromString(pf.getValue("screenBoxRect"));
         if (saved.getWidth() > 0.05f && saved.getHeight() > 0.05f) boxRect = saved;
     }
+    addChildComponent(bigScreen); // first: behind the camera picture
     addAndMakeVisible(screenBox);
     screenBox.setTooltip("SCREEN: record a screen of this computer as well (shown in a box over the camera picture). "
                          "The camera window itself is left out of the screen recording");
@@ -118,6 +144,26 @@ CameraView::CameraView(VideoCapture& c, ScreenCapture& sc, PlayerRecorder& p) : 
     boxButton.setWantsKeyboardFocus(false);
     boxButton.setTooltip("SCREEN BOX: show or hide the screen in the video - any time, also while recording");
     boxButton.onClick = [this] { setBoxShown(!boxShown); };
+    addAndMakeVisible(swapButton);
+    swapButton.setClickingTogglesState(false);
+    swapButton.setWantsKeyboardFocus(false);
+    swapButton.setTooltip("SWAP: the screen large and the camera in the box - or back. Any time, also while recording: the saved video follows");
+    swapButton.onClick = [this] { setSwapped(!swapped); };
+
+    seekBar.setSliderStyle(juce::Slider::LinearHorizontal);
+    seekBar.setTextBoxStyle(juce::Slider::NoTextBox, true, 0, 0);
+    seekBar.setRange(0.0, 1.0, 0.0);
+    seekBar.setWantsKeyboardFocus(false);
+    seekBar.setEnabled(false);
+    seekBar.setPopupDisplayEnabled(false, false, nullptr);
+    seekBar.setTooltip("Where the video is. Click or drag to go to any place in it (also before PLAY: PLAY starts there)");
+    seekBar.onValueChange = [this] {
+        // dragging: the picture follows (a few times a second); the sound joins at the end of the drag
+        const double now = juce::Time::getMillisecondCounterHiRes();
+        if (seekBar.isMouseButtonDown() && now - lastScrubMs > 120.0) { lastScrubMs = now; seekTo(seekBar.getValue(), false); }
+    };
+    seekBar.onDragEnd = [this] { seekTo(seekBar.getValue(), true); };
+    addAndMakeVisible(seekBar);
     listScreens();
     addAndMakeVisible(cameraBox);
     cameraBox.setTooltip("The camera that films you while you record a VIDEO take");
@@ -167,7 +213,7 @@ CameraView::CameraView(VideoCapture& c, ScreenCapture& sc, PlayerRecorder& p) : 
     soundBox.onChange = [this] { if (onSoundChoice) onSoundChoice(soundBox.getSelectedId()); };
     addAndMakeVisible(watchBox);
     watchBox.setTooltip("What PLAY shows here: the last take (with AMPSURD's sound, before or after saving) or one of your saved videos");
-    watchBox.onChange = [this] { stopPlayback(); };
+    watchBox.onChange = [this] { stopPlayback(); seekStart = -1.0; };
     refreshVideoList();
 
     listCameras();
@@ -219,6 +265,7 @@ void CameraView::chooseScreen(int index)
     if (screen.isRecording()) return; // the combo is disabled while it records
     if (index < 0)
     {
+        setSwapped(false);
         setBoxShown(false);
         screen.close();
         juce::PropertiesFile pf(settingsOptions());
@@ -257,7 +304,7 @@ void CameraView::setBoxShown(bool on)
     boxButton.setToggleState(on, juce::dontSendNotification);
     if (on && boxView == nullptr)
     {
-        boxView = std::make_unique<ScreenBoxView>(screen);
+        boxView = std::make_unique<ScreenBoxView>(screen, swapped);
         boxView->onMoved = [this](bool finished) { boxMoved(finished); };
        #if JUCE_MAC
         // a small window of its own, above the camera preview (a native view)
@@ -276,17 +323,72 @@ void CameraView::setBoxShown(bool on)
         boxView->setVisible(on && !playingBack && isShowing());
         if (on) boxView->toFront(false);
     }
+    layoutPictures();
     pushKey();
     repaint();
+}
+
+void CameraView::setSwapped(bool on)
+{
+    if (on && !screen.isOpen()) { setStatus("Choose a SCREEN first (next to CAMERA)."); on = false; }
+    swapButton.setToggleState(on, juce::dontSendNotification);
+    if (on == swapped) return;
+    swapped = on;
+    rebuildBox(); // the box shows the screen, or (SWAP) only its frame over the camera picture
+    layoutPictures();
+    pushKey();
+    if (isShowing())
+        setStatus(on ? juce::String("SWAP: the screen large, you in the box (SCREEN BOX hides you).") : juce::String("The camera large again, the screen in the box."));
+    repaint();
+}
+
+void CameraView::rebuildBox()
+{
+    if (boxView == nullptr) return;
+    screen.excludeWindow(nullptr);
+    boxView.reset();
+    if (boxShown) { boxShown = false; setBoxShown(true); }
+}
+
+juce::Rectangle<int> CameraView::boxBoundsLocal() const
+{
+    const auto a = previewArea.toFloat();
+    return juce::Rectangle<float>(a.getX() + boxRect.getX() * a.getWidth(), a.getY() + boxRect.getY() * a.getHeight(),
+                                  boxRect.getWidth() * a.getWidth(), boxRect.getHeight() * a.getHeight()).toNearestInt()
+        .constrainedWithin(previewArea);
+}
+
+void CameraView::layoutPictures()
+{
+    const bool show = !playingBack;
+    if (swapped && screen.isOpen())
+    {
+        // SWAP: the screen fills the preview, the camera picture sits in the box (hidden with the box)
+        bigScreen.setBounds(previewArea);
+        bigScreen.setVisible(show);
+        bigScreen.toBack();
+        if (preview != nullptr)
+        {
+            preview->setBounds(boxBoundsLocal().reduced(2));
+            preview->setVisible(show && boxShown);
+        }
+    }
+    else
+    {
+        bigScreen.setVisible(false);
+        if (preview != nullptr)
+        {
+            preview->setBounds(previewArea);
+            preview->setVisible(show);
+        }
+    }
+    if (boxView != nullptr && boxView->isVisible()) boxView->toFront(false);
 }
 
 void CameraView::placeBox()
 {
     if (boxView == nullptr || previewArea.isEmpty()) return;
-    const auto a = previewArea.toFloat();
-    auto b = juce::Rectangle<float>(a.getX() + boxRect.getX() * a.getWidth(), a.getY() + boxRect.getY() * a.getHeight(),
-                                    boxRect.getWidth() * a.getWidth(), boxRect.getHeight() * a.getHeight()).toNearestInt()
-                 .constrainedWithin(previewArea);
+    auto b = boxBoundsLocal();
    #if JUCE_MAC
     b = localAreaToGlobal(b);
    #endif
@@ -302,6 +404,7 @@ void CameraView::boxMoved(bool finished)
    #endif
     const auto a = previewArea.toFloat();
     boxRect = { (b.getX() - a.getX()) / a.getWidth(), (b.getY() - a.getY()) / a.getHeight(), b.getWidth() / a.getWidth(), b.getHeight() / a.getHeight() };
+    if (swapped && preview != nullptr) preview->setBounds(boxBoundsLocal().reduced(2)); // the camera picture moves with its box
     const double now = juce::Time::getMillisecondCounterHiRes();
     if (camera.isRecording() && (finished || now - lastKeyMs > 100.0)) pushKey(); // moving while recording: ~10 steps a second
     if (finished)
@@ -325,6 +428,7 @@ void CameraView::pushKey()
     lastKeyMs = juce::Time::getMillisecondCounterHiRes();
     ampsurd::screen::BoxKey k;
     k.visible = boxShown && screen.isOpen();
+    k.swapped = swapped && screen.isOpen();
     k.rect = boxRect;
     liveKeys.push_back({ juce::Time::currentTimeMillis(), k });
 }
@@ -366,9 +470,11 @@ void CameraView::resized()
     r.removeFromTop(6);
     auto scr = r.removeFromTop(26);
     scr.removeFromLeft(70);
-    screenBox.setBounds(scr.removeFromLeft(juce::jmin(320, juce::jmax(120, scr.getWidth() - 130))));
+    screenBox.setBounds(scr.removeFromLeft(juce::jmin(320, juce::jmax(120, scr.getWidth() - 194))));
     scr.removeFromLeft(8);
-    boxButton.setBounds(scr.removeFromLeft(juce::jmin(120, scr.getWidth())));
+    boxButton.setBounds(scr.removeFromLeft(juce::jmin(110, scr.getWidth())));
+    scr.removeFromLeft(6);
+    swapButton.setBounds(scr.removeFromLeft(juce::jmin(64, scr.getWidth())));
     r.removeFromBottom(22); // status line
     auto bottom = r.removeFromBottom(26);
     bottom.removeFromLeft(110);
@@ -376,6 +482,9 @@ void CameraView::resized()
     r.removeFromBottom(24); // the note above the offset
     auto controls = r.removeFromBottom(34);
     auto watch = r.removeFromBottom(32);
+    auto seek = r.removeFromBottom(24);
+    seekTimeArea = seek.removeFromRight(92);
+    seekBar.setBounds(seek.withSizeKeepingCentre(seek.getWidth(), 14));
     watch.removeFromLeft(70);
     const int ww = juce::jmin(420, watch.getWidth());
     watchBox.setBounds(watch.removeFromLeft(ww).withSizeKeepingCentre(ww, 26));
@@ -390,7 +499,7 @@ void CameraView::resized()
     showButton.setBounds(controls.removeFromLeft(bw).withSizeKeepingCentre(bw, 30));
     r.reduce(0, 8);
     previewArea = r;
-    if (preview != nullptr) preview->setBounds(r);
+    layoutPictures();
     placeBox();
     if (boxView != nullptr && boxView->isVisible()) boxView->toFront(false);
    #if JUCE_WINDOWS || JUCE_MAC
@@ -426,6 +535,16 @@ void CameraView::paint(juce::Graphics& g)
     g.setFont(Fonts::get().label(11.0f));
     g.setColour(textDim);
     g.drawText("WATCH", r.removeFromBottom(32).removeFromLeft(66), juce::Justification::centredLeft, false);
+    r.removeFromBottom(24); // the bar under the video
+    {
+        auto mmss = [](double v) { const int t = (int) std::floor(juce::jmax(0.0, v)); return juce::String(t / 60) + ":" + juce::String(t % 60).paddedLeft('0', 2); };
+        const double dur = videoDuration();
+        g.setFont(Fonts::get().regular(12.0f));
+        g.setColour(dur > 0.0 ? text : textFaint);
+        g.drawText(dur > 0.0 ? mmss(seekBar.getValue()) + " / " + mmss(dur) : juce::String("-:-- / -:--"), seekTimeArea,
+                   juce::Justification::centredRight, false);
+        g.setFont(Fonts::get().label(11.0f));
+    }
     r.reduce(0, 8);
     g.setColour(line);
     g.drawRect(r);
@@ -511,6 +630,36 @@ void CameraView::refresh()
         screen.excludeWindow(getTopLevelComponent()); // the camera window is not in the screen recording
     }
     boxButton.setEnabled(screen.isOpen());
+    swapButton.setEnabled(screen.isOpen());
+    // the bar under the video: the chosen video's length (loaded in the background when stopped)
+   #if JUCE_WINDOWS || JUCE_MAC
+    if (!recording && !playingBack)
+    {
+        const auto chosenFile = selectedSavedVideo();
+        const auto want = chosenFile != juce::File() ? chosenFile : (player.takeHasVideo() && !player.isBusy() ? player.getTakeVideo() : juce::File());
+        if (want != juce::File() && want != loadedVideo && want != preloadTried && want.existsAsFile())
+        {
+            preloadTried = want;
+            seekStart = -1.0;
+            if (loadPlayback(want).failed()) loadedVideo = juce::File();
+        }
+    }
+   #endif
+    {
+        const double dur = videoDuration();
+        seekBar.setEnabled(dur > 0.0 && !recording);
+        if (dur > 0.0 && !juce::exactlyEqual(seekBar.getMaximum(), dur)) seekBar.setRange(0.0, dur, 0.0);
+        if (!seekBar.isMouseButtonDown())
+        {
+            double pos = juce::jmax(0.0, seekStart);
+           #if JUCE_WINDOWS || JUCE_MAC
+            if (playingBack && playback != nullptr) pos = playback->getPlayPosition();
+           #endif
+            if (dur <= 0.0) pos = 0.0;
+            if (!juce::exactlyEqual(seekBar.getValue(), pos)) { seekBar.setValue(pos, juce::dontSendNotification); repaint(seekTimeArea); }
+        }
+        else repaint(seekTimeArea);
+    }
     if (boxView != nullptr)
     {
         // hidden while a video plays here, when the window is minimised / hidden; on macOS it follows the window
@@ -537,8 +686,10 @@ void CameraView::startPlayback()
         if (r.failed()) { setStatus("The video cannot be played: " + r.getErrorMessage()); return; }
         player.stop();
         playback->setAudioVolume(1.0f);
-        playback->setPlayPosition(0.0);
+        const double d = playback->getVideoDuration();
+        playback->setPlayPosition(seekStart > 0.0 && (d <= 0.0 || seekStart < d - 0.2) ? seekStart : 0.0);
         if (preview != nullptr) preview->setVisible(false);
+        bigScreen.setVisible(false);
         playback->setVisible(true);
         playback->play();
         playingBack = playingFile = true;
@@ -557,11 +708,15 @@ void CameraView::startPlayback()
     playback->setAudioVolume(0.0f); // the camera has no sound worth hearing: AMPSURD plays it
     // video time v belongs to song time v - lead (lead = how much earlier the song's start is than frame 0)
     const double lead = player.videoAudioLeadSeconds(0);
-    const double song0 = juce::jmax(0.0, -lead), video0 = song0 + lead;
+    double song0 = juce::jmax(0.0, -lead), video0 = song0 + lead;
+    // the bar under the video chose where to start
+    const double d = playback->getVideoDuration();
+    if (seekStart > video0 && (d <= 0.0 || seekStart < d - 0.2)) { video0 = seekStart; song0 = video0 - lead; }
     player.stop();
     player.setPositionSeconds(song0);
     playback->setPlayPosition(juce::jmax(0.0, video0));
     if (preview != nullptr) preview->setVisible(false);
+    bigScreen.setVisible(false);
     playback->setVisible(true);
     playback->play();
     player.play();
@@ -603,13 +758,49 @@ void CameraView::stopPlayback()
    #if JUCE_WINDOWS || JUCE_MAC
     if (playback != nullptr)
     {
+        // the bar keeps the place: PLAY goes on from there (from the start when the video had ended)
+        const double d = playback->getVideoDuration(), at = playback->getPlayPosition();
+        seekStart = (d > 0.0 && at < d - 0.2) ? at : -1.0;
         playback->stop();
         playback->setVisible(false);
     }
    #endif
     if (!wasFile && player.getState() == PlayerRecorder::State::playing) player.stop();
-    if (preview != nullptr) preview->setVisible(true);
+    layoutPictures();
     repaint();
+}
+
+double CameraView::videoDuration() const
+{
+   #if JUCE_WINDOWS || JUCE_MAC
+    if (playback != nullptr && loadedVideo != juce::File())
+    {
+        const auto chosenFile = selectedSavedVideo();
+        const auto want = chosenFile != juce::File() ? chosenFile : player.getTakeVideo();
+        if (want == loadedVideo) return playback->getVideoDuration();
+    }
+   #endif
+    return 0.0;
+}
+
+void CameraView::seekTo(double v, bool withSound)
+{
+   #if JUCE_WINDOWS || JUCE_MAC
+    if (playingBack && playback != nullptr)
+    {
+        playback->setPlayPosition(juce::jmax(0.0, v));
+        if (!playingFile && withSound)
+        {
+            // the take: AMPSURD's sound follows (video time v = song time v - lead)
+            const double lead = player.videoAudioLeadSeconds(0);
+            player.setPositionSeconds(juce::jmax(0.0, v - lead));
+        }
+        return;
+    }
+   #endif
+    juce::ignoreUnused(withSound);
+    seekStart = v; // stopped: PLAY starts here
+    repaint(seekTimeArea);
 }
 
 void CameraView::refreshVideoList()
@@ -651,17 +842,17 @@ void CameraView::setSoundChoice(int id)
 }
 
 CameraWindow::CameraWindow(VideoCapture& c, ScreenCapture& sc, PlayerRecorder& p, std::function<void()> onClosed)
-    : juce::DocumentWindow("AMPSURD - Camera", background, juce::DocumentWindow::closeButton | juce::DocumentWindow::minimiseButton),
+    : juce::DocumentWindow("AMPSURD - Camera", background, juce::DocumentWindow::allButtons), // - MAXIMISE X (owner 2026-11-12)
       closed(std::move(onClosed))
 {
     setLookAndFeel(&lnf);
     auto v = std::make_unique<CameraView>(c, sc, p);
     contentView = v.get();
-    v->setSize(600, 622);
+    v->setSize(600, 646);
     setContentOwned(v.release(), true);
     setUsingNativeTitleBar(true);
     setResizable(true, false);
-    setResizeLimits(480, 482, 1920, 1400);
+    setResizeLimits(480, 506, 16384, 16384); // maximised: the whole screen
     centreWithSize(getWidth(), getHeight());
     setAlwaysOnTop(true); // stays in front of AMPSURD's window while you play / save (owner, 2026-10-22)
     setVisible(true);

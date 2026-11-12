@@ -206,6 +206,13 @@ AmpsurdEditor::AmpsurdEditor(AmpsurdProcessor& p) : AudioProcessorEditor(&p), pr
     noFocus(content);
     setWantsKeyboardFocus(proc.getPlayer() != nullptr);
 
+    // full screen has no title bar: this button (in the free space beside AMPSURD) brings the window back
+    exitFullScreen.setTooltip("Back to the normal window (Esc)");
+    exitFullScreen.setWantsKeyboardFocus(false);
+    exitFullScreen.setMouseClickGrabsKeyboardFocus(false);
+    exitFullScreen.onClick = [this] { setFullScreen(false); };
+    addChildComponent(exitFullScreen); // after the content: drawn on top
+
     timerCallback();
     startTimerHz(30);
 }
@@ -289,6 +296,11 @@ void AmpsurdEditor::resized()
     const float scale = juce::jmin((float) getWidth() / (float) kWidth, (float) getHeight() / (float) kHeight);
     const float ox = std::floor(((float) getWidth() - kWidth * scale) * 0.5f), oy = std::floor(((float) getHeight() - kHeight * scale) * 0.5f);
     content.setTransform(juce::AffineTransform::scale(scale).translated(ox, oy));
+    // EXIT FULL SCREEN: top right, in the free strip beside or above AMPSURD; the bottom right corner if there is none
+    const int bw = 132, bh = 24, pad = 6;
+    const bool room = ox >= (float) (bw + pad * 2) || oy >= (float) (bh + pad * 2);
+    exitFullScreen.setBounds(getWidth() - bw - pad, room ? pad : getHeight() - bh - pad, bw, bh);
+    exitFullScreen.setVisible(fullScreen);
 }
 
 void AmpsurdEditor::setFullScreen(bool on)
@@ -312,6 +324,7 @@ void AmpsurdEditor::setFullScreen(bool on)
     win->setTitleBarHeight(on ? 0 : titleBarBeforeFullScreen);
     juce::Desktop::getInstance().setKioskModeComponent(on ? win : nullptr, false);
     if (!on && !windowBoundsBeforeFullScreen.isEmpty()) win->setBounds(windowBoundsBeforeFullScreen);
+    resized(); // shows / hides EXIT FULL SCREEN
     grabKeyboardFocus();
 }
 
