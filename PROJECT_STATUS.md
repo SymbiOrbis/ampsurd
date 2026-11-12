@@ -50,7 +50,7 @@ footswitches (program change, MIDI learn), preset packs, undo / redo, A/B, fast 
 (checklist 30-33). Bundled IRs on hold (no IRs without the author's explicit consent).
 **Public beta v0.9.0 released 2026-10-14** (GitHub pre-release, unsigned):
 https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.0
-**In main, not released yet (2026-11-12, CI passed):** full screen mode (F11); per-amp noise gate (GATE on the card, settings in EDIT); SCREEN BOX for video takes (screen recording in a box over the camera picture, show / hide any time).
+**Public beta v0.9.17 released 2026-11-12:** full screen mode (F11); per-amp noise gate (GATE on the card, settings in EDIT); SCREEN BOX for video takes (screen recording in a box over the camera picture, show / hide any time).
 
 **In main, not released yet (2026-11-12):** video takes start at the playhead; player INPUT 2 track (second interface input, ARM per track, together or one after the other), R / Ctrl+R record and Space stop (also video); red CLOSE in the middle section; the log shows for each dropout where the time went (per amp: pedals, capture, tone + cabinet IR, EQ; mixing, input, effects, output).
 

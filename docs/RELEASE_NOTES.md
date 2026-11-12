@@ -21,6 +21,15 @@ VIDEO in the player).
 
 ## Next version (not released yet)
 
+(nothing yet)
+
+## AMPSURD 0.9.17 (beta)
+
+**Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the standalone app.
+**macOS 10.15 or newer:** AMPSURD-macOS.pkg installs the app, the VST3 plugin and the Audio Unit. Installing over an
+older version is fine: presets and recordings (Documents/AMPSURD) stay untouched.
+
+New in 0.9.17:
 - FULL SCREEN (app): F11 (on a Mac also Ctrl+Cmd+F) or the settings menu; Esc leaves it.
 - Each amp has its own NOISE GATE: GATE on the amp's card (lit = on); THRESHOLD and DECAY in EDIT, after the amp.
   The NOISE GATE at the bottom still works on the whole sound.

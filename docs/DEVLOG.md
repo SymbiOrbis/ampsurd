@@ -6,6 +6,13 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-12 — Release 0.9.17 - Claude (Opus 5.5)
+
+- Owner asked for the link: 0.9.17 published (INPUT 2 track, keys, video takes from the playhead, SCREEN BOX, gate per
+  amp, full screen, red CLOSE, dropout breakdown in the log). Windows files to be signed by the owner.
+
+---
+
 ## 2026-11-12 — Session 5i: SCREEN BOX for video takes; a noise gate per amp - Claude (Opus 5.5)
 
 - Owner: combine the camera picture with a recording of a chosen screen, the screen in a box that can be moved and
