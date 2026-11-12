@@ -84,6 +84,12 @@ preset whose files moved is found again by file name (next to the preset, then i
 
 ## 3k. Metronome in the recorder — IMPLEMENTED 2026-10-17, awaiting test
 
+## 3k4. TWO PLAYERS (owner idea 2026-11-12) — PROPOSED, awaiting the owner's decision
+Two guitarists, two interface inputs, each with their own amps (each amp card: PLAYER 1 / PLAYER 2), each player's
+sound recorded on its own track (GUITAR / INPUT 2), one audio or video recording. Open questions: how amps are
+split, effects shared or separate, a third track for a mic. Today already possible in a DAW: two tracks, one AMPSURD
+plugin each.
+
 ## 3k3. SCREEN BOX for video takes + a noise gate per amp + full screen — IMPLEMENTED 2026-11-12, awaiting test on Windows / Mac
 Screen recording (DXGI / ScreenCaptureKit) shown as a movable box over the camera picture, combined when saving;
 each amp's own gate (GATE on the card). 2026-11-12 (5j): SWAP (screen large, camera in the box), a seek bar under
