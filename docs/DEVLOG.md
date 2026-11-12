@@ -6,6 +6,38 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-12 — Session 5i: SCREEN BOX for video takes; a noise gate per amp - Claude (Opus 5.5)
+
+- Owner: combine the camera picture with a recording of a chosen screen, the screen in a box that can be moved and
+  resized; camera large by default; the box can be removed / added any time, also while recording.
+  - Camera window: SCREEN (choose a screen / NO SCREEN) + SCREEN BOX (show / hide, any time). The box shows the screen
+    live; drag = move, lower right corner = resize (keeps the screen's proportions). Position remembered.
+  - Recording: the camera and the screen go into their own files (screen: H.264 MP4, max 1280 x 720, 15 fps, with
+    the mouse pointer). Every change of the box during the take (shown / hidden / moved) is a key with its time.
+    When the MP4 is saved the box is drawn into the camera picture (from the keys; screen frame = the newest at that
+    moment). A screen chosen during a take is recorded from then on. Moving the box after a take moves it for the
+    whole take (SAVE AS... MP4 VIDEO saves again). UNDO keeps the screen with its take.
+  - The camera window (and the box) are left out of the screen recording (Windows 10 2004+: display affinity;
+    macOS: ScreenCaptureKit filter).
+  - Windows: DXGI desktop duplication + Media Foundation (screen file), the box drawn in NV12 while re-encoding.
+    macOS 12.3+: ScreenCaptureKit (weakly linked; older macOS: SCREEN disabled) + AVAssetWriter; saving = a
+    compose pass (BGRA) to a temporary picture file, then the existing export with the sound.
+  - New files: player/ScreenOverlay.* (portable maths: keys, box in the picture, area-average scaling, BGRA->NV12,
+    drawing), player/ScreenCapture.h + _common/_win/_mac/_none. Linux tests: AMPSURD_FAKE_SCREEN=1 test screen.
+  - Tests: recorder_test SCREEN BOX maths PASS; ui_snapshot SCREEN BOX PASS (20b_camera_screen_box.png).
+  - NOT tested: real screen capture / combined MP4 on Windows and Mac (only compiled in CI). The owner must try it.
+- Owner: an additional noise gate per amp with an indication on the card.
+  - Engine: a NoiseGate per path; listens to the guitar going into that amp, silences the amp's sound after its
+    chain (in addition to the global NOISE GATE). Off by default; when off and fully open it does not run.
+  - Parameters s1..s5 gateOn / gateThreshold (-96..-20 dB, -70) / gateDecay (5..2000 ms, 120): saved in presets
+    and tones.
+  - UI: GATE on the amp's card next to ECO (lit = on, click switches); EDIT, after the amp: AMP -> GATE, THRESHOLD,
+    DECAY.
+  - Tests: engine_test AMP GATE PASS (the note passes, the hiss after it -57.7 dB -> silent); frankenstein_test,
+    recorder_test ALL PASS; ui_snapshot 40 PASS + the 4 known capture-dependent failures.
+
+---
+
 ## 2026-11-12 — Session 5h: player INPUT 2 track, R / Ctrl+R / Space - Claude (Opus 5.5)
 
 - Owner: record a second input (mic, guitar, keyboard...) both together with the guitar and one after the other;

@@ -21,6 +21,11 @@ VIDEO in the player).
 
 ## Next version (not released yet)
 
+- Each amp has its own NOISE GATE: GATE on the amp's card (lit = on); THRESHOLD and DECAY in EDIT, after the amp.
+  The NOISE GATE at the bottom still works on the whole sound.
+- VIDEO: SCREEN BOX - record a screen of your computer with a video take, shown as a box over the camera picture.
+  Show or hide the box any time (also while recording), drag it and resize it. Windows 10 / 11, macOS 12.3 or newer
+  (macOS asks once for the permission to record the screen).
 - PLAYER: a second recording track, INPUT 2 - a mic, a keyboard or another instrument on another input of your audio
   interface (click INPUT 2 to choose the input). Each track has an ARM switch: GUITAR is armed from the start, INPUT 2
   when you arm it. Record both together, or the guitar first and INPUT 2 later (GUITAR's ARM off). Own VOL and PAN.
