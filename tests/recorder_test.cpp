@@ -8,6 +8,7 @@
 
 #include "../plugin/PluginEditor.h"
 #include "../plugin/PluginProcessor.h"
+#include "../plugin/player/ScreenOverlay.h"
 
 static int failures = 0;
 static void check(bool ok, const juce::String& msg)
@@ -826,6 +827,50 @@ int main()
         pl->setInput2Available(false);
         pl->clearTake();
         pl->renderNow();
+    }
+
+    // SCREEN BOX (owner 2026-11-12): the platform-independent part - when / where the box is, the picture maths
+    {
+        namespace sc = ampsurd::screen;
+        std::vector<sc::BoxKey> keys { { 1.0, true, { 0.6f, 0.6f, 0.3f, 0.3f } }, { 3.0, false, { 0.6f, 0.6f, 0.3f, 0.3f } },
+                                       { 4.0, true, { 0.1f, 0.1f, 0.2f, 0.2f } } };
+        const bool timing = !sc::boxAt(keys, 0.5).visible && sc::boxAt(keys, 2.0).visible && !sc::boxAt(keys, 3.5).visible
+                            && sc::boxAt(keys, 5.0).visible && juce::exactlyEqual(sc::boxAt(keys, 5.0).rect.getX(), 0.1f);
+        // a 4:3 camera in a 16:9 preview: the picture covers x 0.125 .. 0.875; a box in the right black bar moves inside
+        const auto b = sc::boxInPicture({ 0.75f, 0.0f, 0.25f, 0.25f }, 16.0 / 9.0, 640, 480);
+        const bool inside = !b.isEmpty() && b.getRight() <= 640 && b.getBottom() <= 480 && b.getX() % 2 == 0 && b.getWidth() % 2 == 0
+                            && std::abs(b.getWidth() - 212) <= 2 && b.getY() == 0;
+        // colours: white / black / red into NV12 (BT.601 limited range)
+        uint8_t px[2 * 2 * 4];
+        auto conv = [&](uint8_t B, uint8_t G, uint8_t R, uint8_t& Y, uint8_t& U, uint8_t& V) {
+            for (int i = 0; i < 4; ++i) { px[i * 4] = B; px[i * 4 + 1] = G; px[i * 4 + 2] = R; px[i * 4 + 3] = 255; }
+            uint8_t y[4], uv[2];
+            sc::bgraToNv12(px, 2, 2, 8, y, 2, uv, 2);
+            Y = y[0]; U = uv[0]; V = uv[1];
+        };
+        uint8_t Y, U, V, Y2, U2, V2, Y3, U3, V3;
+        conv(255, 255, 255, Y, U, V);
+        conv(0, 0, 0, Y2, U2, V2);
+        conv(0, 0, 255, Y3, U3, V3);
+        const bool colours = Y == 235 && U == 128 && V == 128 && Y2 == 16 && U2 == 128 && V2 == 128 && std::abs(Y3 - 82) <= 1 && V3 > 230 && U3 < 110;
+        // area average: a 0 / 255 checkerboard scaled to half size is mid grey
+        uint8_t chk[16], half[4];
+        for (int i = 0; i < 16; ++i) chk[i] = (uint8_t) (((i % 4) + (i / 4)) % 2 ? 255 : 0);
+        sc::scalePlane(chk, 4, 4, 4, half, 2, 2, 2, 1);
+        const bool average = half[0] == 128 && half[3] == 128;
+        // the box drawn into a camera frame: outside unchanged, a light frame, the screen picture inside
+        const int cw = 320, ch = 240, sw = 160, sh = 90;
+        std::vector<uint8_t> camY((size_t) (cw * ch), 100), camUV((size_t) (cw * ch / 2), 128), scrY((size_t) (sw * sh), 50), scrUV((size_t) (sw * sh / 2), 128);
+        const juce::Rectangle<int> box { 200, 140, 100, 80 };
+        sc::drawBoxNv12(camY.data(), cw, camUV.data(), cw, cw, ch, scrY.data(), sw, scrUV.data(), sw, sw, sh, box);
+        const auto pic = sc::fitInBox(box, sw, sh);
+        const bool drawn = camY[(size_t) (10 * cw + 10)] == 100 && camY[(size_t) (140 * cw + 200)] == 200
+                           && camY[(size_t) (pic.getCentreY() * cw + pic.getCentreX())] == 50 && std::abs(pic.getWidth() * 9 - pic.getHeight() * 16) < 40;
+        const auto rs = sc::recordSize(2560, 1440);
+        check(timing && inside && colours && average && drawn && rs.x == 1280 && rs.y == 720,
+              "SCREEN BOX maths: box shown / hidden at its times (" + juce::String((int) timing) + "), kept inside a 4:3 picture ("
+                  + b.toString() + "), colours to NV12 (" + juce::String(Y) + "/" + juce::String(Y2) + "/" + juce::String(Y3) + "), area average "
+                  + juce::String(half[0]) + ", box drawn (" + juce::String((int) drawn) + "), screen recorded at " + juce::String(rs.x) + " x " + juce::String(rs.y));
     }
 
     proc.reset();

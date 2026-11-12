@@ -19,9 +19,106 @@ juce::PropertiesFile::Options settingsOptions()
 }
 } // namespace
 
-CameraView::CameraView(VideoCapture& c, PlayerRecorder& p) : camera(c), player(p)
+// ---------------------------------------------------------------------------------------------
+ScreenBoxView::ScreenBoxView(ScreenCapture& s) : screen(s)
 {
     setOpaque(true);
+    setRepaintsOnMouseActivity(false);
+    setTooltip("The screen you record. Drag it to move it, drag its lower right corner to change its size. "
+               "SCREEN BOX shows / hides it - also while recording");
+    startTimerHz(15);
+}
+
+void ScreenBoxView::timerCallback()
+{
+    if (screen.getFrameCount() != shownFrame) { shownFrame = screen.getFrameCount(); repaint(); }
+}
+
+void ScreenBoxView::paint(juce::Graphics& g)
+{
+    auto r = getLocalBounds();
+    g.fillAll(juce::Colour(0xffd6d6d6)); // the light frame (as in the saved video)
+    r.reduce(2, 2);
+    g.setColour(juce::Colours::black);
+    g.fillRect(r);
+    const auto img = screen.latestFrame();
+    if (img.isValid())
+    {
+        g.setImageResamplingQuality(juce::Graphics::mediumResamplingQuality);
+        g.drawImageWithin(img, r.getX(), r.getY(), r.getWidth(), r.getHeight(), juce::RectanglePlacement::centred);
+    }
+    else
+    {
+        g.setColour(textFaint);
+        g.setFont(Fonts::get().regular(11.0f));
+        g.drawFittedText("waiting for the screen...", r.reduced(6), juce::Justification::centred, 2);
+    }
+    // the resize corner
+    g.setColour(juce::Colours::white.withAlpha(0.85f));
+    for (int i = 0; i < 3; ++i)
+        g.drawLine((float) getWidth() - 4.0f - (float) i * 4.0f, (float) getHeight() - 3.0f, (float) getWidth() - 3.0f,
+                   (float) getHeight() - 4.0f - (float) i * 4.0f, 1.2f);
+}
+
+void ScreenBoxView::mouseMove(const juce::MouseEvent& e)
+{
+    setMouseCursor(inCorner(e.getPosition()) ? juce::MouseCursor::BottomRightCornerResizeCursor : juce::MouseCursor::DraggingHandCursor);
+}
+
+void ScreenBoxView::mouseDown(const juce::MouseEvent& e)
+{
+    downPos = e.getScreenPosition();
+    downBounds = getBounds();
+    resizing = inCorner(e.getPosition());
+}
+
+void ScreenBoxView::mouseDrag(const juce::MouseEvent& e)
+{
+    const auto d = e.getScreenPosition() - downPos;
+    const auto lim = limits ? limits() : getParentMonitorArea();
+    auto b = downBounds;
+    if (resizing)
+    {
+        // keeps the screen's proportions (16:9 for most screens)
+        const auto img = screen.latestFrame();
+        const double aspect = img.isValid() ? (double) img.getWidth() / juce::jmax(1, img.getHeight()) : 16.0 / 9.0;
+        const int w = juce::jlimit(90, juce::jmax(90, lim.getRight() - b.getX()), downBounds.getWidth() + d.x);
+        const int h = juce::jlimit(54, juce::jmax(54, lim.getBottom() - b.getY()), (int) std::lround((w - 4) / aspect) + 4);
+        b.setSize(w, h);
+    }
+    else
+    {
+        b.setPosition(downBounds.getPosition() + d);
+        b = b.constrainedWithin(lim);
+    }
+    setBounds(b);
+    if (onMoved) onMoved(false);
+}
+
+void ScreenBoxView::mouseUp(const juce::MouseEvent&)
+{
+    if (onMoved) onMoved(true);
+}
+
+// ---------------------------------------------------------------------------------------------
+CameraView::CameraView(VideoCapture& c, ScreenCapture& sc, PlayerRecorder& p) : screen(sc), camera(c), player(p)
+{
+    setOpaque(true);
+    {
+        juce::PropertiesFile pf(settingsOptions());
+        const auto saved = juce::Rectangle<float>::fromString(pf.getValue("screenBoxRect"));
+        if (saved.getWidth() > 0.05f && saved.getHeight() > 0.05f) boxRect = saved;
+    }
+    addAndMakeVisible(screenBox);
+    screenBox.setTooltip("SCREEN: record a screen of this computer as well (shown in a box over the camera picture). "
+                         "The camera window itself is left out of the screen recording");
+    screenBox.onChange = [this] { chooseScreen(screenBox.getSelectedId() - 2); };
+    addAndMakeVisible(boxButton);
+    boxButton.setClickingTogglesState(false);
+    boxButton.setWantsKeyboardFocus(false);
+    boxButton.setTooltip("SCREEN BOX: show or hide the screen in the video - any time, also while recording");
+    boxButton.onClick = [this] { setBoxShown(!boxShown); };
+    listScreens();
     addAndMakeVisible(cameraBox);
     cameraBox.setTooltip("The camera that films you while you record a VIDEO take");
     cameraBox.onChange = [this] {
@@ -86,6 +183,155 @@ CameraView::CameraView(VideoCapture& c, PlayerRecorder& p) : camera(c), player(p
         cameraBox.setSelectedItemIndex(index, juce::dontSendNotification);
         message = openCamera(index);
     }
+    // the screen used last time (SCREEN BOX), if it is still there
+    {
+        const auto lastScreen = pf.getValue("videoScreen");
+        for (int i = 1; i < screenBox.getNumItems() && lastScreen.isNotEmpty(); ++i)
+            if (screenBox.getItemText(i) == lastScreen) { screenBox.setSelectedItemIndex(i, juce::dontSendNotification); chooseScreen(i - 1); }
+    }
+}
+
+CameraView::~CameraView()
+{
+    boxView.reset();
+    screen.close();
+}
+
+void CameraView::listScreens()
+{
+    screenBox.clear(juce::dontSendNotification);
+    screenBox.addItem("NO SCREEN", 1);
+    if (!ScreenCapture::isSupported())
+    {
+        screenBox.setTooltip("Recording a screen is not available on this system (Windows 10 / 11, macOS 12.3 or newer)");
+        screenBox.setSelectedId(1, juce::dontSendNotification);
+        screenBox.setEnabled(false);
+        boxButton.setEnabled(false);
+        return;
+    }
+    const auto names = ScreenCapture::screens();
+    for (int i = 0; i < names.size(); ++i) screenBox.addItem(names[i], i + 2);
+    screenBox.setSelectedId(screen.isOpen() ? screen.getOpenIndex() + 2 : 1, juce::dontSendNotification);
+}
+
+void CameraView::chooseScreen(int index)
+{
+    if (screen.isRecording()) return; // the combo is disabled while it records
+    if (index < 0)
+    {
+        setBoxShown(false);
+        screen.close();
+        juce::PropertiesFile pf(settingsOptions());
+        pf.setValue("videoScreen", juce::String());
+        pf.saveIfNeeded();
+        boxButton.setToggleState(false, juce::dontSendNotification);
+        repaint();
+        return;
+    }
+    const auto err = screen.open(index);
+    if (err.isNotEmpty())
+    {
+        setStatus(err);
+        screenBox.setSelectedId(1, juce::dontSendNotification);
+        return;
+    }
+    excludedPeer = nullptr; // refresh() leaves the camera window out of this screen's recording
+    {
+        juce::PropertiesFile pf(settingsOptions());
+        pf.setValue("videoScreen", screenBox.getText());
+        pf.saveIfNeeded();
+    }
+    setBoxShown(true);
+    // a video take running: the screen is recorded from now on (its place in time is known)
+    if (camera.isRecording() && !screen.isRecording())
+    {
+        const auto e = screen.startRecording(player.getRecordingsFolder().getChildFile("Takes"));
+        if (e.isNotEmpty()) setStatus(e);
+    }
+}
+
+void CameraView::setBoxShown(bool on)
+{
+    if (on && !screen.isOpen()) { setStatus("Choose a SCREEN first (next to CAMERA)."); on = false; }
+    boxShown = on;
+    boxButton.setToggleState(on, juce::dontSendNotification);
+    if (on && boxView == nullptr)
+    {
+        boxView = std::make_unique<ScreenBoxView>(screen);
+        boxView->onMoved = [this](bool finished) { boxMoved(finished); };
+       #if JUCE_MAC
+        // a small window of its own, above the camera preview (a native view)
+        boxView->addToDesktop(juce::ComponentPeer::windowIsTemporary | juce::ComponentPeer::windowIgnoresKeyPresses);
+        boxView->setAlwaysOnTop(true);
+        boxView->limits = [this] { return localAreaToGlobal(previewArea); };
+       #else
+        addChildComponent(*boxView);
+        boxView->limits = [this] { return previewArea; };
+       #endif
+        placeBox();
+        screen.excludeWindow(boxView.get());
+    }
+    if (boxView != nullptr)
+    {
+        boxView->setVisible(on && !playingBack && isShowing());
+        if (on) boxView->toFront(false);
+    }
+    pushKey();
+    repaint();
+}
+
+void CameraView::placeBox()
+{
+    if (boxView == nullptr || previewArea.isEmpty()) return;
+    const auto a = previewArea.toFloat();
+    auto b = juce::Rectangle<float>(a.getX() + boxRect.getX() * a.getWidth(), a.getY() + boxRect.getY() * a.getHeight(),
+                                    boxRect.getWidth() * a.getWidth(), boxRect.getHeight() * a.getHeight()).toNearestInt()
+                 .constrainedWithin(previewArea);
+   #if JUCE_MAC
+    b = localAreaToGlobal(b);
+   #endif
+    boxView->setBounds(b);
+}
+
+void CameraView::boxMoved(bool finished)
+{
+    if (boxView == nullptr || previewArea.isEmpty()) return;
+    auto b = boxView->getBounds();
+   #if JUCE_MAC
+    b = getLocalArea(nullptr, b);
+   #endif
+    const auto a = previewArea.toFloat();
+    boxRect = { (b.getX() - a.getX()) / a.getWidth(), (b.getY() - a.getY()) / a.getHeight(), b.getWidth() / a.getWidth(), b.getHeight() / a.getHeight() };
+    const double now = juce::Time::getMillisecondCounterHiRes();
+    if (camera.isRecording() && (finished || now - lastKeyMs > 100.0)) pushKey(); // moving while recording: ~10 steps a second
+    if (finished)
+    {
+        juce::PropertiesFile pf(settingsOptions());
+        pf.setValue("screenBoxRect", boxRect.toString());
+        pf.saveIfNeeded();
+        if (!camera.isRecording() && onBoxMovedAfterTake) onBoxMovedAfterTake(boxRect);
+    }
+}
+
+void CameraView::beginTakeKeys()
+{
+    liveKeys.clear();
+    pushKey();
+}
+
+void CameraView::pushKey()
+{
+    if (!camera.isRecording()) return;
+    lastKeyMs = juce::Time::getMillisecondCounterHiRes();
+    ampsurd::screen::BoxKey k;
+    k.visible = boxShown && screen.isOpen();
+    k.rect = boxRect;
+    liveKeys.push_back({ juce::Time::currentTimeMillis(), k });
+}
+
+double CameraView::previewAspect() const
+{
+    return previewArea.getHeight() > 0 ? (double) previewArea.getWidth() / previewArea.getHeight() : 16.0 / 9.0;
 }
 
 void CameraView::listCameras()
@@ -117,6 +363,12 @@ void CameraView::resized()
     auto top = r.removeFromTop(26);
     top.removeFromLeft(70);
     cameraBox.setBounds(top.removeFromLeft(juce::jmin(320, top.getWidth())));
+    r.removeFromTop(6);
+    auto scr = r.removeFromTop(26);
+    scr.removeFromLeft(70);
+    screenBox.setBounds(scr.removeFromLeft(juce::jmin(320, juce::jmax(120, scr.getWidth() - 130))));
+    scr.removeFromLeft(8);
+    boxButton.setBounds(scr.removeFromLeft(juce::jmin(120, scr.getWidth())));
     r.removeFromBottom(22); // status line
     auto bottom = r.removeFromBottom(26);
     bottom.removeFromLeft(110);
@@ -137,7 +389,10 @@ void CameraView::resized()
     const int bw = juce::jmin(96, controls.getWidth());
     showButton.setBounds(controls.removeFromLeft(bw).withSizeKeepingCentre(bw, 30));
     r.reduce(0, 8);
+    previewArea = r;
     if (preview != nullptr) preview->setBounds(r);
+    placeBox();
+    if (boxView != nullptr && boxView->isVisible()) boxView->toFront(false);
    #if JUCE_WINDOWS || JUCE_MAC
     if (playback != nullptr) playback->setBounds(r);
    #endif
@@ -150,6 +405,8 @@ void CameraView::paint(juce::Graphics& g)
     g.setColour(textDim);
     g.setFont(Fonts::get().label(11.0f));
     g.drawText("CAMERA", r.removeFromTop(26).removeFromLeft(66), juce::Justification::centredLeft, false);
+    r.removeFromTop(6);
+    g.drawText("SCREEN", r.removeFromTop(26).removeFromLeft(66), juce::Justification::centredLeft, false);
     {
         auto st = r.removeFromBottom(22);
         g.setFont(Fonts::get().regular(12.0f));
@@ -246,6 +503,24 @@ void CameraView::refresh()
     {
         recordingShown = camera.isRecording();
         cameraBox.setEnabled(!recordingShown);
+    }
+    screenBox.setEnabled(ScreenCapture::isSupported() && !screen.isRecording());
+    if (screen.isOpen() && getPeer() != nullptr && getPeer() != excludedPeer)
+    {
+        excludedPeer = getPeer();
+        screen.excludeWindow(getTopLevelComponent()); // the camera window is not in the screen recording
+    }
+    boxButton.setEnabled(screen.isOpen());
+    if (boxView != nullptr)
+    {
+        // hidden while a video plays here, when the window is minimised / hidden; on macOS it follows the window
+        bool showing = isShowing();
+        if (auto* peer = getPeer()) showing = showing && !peer->isMinimised();
+        const bool want = boxShown && !playingBack && showing;
+        if (boxView->isVisible() != want) { boxView->setVisible(want); if (want) boxView->toFront(false); }
+       #if JUCE_MAC
+        if (want && !boxView->isMouseButtonDown()) placeBox();
+       #endif
     }
     if (recordingShown) repaint(); // the running time
 }
@@ -375,18 +650,18 @@ void CameraView::setSoundChoice(int id)
     if (soundBox.getSelectedId() != id) soundBox.setSelectedId(id, juce::dontSendNotification);
 }
 
-CameraWindow::CameraWindow(VideoCapture& c, PlayerRecorder& p, std::function<void()> onClosed)
+CameraWindow::CameraWindow(VideoCapture& c, ScreenCapture& sc, PlayerRecorder& p, std::function<void()> onClosed)
     : juce::DocumentWindow("AMPSURD - Camera", background, juce::DocumentWindow::closeButton | juce::DocumentWindow::minimiseButton),
       closed(std::move(onClosed))
 {
     setLookAndFeel(&lnf);
-    auto v = std::make_unique<CameraView>(c, p);
+    auto v = std::make_unique<CameraView>(c, sc, p);
     contentView = v.get();
-    v->setSize(600, 590);
+    v->setSize(600, 622);
     setContentOwned(v.release(), true);
     setUsingNativeTitleBar(true);
     setResizable(true, false);
-    setResizeLimits(480, 450, 1920, 1400);
+    setResizeLimits(480, 482, 1920, 1400);
     centreWithSize(getWidth(), getHeight());
     setAlwaysOnTop(true); // stays in front of AMPSURD's window while you play / save (owner, 2026-10-22)
     setVisible(true);

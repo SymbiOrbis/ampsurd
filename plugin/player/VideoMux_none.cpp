@@ -4,7 +4,7 @@
 bool isVideoExportSupported() { return false; }
 
 juce::String muxVideoToMp4(const juce::File&, const juce::AudioBuffer<float>&, double, double, const juce::File&,
-                           const std::function<void(float)>&)
+                           const std::function<void(float)>&, const ampsurd::screen::Overlay*)
 {
     return "Saving videos is not available on this system.";
 }

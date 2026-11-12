@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <climits>
+#include <memory>
 #include <vector>
 
 #pragma comment(lib, "mfplat.lib")
@@ -45,8 +46,111 @@ constexpr DWORD kVideo = (DWORD) MF_SOURCE_READER_FIRST_VIDEO_STREAM;
 constexpr UINT32 kAudioRate = 48000;
 } // namespace
 
+// an NV12 sample -> `out` (stride w, the UV plane right after the Y plane). planeH = the height the decoder's buffer
+// really has (it can be padded, e.g. 1088 for 1080).
+static bool copyNv12(IMFSample* sample, int w, int h, int planeH, std::vector<uint8_t>& out)
+{
+    ComPtr<IMFMediaBuffer> buf;
+    if (FAILED(sample->ConvertToContiguousBuffer(&buf))) return false;
+    out.resize((size_t) w * (size_t) h * 3 / 2);
+    BYTE* base = nullptr;
+    LONG pitch = 0;
+    ComPtr<IMF2DBuffer> b2;
+    bool locked2d = false;
+    DWORD len = 0;
+    if (SUCCEEDED(buf.As(&b2)) && SUCCEEDED(b2->Lock2D(&base, &pitch)) && pitch > 0)
+        locked2d = true;
+    else
+    {
+        if (FAILED(buf->Lock(&base, nullptr, &len))) return false;
+        pitch = w;
+        if (len >= (DWORD) (w * h * 3 / 2)) planeH = std::max(h, (int) (len * 2 / 3 / (DWORD) w));
+    }
+    planeH = std::max(planeH, h);
+    for (int y = 0; y < h; ++y) memcpy(out.data() + (size_t) y * (size_t) w, base + (size_t) y * (size_t) pitch, (size_t) w);
+    const BYTE* uv = base + (size_t) pitch * (size_t) planeH;
+    for (int y = 0; y < h / 2; ++y)
+        memcpy(out.data() + (size_t) w * (size_t) h + (size_t) y * (size_t) w, uv + (size_t) y * (size_t) pitch, (size_t) w);
+    if (locked2d) b2->Unlock2D(); else buf->Unlock();
+    return true;
+}
+
+// the screen recording, read along with the camera picture: the newest screen frame at a given camera time
+namespace
+{
+struct ScreenReader
+{
+    ComPtr<IMFSourceReader> reader;
+    int w = 0, h = 0, planeH = 0;
+    std::vector<uint8_t> frame;   // the current screen picture (NV12, stride w)
+    bool have = false, ended = false;
+    LONGLONG first = -1;
+    ComPtr<IMFSample> next;       // read ahead
+    LONGLONG nextTime = 0;
+
+    bool open(const juce::File& f)
+    {
+        ComPtr<IMFAttributes> ra;
+        MFCreateAttributes(&ra, 1);
+        ra->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE);
+        if (FAILED(MFCreateSourceReaderFromURL(f.getFullPathName().toWideCharPointer(), ra.Get(), &reader))) return false;
+        reader->SetStreamSelection((DWORD) MF_SOURCE_READER_ALL_STREAMS, FALSE);
+        reader->SetStreamSelection(kVideo, TRUE);
+        ComPtr<IMFMediaType> native;
+        if (FAILED(reader->GetNativeMediaType(kVideo, 0, &native))) return false;
+        UINT32 nw = 0, nh = 0;
+        MFGetAttributeSize(native.Get(), MF_MT_FRAME_SIZE, &nw, &nh);
+        w = (int) (nw & ~1u);
+        h = (int) (nh & ~1u);
+        if (w < 16 || h < 16) return false;
+        ComPtr<IMFMediaType> t;
+        MFCreateMediaType(&t);
+        t->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+        t->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12);
+        MFSetAttributeSize(t.Get(), MF_MT_FRAME_SIZE, (UINT32) w, (UINT32) h);
+        if (FAILED(reader->SetCurrentMediaType(kVideo, nullptr, t.Get()))) return false;
+        planeH = h;
+        ComPtr<IMFMediaType> cur;
+        if (SUCCEEDED(reader->GetCurrentMediaType(kVideo, &cur)))
+        {
+            UINT32 cw = 0, ch = 0;
+            MFGetAttributeSize(cur.Get(), MF_MT_FRAME_SIZE, &cw, &ch);
+            if ((int) ch >= h) planeH = (int) ch;
+        }
+        readNext();
+        return true;
+    }
+    void readNext()
+    {
+        next.Reset();
+        for (;;)
+        {
+            DWORD flags = 0;
+            LONGLONG ts = 0;
+            ComPtr<IMFSample> s;
+            if (FAILED(reader->ReadSample(kVideo, 0, nullptr, &flags, &ts, &s)) || (flags & MF_SOURCE_READERF_ENDOFSTREAM) != 0) { ended = true; return; }
+            if (s == nullptr) continue;
+            if (first < 0) first = ts;
+            next = s;
+            nextTime = ts - first;
+            return;
+        }
+    }
+    // the screen picture at screen time t (100 ns from its first frame); false = none yet
+    bool at(LONGLONG t)
+    {
+        while (!ended && next != nullptr && nextTime <= t)
+        {
+            have = copyNv12(next.Get(), w, h, planeH, frame) || have;
+            readNext();
+        }
+        return have;
+    }
+};
+} // namespace
+
 juce::String muxVideoToMp4(const juce::File& video, const juce::AudioBuffer<float>& audio, double sampleRate, double audioLeadSeconds,
-                           const juce::File& out, const std::function<void(float)>& progress)
+                           const juce::File& out, const std::function<void(float)>& progress, const ampsurd::screen::Overlay* overlay)
 {
     ComScope com;
     MfScope mf;
@@ -84,6 +188,24 @@ juce::String muxVideoToMp4(const juce::File& video, const juce::AudioBuffer<floa
     MFSetAttributeRatio(nv12.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
     hr = reader->SetCurrentMediaType(kVideo, nullptr, nv12.Get());
     if (FAILED(hr)) return failed("Decoding the camera file", hr);
+    int camPlaneH = (int) h;
+    {
+        ComPtr<IMFMediaType> cur;
+        if (SUCCEEDED(reader->GetCurrentMediaType(kVideo, &cur)))
+        {
+            UINT32 cw = 0, ch = 0;
+            MFGetAttributeSize(cur.Get(), MF_MT_FRAME_SIZE, &cw, &ch);
+            if (ch >= h) camPlaneH = (int) ch;
+        }
+    }
+    // SCREEN BOX: the screen recording drawn into the camera picture (only when the box is shown at some moment)
+    std::unique_ptr<ScreenReader> screen;
+    if (overlay != nullptr && overlay->isUsed() && overlay->file.existsAsFile())
+    {
+        screen = std::make_unique<ScreenReader>();
+        if (!screen->open(overlay->file)) screen.reset(); // without the box rather than no video
+    }
+    std::vector<uint8_t> composed;
     LONGLONG duration = 0; // 100 ns units
     {
         PROPVARIANT v;
@@ -202,6 +324,34 @@ juce::String muxVideoToMp4(const juce::File& video, const juce::AudioBuffer<floa
         if (s == nullptr) continue;
         if (first < 0) first = ts;
         const LONGLONG t = ts - first;
+        if (screen != nullptr)
+        {
+            const double tc = (double) t / 1.0e7;
+            const auto key = ampsurd::screen::boxAt(overlay->keys, tc);
+            const auto box = key.visible ? ampsurd::screen::boxInPicture(key.rect, overlay->previewAspect, (int) w, (int) h) : juce::Rectangle<int>();
+            const LONGLONG st = (LONGLONG) ((tc - overlay->offsetSeconds) * 1.0e7);
+            if (!box.isEmpty() && st >= 0 && screen->at(st) && copyNv12(s.Get(), (int) w, (int) h, camPlaneH, composed))
+            {
+                const size_t ySize = (size_t) w * (size_t) h, sY = (size_t) screen->w * (size_t) screen->h;
+                ampsurd::screen::drawBoxNv12(composed.data(), (int) w, composed.data() + ySize, (int) w, (int) w, (int) h,
+                                             screen->frame.data(), screen->w, screen->frame.data() + sY, screen->w, screen->w, screen->h, box);
+                ComPtr<IMFMediaBuffer> nb;
+                if (SUCCEEDED(MFCreateMemoryBuffer((DWORD) composed.size(), &nb)))
+                {
+                    BYTE* d = nullptr;
+                    nb->Lock(&d, nullptr, nullptr);
+                    memcpy(d, composed.data(), composed.size());
+                    nb->Unlock();
+                    nb->SetCurrentLength((DWORD) composed.size());
+                    ComPtr<IMFSample> ns;
+                    MFCreateSample(&ns);
+                    ns->AddBuffer(nb.Get());
+                    LONGLONG dur = 0;
+                    if (SUCCEEDED(s->GetSampleDuration(&dur))) ns->SetSampleDuration(dur);
+                    s = ns;
+                }
+            }
+        }
         s->SetSampleTime(t);
         hr = writeAudioUntil(t + 5000000LL);
         if (FAILED(hr)) return failed("Writing the sound", hr);

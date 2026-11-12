@@ -815,7 +815,7 @@ void PlayerRecorder::record()
 // ---------------------------------------------------------------------------------------------
 PlayerRecorder::Snapshot PlayerRecorder::snapshot() const
 {
-    Snapshot s { backingReady.load() ? backingFile : juce::File(), backingGainDb.load(), {}, takeVideo, videoFrame0Timeline };
+    Snapshot s { backingReady.load() ? backingFile : juce::File(), backingGainDb.load(), {}, takeVideo, videoFrame0Timeline, takeScreen };
     for (int t = 0; t < kTracks; ++t) s.clips[(size_t) t] = lanes[(size_t) t].clips;
     return s;
 }
@@ -841,6 +841,7 @@ void PlayerRecorder::restore(const Snapshot& s)
     for (int t = 0; t < kTracks; ++t) lanes[(size_t) t].clips = s.clips[(size_t) t];
     takeVideo = s.video;
     videoFrame0Timeline = s.videoFrame0;
+    takeScreen = s.screen;
     scheduleRender();
 }
 
@@ -929,6 +930,7 @@ void PlayerRecorder::attachVideo(const juce::File& videoFile, juce::int64 firstF
     const double outMs = (0.5 * dev + limiter.getLatencySamples()) * 1000.0 / sampleRate;
     videoFrame0Timeline = (double) passWallPos.load() + ((double) (firstFrameEpochMs - passWallMs.load()) - outMs) * sampleRate / 1000.0;
     takeVideo = videoFile;
+    takeScreen = {}; // a new take: its screen recording (if any) is attached after this
 }
 
 void PlayerRecorder::clearTake(int track)
@@ -943,7 +945,7 @@ void PlayerRecorder::clearTake(int track)
         if (track < 0 || t == track) lanes[(size_t) t].clips.clear();
     bool left = false;
     for (auto& l : lanes) left = left || !l.clips.empty();
-    if (!left) takeVideo = juce::File(); // the video goes with the last track
+    if (!left) { takeVideo = juce::File(); takeScreen = {}; } // the video goes with the last track
     scheduleRender();
 }
 
@@ -1383,6 +1385,7 @@ juce::String PlayerRecorder::adoptBounce(const juce::File& file)
     // the bounce becomes the backing track; the takes are now part of it
     ++renderGeneration;
     takeVideo = juce::File();
+    takeScreen = {};
     for (auto& l : lanes)
     {
         l.clips.clear();

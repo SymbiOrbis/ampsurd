@@ -2006,7 +2006,8 @@ int main(int argc, char** argv)
         PlayerRecorder dummy;
         dummy.prepare(48000.0, 256);
         VideoCapture cam;
-        ampsurd::ui::CameraView view(cam, dummy);
+        ScreenCapture scr;
+        ampsurd::ui::CameraView view(cam, scr, dummy);
         ampsurd::ui::LookAndFeel lf;
         view.setLookAndFeel(&lf);
         view.setSize(600, 590); // as the real window
@@ -2026,6 +2027,53 @@ int main(int argc, char** argv)
         std::cout << ((!saveBtn && watchOk) ? "[PASS] " : "[FAIL] ") << "CAMERA WINDOW: no SAVE button, WATCH = last take + "
                   << mp4s << " saved video(s)\n";
         view.setLookAndFeel(nullptr);
+    }
+    // SCREEN BOX (owner 2026-11-12): a screen chosen -> its box over the camera picture, SCREEN BOX hides / shows it
+    {
+        ::setenv("AMPSURD_FAKE_SCREEN", "1", 1); // a test screen (no real capture on Linux)
+        PlayerRecorder dummy;
+        dummy.prepare(48000.0, 256);
+        VideoCapture cam;
+        ScreenCapture scr;
+        ampsurd::ui::CameraView view(cam, scr, dummy);
+        ampsurd::ui::LookAndFeel lf;
+        view.setLookAndFeel(&lf);
+        view.setSize(600, 622);
+        juce::ComboBox* screens = nullptr;
+        juce::TextButton* boxBtn = nullptr;
+        for (auto* c : view.getChildren())
+        {
+            if (auto* cb = dynamic_cast<juce::ComboBox*>(c)) if (cb->getNumItems() > 0 && cb->getItemText(0) == "NO SCREEN") screens = cb;
+            if (auto* b = dynamic_cast<juce::TextButton*>(c)) if (b->getButtonText() == "SCREEN BOX") boxBtn = b;
+        }
+        auto findBox = [&]() -> ampsurd::ui::ScreenBoxView* {
+            for (auto* c : view.getChildren()) if (auto* b = dynamic_cast<ampsurd::ui::ScreenBoxView*>(c)) return b;
+            return nullptr;
+        };
+        bool ok = screens != nullptr && boxBtn != nullptr && screens->getNumItems() == 2;
+        if (ok)
+        {
+            screens->setSelectedId(2, juce::sendNotificationSync);
+            view.refresh();
+            auto* box = findBox();
+            ok = scr.isOpen() && boxBtn->getToggleState() && box != nullptr;
+            if (box != nullptr) box->setVisible(true); // (the view is not on a screen here, so it would stay hidden)
+            save(view, out.getChildFile("20b_camera_screen_box.png"));
+            if (ok)
+            {
+                boxBtn->onClick(); // hide
+                ok = !boxBtn->getToggleState() && !box->isVisible();
+                boxBtn->onClick(); // show again
+                ok = ok && boxBtn->getToggleState();
+            }
+        }
+        std::cout << (ok ? "[PASS] " : "[FAIL] ") << "SCREEN BOX: choosing a screen shows its box over the camera picture, "
+                  << "SCREEN BOX hides and shows it\n";
+        screens->setSelectedId(1, juce::sendNotificationSync); // not remembered for the next tests
+        view.setLookAndFeel(nullptr);
+        ::setenv("AMPSURD_FAKE_SCREEN", "0", 1);
+    }
+    {
         std::cout << "[INFO] camera supported here: " << (VideoCapture::isSupported() ? "yes" : "no") << ", cameras: "
                   << VideoCapture::cameras().size() << "\n";
     }

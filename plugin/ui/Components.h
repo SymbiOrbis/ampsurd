@@ -753,6 +753,7 @@ private:
     // VIDEO takes (camera in its own window)
     juce::TextButton videoButton { "VIDEO" };
     VideoCapture camera;
+    ScreenCapture screenCap; // SCREEN BOX: the screen recorded with a video take
     std::unique_ptr<CameraWindow> cameraWindow;
     bool videoRecording = false, videoSaving = false;
     double replaceArmedAt = -1.0;

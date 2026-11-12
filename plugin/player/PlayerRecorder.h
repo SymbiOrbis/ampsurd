@@ -43,6 +43,7 @@
 
 #include "ampsurd/Engine.h"
 #include "ampsurd/SafetyLimiter.h"
+#include "ScreenOverlay.h"
 
 class PlayerRecorder
 {
@@ -140,7 +141,11 @@ public:
     //     pass starts; with the camera's first-frame time this gives the timeline position of video frame 0.
     //     VIDEO OFFSET (ms, + = the sound later) fine-tunes it by hand. ---
     void attachVideo(const juce::File& videoFile, juce::int64 firstFrameEpochMs); // message thread, after stop
-    void dropVideo() { takeVideo = juce::File(); }
+    void dropVideo() { takeVideo = juce::File(); takeScreen = {}; }
+    // SCREEN BOX: the take's screen recording and when / where its box is shown (times = camera video time).
+    // Attached after a video take (with attachVideo); setTakeScreen after the take = the box moved (no undo step).
+    void setTakeScreen(const ampsurd::screen::Overlay& o) { takeScreen = o; }
+    const ampsurd::screen::Overlay& getTakeScreen() const { return takeScreen; }
     bool takeHasVideo() const { return takeVideo.existsAsFile() && hasAnyTake(); }
     juce::File getTakeVideo() const { return takeVideo; }
     void setVideoOffsetMs(float ms) { videoOffsetMs.store(ms); }
@@ -295,6 +300,7 @@ private:
 
     std::atomic<juce::int64> passWallMs { 0 }, passWallPos { 0 }; // wall clock (epoch ms) and song position when the pass started
     juce::File takeVideo;
+    ampsurd::screen::Overlay takeScreen;
     double videoFrame0Timeline = 0.0;
     std::atomic<float> videoOffsetMs { 0.0f };
 
@@ -306,6 +312,7 @@ private:
         std::array<std::vector<Clip>, kTracks> clips;
         juce::File video;
         double videoFrame0 = 0.0;
+        ampsurd::screen::Overlay screen;
     };
     std::vector<Snapshot> undoSnaps, redoSnaps;
     Snapshot snapshot() const;

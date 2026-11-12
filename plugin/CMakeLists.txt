@@ -47,14 +47,20 @@ target_sources(Ampsurd PRIVATE
   AmpProfileFile.cpp
   standalone/StandaloneApp.cpp
   player/PlayerRecorder.cpp
+  player/ScreenOverlay.cpp
+  player/ScreenCapture_common.cpp
   player/VideoCapture.cpp)
 # VIDEO takes: MP4 export with the operating system's own media framework
 if(WIN32)
-  target_sources(Ampsurd PRIVATE player/VideoMux_win.cpp ui/SaveDialog_win.cpp)
+  target_sources(Ampsurd PRIVATE player/VideoMux_win.cpp player/ScreenCapture_win.cpp ui/SaveDialog_win.cpp)
 elseif(APPLE)
-  target_sources(Ampsurd PRIVATE player/VideoMux_mac.mm ui/SaveDialog_mac.mm)
+  target_sources(Ampsurd PRIVATE player/VideoMux_mac.mm player/ScreenCapture_mac.mm ui/SaveDialog_mac.mm)
+  # SCREEN BOX: ScreenCaptureKit exists from macOS 12.3 - weakly linked, so AMPSURD still starts on 10.15
+  # (PUBLIC: Ampsurd is the shared code library; the app / plugin targets do the linking)
+  target_link_options(Ampsurd PUBLIC "SHELL:-weak_framework ScreenCaptureKit")
+  target_link_libraries(Ampsurd PUBLIC "-framework CoreMedia" "-framework CoreVideo" "-framework AVFoundation")
 else()
-  target_sources(Ampsurd PRIVATE player/VideoMux_none.cpp ui/SaveDialog_none.cpp)
+  target_sources(Ampsurd PRIVATE player/VideoMux_none.cpp player/ScreenCapture_none.cpp ui/SaveDialog_none.cpp)
 endif()
 
 # Embedded assets: fonts (Inter, SIL OFL), the footer logos (assets/logos/logo_1..3.svg|png) and the

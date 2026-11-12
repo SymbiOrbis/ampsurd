@@ -3156,7 +3156,7 @@ void PlayerPanel::setVideo(bool on)
     if (on)
     {
         if (cameraWindow == nullptr)
-            cameraWindow = std::make_unique<CameraWindow>(camera, player, [this] {
+            cameraWindow = std::make_unique<CameraWindow>(camera, screenCap, player, [this] {
                 juce::MessageManager::callAsync([sp = juce::Component::SafePointer<PlayerPanel>(this)] {
                     if (sp != nullptr && !sp->videoRecording) sp->setVideo(false);
                 });
@@ -3164,6 +3164,14 @@ void PlayerPanel::setVideo(bool on)
         auto& v = cameraWindow->view();
         v.onRec = [this] { recordPressed(true); };
         v.onKey = [this](const juce::KeyPress& k) { return onKey && onKey(k); };
+        v.onBoxMovedAfterTake = [this](juce::Rectangle<float> r) {
+            // the box moved after the take: the take's box is there for its whole length (shown / hidden times stay)
+            auto ov = player.getTakeScreen();
+            if (!player.takeHasVideo() || ov.file == juce::File()) return;
+            for (auto& k : ov.keys) k.rect = r;
+            player.setTakeScreen(ov);
+            setStatus("The screen box moved. SAVE AS... with MP4 VIDEO saves the take again with the box there.");
+        };
         v.onSoundChoice = [this](int id) { contentBox.setSelectedId(id, juce::sendNotificationSync); };
         v.onShowFile = [this] { if (lastSavedVideo.existsAsFile()) lastSavedVideo.revealToUser(); };
         v.hasSavedFile = [this] { return lastSavedVideo.existsAsFile(); };
@@ -3179,6 +3187,7 @@ void PlayerPanel::setVideo(bool on)
         if (videoRecording) { player.stop(); finishVideoTake(); }
         cameraWindow.reset();
         camera.close();
+        screenCap.close();
         setStatus("VIDEO off.");
     }
 }
@@ -3203,9 +3212,14 @@ void PlayerPanel::startVideoTake()
     const auto err = camera.startRecording(player.getRecordingsFolder().getChildFile("Takes"));
     if (err.isNotEmpty()) { setStatus(err); return; }
     videoRecording = true;
+    // SCREEN BOX: the chosen screen is recorded too (the box can be shown / hidden / moved during the take)
+    juce::String screenErr;
+    if (screenCap.isOpen()) screenErr = screenCap.startRecording(player.getRecordingsFolder().getChildFile("Takes"));
+    if (cameraWindow != nullptr) cameraWindow->view().beginTakeKeys();
     player.record();
     if (player.getState() != S::recording) { finishVideoTake(); setStatus("The recording could not start."); return; }
-    setStatus("Recording a video take... press STOP (or REC) when you are done.");
+    setStatus(screenErr.isNotEmpty() ? "Recording a video take - but the screen: " + screenErr
+                                     : juce::String("Recording a video take... press STOP (or REC, or Space) when you are done."));
 }
 
 void PlayerPanel::recordPressed(bool fromCameraWindow)
@@ -3347,14 +3361,30 @@ void PlayerPanel::chooseInput2(bool armAfter)
 void PlayerPanel::finishVideoTake()
 {
     videoRecording = false;
-    juce::File f;
+    juce::File f, sf;
     const auto firstFrame = camera.stopRecording(f);
+    const auto screenFirst = screenCap.stopRecording(sf);
     if (f == juce::File())
     {
         setStatus("VIDEO: the camera was not recording - no video for this take.");
         return;
     }
     player.attachVideo(f, firstFrame);
+    if (sf.existsAsFile() && screenFirst > 0 && firstFrame > 0 && cameraWindow != nullptr)
+    {
+        // SCREEN BOX: the screen file's place and the box's states, in camera video time
+        ampsurd::screen::Overlay ov;
+        ov.file = sf;
+        ov.offsetSeconds = (double) (screenFirst - firstFrame) / 1000.0;
+        ov.previewAspect = cameraWindow->view().previewAspect();
+        for (const auto& k : cameraWindow->view().takeKeys())
+        {
+            auto key = k.key;
+            key.t = (double) (k.epochMs - firstFrame) / 1000.0;
+            ov.keys.push_back(key);
+        }
+        player.setTakeScreen(ov);
+    }
     setStatus("Video take recorded - the video with its sound is being made...");
     // the camera finishes its file a moment after STOP: check that it really exists
     juce::Timer::callAfterDelay(2500, [sp = juce::Component::SafePointer<PlayerPanel>(this), f] {
@@ -3384,15 +3414,16 @@ void PlayerPanel::saveVideo()
     const auto f = folder.getNonexistentChildFile((withBacking ? "AMPSURD video " : "AMPSURD video guitar ") + stamp, ".mp4");
     const double sr = player.getSampleRate();
     const auto video = player.getTakeVideo();
+    const auto screen = player.getTakeScreen(); // SCREEN BOX (when it was shown during the take)
     videoSaving = true;
     setStatus("Saving the video " + f.getFileName() + "... (about as long as the video itself)");
     if (cameraWindow != nullptr) cameraWindow->view().showNotice("SAVING THE VIDEO...", 600.0);
     // the sound is rendered here too, in the background: a long song must not freeze the window
-    juce::Thread::launch([sp = juce::Component::SafePointer<PlayerPanel>(this), pl = &player, withBacking, video, sr, f] {
+    juce::Thread::launch([sp = juce::Component::SafePointer<PlayerPanel>(this), pl = &player, withBacking, video, screen, sr, f] {
         juce::AudioBuffer<float> mix;
         int start = 0;
         auto e = pl->renderMix(withBacking, mix, start);
-        if (e.isEmpty()) e = muxVideoToMp4(video, mix, sr, pl->videoAudioLeadSeconds(start), f, {});
+        if (e.isEmpty()) e = muxVideoToMp4(video, mix, sr, pl->videoAudioLeadSeconds(start), f, {}, &screen);
         juce::MessageManager::callAsync([sp, e, f, video] {
             if (sp == nullptr) return;
             sp->videoSaving = false;

@@ -12,15 +12,50 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "../player/PlayerRecorder.h"
+#include "../player/ScreenCapture.h"
+#include "../player/ScreenOverlay.h"
 #include "../player/VideoCapture.h"
 #include "Theme.h"
 
 namespace ampsurd::ui
 {
+// SCREEN BOX (owner 2026-11-12): the chosen screen's live picture in a box over the camera picture - drag it to
+// move it, drag its lower right corner to resize it. A child of the camera window; on macOS a small window of its
+// own (the camera preview is a native view that would cover a child).
+class ScreenBoxView final : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
+{
+public:
+    explicit ScreenBoxView(ScreenCapture&);
+    ~ScreenBoxView() override { stopTimer(); }
+    std::function<void(bool finished)> onMoved;   // while dragging (false) and at the end (true)
+    std::function<juce::Rectangle<int>()> limits; // where it may be: the preview area, in its own parent's / the screen's coordinates
+    void paint(juce::Graphics&) override;
+    void mouseMove(const juce::MouseEvent&) override;
+    void mouseDown(const juce::MouseEvent&) override;
+    void mouseDrag(const juce::MouseEvent&) override;
+    void mouseUp(const juce::MouseEvent&) override;
+
+private:
+    void timerCallback() override;
+    bool inCorner(juce::Point<int> p) const { return p.x > getWidth() - 16 && p.y > getHeight() - 16; }
+    ScreenCapture& screen;
+    int shownFrame = -1;
+    juce::Point<int> downPos;
+    juce::Rectangle<int> downBounds;
+    bool resizing = false;
+};
+
 class CameraView final : public juce::Component
 {
 public:
-    CameraView(VideoCapture&, PlayerRecorder&);
+    CameraView(VideoCapture&, ScreenCapture&, PlayerRecorder&);
+    ~CameraView() override;
+    // SCREEN BOX during a video take: the box's states (shown / where) with their wall clock (epoch ms)
+    void beginTakeKeys();
+    struct TimedKey { juce::int64 epochMs; ampsurd::screen::BoxKey key; };
+    std::vector<TimedKey> takeKeys() const { return liveKeys; }
+    double previewAspect() const;
+    std::function<void(juce::Rectangle<float>)> onBoxMovedAfterTake; // the box moved while not recording
     void paint(juce::Graphics&) override;
     void resized() override;
     void refresh(); // ~30 Hz from the player panel
@@ -42,6 +77,22 @@ public:
 
 private:
     void listCameras();
+    void listScreens();
+    void chooseScreen(int index);      // -1 = none
+    void setBoxShown(bool on);
+    void placeBox();                   // the box where boxRect says (in the preview area)
+    void boxMoved(bool finished);
+    void pushKey();                    // while recording: the box's state now
+    ScreenCapture& screen;
+    juce::ComboBox screenBox;
+    juce::TextButton boxButton { "SCREEN BOX" };
+    std::unique_ptr<ScreenBoxView> boxView;
+    juce::Rectangle<float> boxRect { 0.63f, 0.66f, 0.34f, 0.29f }; // in the preview area, 0..1
+    bool boxShown = false;
+    juce::Rectangle<int> previewArea;
+    std::vector<TimedKey> liveKeys;
+    double lastKeyMs = 0.0;
+    void* excludedPeer = nullptr;      // the window left out of the screen recording (again when it changes)
     void startPlayback();
     VideoCapture& camera;
     PlayerRecorder& player;
@@ -70,7 +121,7 @@ private:
 class CameraWindow final : public juce::DocumentWindow
 {
 public:
-    CameraWindow(VideoCapture&, PlayerRecorder&, std::function<void()> onClosed);
+    CameraWindow(VideoCapture&, ScreenCapture&, PlayerRecorder&, std::function<void()> onClosed);
     ~CameraWindow() override;
     void closeButtonPressed() override { if (closed) closed(); }
     CameraView& view() { return *contentView; }
