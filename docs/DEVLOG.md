@@ -6,6 +6,13 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-12 — Release 0.9.20 - Claude (Opus 5.5)
+
+- Owner: "yes" - 0.9.20 published (track strips, ARM while recording, sharper SWAP video, box shape, 2 PLAYERS
+  button). Windows files to be signed by the owner.
+
+---
+
 ## 2026-11-12 — Session 5l: track strips, ARM while recording, sharper SWAP video, box shape - Claude (Opus 5.5)
 
 - Owner (testing 0.9.19):
