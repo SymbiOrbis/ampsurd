@@ -6,6 +6,12 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-13 — Release 0.9.21 - Claude (Opus 5.5)
+
+- Owner: "Yes" - 0.9.21 published (SWAP video colours fixed). Windows files to be signed by the owner.
+
+---
+
 ## 2026-11-12 — Session 5m: SWAP video colours fixed - Claude (Opus 5.5)
 
 - Owner (testing 0.9.20, screenshot of a saved SWAP video): "the screen recording looks weird, broken" - a green
