@@ -21,6 +21,7 @@ VIDEO in the player).
 
 ## Next version (not released yet)
 
+- FULL SCREEN (app): F11 (on a Mac also Ctrl+Cmd+F) or the settings menu; Esc leaves it.
 - Each amp has its own NOISE GATE: GATE on the amp's card (lit = on); THRESHOLD and DECAY in EDIT, after the amp.
   The NOISE GATE at the bottom still works on the whole sound.
 - VIDEO: SCREEN BOX - record a screen of your computer with a video take, shown as a box over the camera picture.

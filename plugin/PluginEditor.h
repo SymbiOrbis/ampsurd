@@ -38,6 +38,10 @@ public:
     ampsurd::ui::LogPanel& getLogPanel() { return content.log; } // tests
     ampsurd::ui::CabIrMatrix& getCabIrMatrix() { return content.cabIrs; } // tests
     void showPlayer(bool show);
+    // FULL SCREEN (standalone app, owner 2026-11-12): the window fills the whole screen, AMPSURD scaled to fit
+    // (F11, on a Mac also Ctrl+Cmd+F; Esc leaves it; settings menu). In a DAW the DAW handles its windows.
+    void setFullScreen(bool on);
+    bool isFullScreen() const { return fullScreen; }
     void showRoot(bool show); // ROOT panel (experimental module; does nothing without it)
     void showDoubler(bool show); // DOUBLER panel (experimental module; does nothing without it)
     void showFxPage(int which) { content.globalEq.selectFx(which); } // tests / screenshots
@@ -82,6 +86,9 @@ private:
     juce::TooltipWindow tooltips { this, 600 };
     int selected = -1;
     bool globalEqOpen = false, playerOpen = false, rootOpen = false, doublerOpen = false, lastFrankOn = false;
+    bool fullScreen = false;
+    juce::Rectangle<int> windowBoundsBeforeFullScreen;
+    int titleBarBeforeFullScreen = 26;
     double cpuAverage = -1.0;     // CPU display: averaged, updated once per second (readable)
     juce::uint32 cpuShownAt = 0;
 

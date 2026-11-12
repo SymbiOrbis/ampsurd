@@ -603,6 +603,8 @@ public:
     void resized() override;
     void refresh();
     std::function<void()> onShowLog; // settings menu -> Show log...
+    std::function<void()> onToggleFullScreen; // settings menu -> Full screen (standalone app only; null in a DAW)
+    std::function<bool()> isFullScreen;
 
     // SAVE AS writes what the chosen file type says: .ampsurd = the preset, .ampsurdpack = a pack (preset +
     // the NAM / IR files it uses + README, the same as PRESET -> Export pack). Public for the tests.

@@ -161,6 +161,11 @@ AmpsurdEditor::AmpsurdEditor(AmpsurdProcessor& p) : AudioProcessorEditor(&p), pr
     content.log.onClose = [this] { timerCallback(); };
     content.footer.onCpuClicked = [this] { showLog(!content.log.isVisible()); };
     content.header.onShowLog = [this] { showLog(true); };
+    if (juce::JUCEApplicationBase::isStandaloneApp())
+    {
+        content.header.onToggleFullScreen = [this] { setFullScreen(!fullScreen); };
+        content.header.isFullScreen = [this] { return fullScreen; };
+    }
     if (content.playerPanel)
     {
         content.playerPanel->onClose = [this] { showPlayer(false); };
@@ -215,6 +220,21 @@ bool AmpsurdEditor::keyPressed(const juce::KeyPress& key)
     if (key == juce::KeyPress::escapeKey && content.log.isVisible()) { content.log.close(); return true; }
     if (key == juce::KeyPress::escapeKey && content.cabIrs.isVisible()) { content.cabIrs.close(); return true; }
     if (key == juce::KeyPress::escapeKey && proc.getEqClipboardSource() >= 0) { proc.clearEqClipboard(); return true; } // cancel a COPY
+    // FULL SCREEN (standalone): F11, on a Mac also Ctrl+Cmd+F; Esc leaves it
+    if (juce::JUCEApplicationBase::isStandaloneApp())
+    {
+       #if JUCE_MAC
+        const bool macKeys = mods.isCtrlDown() && mods.isCommandDown() && kc == 'f';
+       #else
+        const bool macKeys = false;
+       #endif
+        if (key.getKeyCode() == juce::KeyPress::F11Key || macKeys)
+        {
+            setFullScreen(!fullScreen);
+            return true;
+        }
+        if (key == juce::KeyPress::escapeKey && fullScreen) { setFullScreen(false); return true; }
+    }
 
     auto* pl = proc.getPlayer();
     if (pl == nullptr) return false;
@@ -265,8 +285,34 @@ void AmpsurdEditor::paint(juce::Graphics& g)
 void AmpsurdEditor::resized()
 {
     content.setBounds(0, 0, kWidth, kHeight);
-    const float scale = (float) getWidth() / (float) kWidth;
-    content.setTransform(juce::AffineTransform::scale(scale));
+    // scaled as a whole; in full screen the screen's shape can differ: fitted and centred (the rest is background)
+    const float scale = juce::jmin((float) getWidth() / (float) kWidth, (float) getHeight() / (float) kHeight);
+    const float ox = std::floor(((float) getWidth() - kWidth * scale) * 0.5f), oy = std::floor(((float) getHeight() - kHeight * scale) * 0.5f);
+    content.setTransform(juce::AffineTransform::scale(scale).translated(ox, oy));
+}
+
+void AmpsurdEditor::setFullScreen(bool on)
+{
+    if (on == fullScreen || !juce::JUCEApplicationBase::isStandaloneApp()) return;
+    auto* win = dynamic_cast<juce::DocumentWindow*>(getTopLevelComponent());
+    if (win == nullptr) return;
+    fullScreen = on;
+    if (on)
+    {
+        windowBoundsBeforeFullScreen = win->getBounds();
+        titleBarBeforeFullScreen = win->getTitleBarHeight();
+    }
+    // any shape while in full screen (the content is fitted), the usual limits and proportions otherwise
+    if (auto* c = getConstrainer()) c->setFixedAspectRatio(on ? 0.0 : (double) kWidth / (double) kHeight);
+    if (on) setResizeLimits(kWidth / 4, kHeight / 4, 16384, 16384);
+    else setResizeLimits(kWidth * 2 / 3, kHeight * 2 / 3, kWidth * 2, kHeight * 2);
+    // no title bar (with JUCE's Options button) in full screen: Audio / MIDI settings are in the settings menu too
+    for (auto* c : win->getChildren())
+        if (auto* b = dynamic_cast<juce::TextButton*>(c); b != nullptr && b->getButtonText() == "Options") b->setVisible(!on);
+    win->setTitleBarHeight(on ? 0 : titleBarBeforeFullScreen);
+    juce::Desktop::getInstance().setKioskModeComponent(on ? win : nullptr, false);
+    if (!on && !windowBoundsBeforeFullScreen.isEmpty()) win->setBounds(windowBoundsBeforeFullScreen);
+    grabKeyboardFocus();
 }
 
 // The lower panel shows one view at a time: amp EDIT, IR editor, player, ROOT, Frankenstein (while it

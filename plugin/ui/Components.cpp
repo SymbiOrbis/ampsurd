@@ -4927,6 +4927,13 @@ void HeaderBar::showSettings()
     m.addItem(20, "Use several CPU cores" + (mc ? " (" + juce::String(proc.getNumWorkerThreads() + 1) + " in use)" : juce::String()), true, mc);
     m.addSeparator();
     m.addItem(2, "Open preset folder");
+   #if JUCE_MAC
+    const juce::String fsKeys = "F11 or Ctrl+Cmd+F";
+   #else
+    const juce::String fsKeys = "F11";
+   #endif
+    if (onToggleFullScreen)
+        m.addItem(95, "Full screen  (" + fsKeys + ", Esc leaves it)", true, isFullScreen && isFullScreen());
     m.addItem(41, "Show log (dropouts, problems)...");
     m.addItem(40, "Check for updates...");
     m.addItem(3, "About AMPSURD");
@@ -4950,6 +4957,7 @@ void HeaderBar::showSettings()
         if (r >= 1000 && r - 1000 < (int) AmpsurdProcessor::midiActions().size())
             proc.startMidiLearn(AmpsurdProcessor::midiActions()[(size_t) (r - 1000)].id);
         if (r == 41 && onShowLog) onShowLog();
+        if (r == 95 && onToggleFullScreen) onToggleFullScreen();
         if (r == 40)
             ampsurd::checkForUpdates([sp = juce::Component::SafePointer<HeaderBar>(this)](const ampsurd::UpdateInfo& u) {
                 const juce::String current = JucePlugin_VersionString;

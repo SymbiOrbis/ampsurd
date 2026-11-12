@@ -26,6 +26,11 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
     drawing), player/ScreenCapture.h + _common/_win/_mac/_none. Linux tests: AMPSURD_FAKE_SCREEN=1 test screen.
   - Tests: recorder_test SCREEN BOX maths PASS; ui_snapshot SCREEN BOX PASS (20b_camera_screen_box.png).
   - NOT tested: real screen capture / combined MP4 on Windows and Mac (only compiled in CI). The owner must try it.
+- Owner: a full screen mode for the app. Standalone: F11 (Mac also Ctrl+Cmd+F) or settings menu "Full screen";
+  Esc leaves it. The window covers the whole screen (JUCE kiosk mode, no title bar / Options button - Audio / MIDI
+  settings stay in the settings menu); AMPSURD is scaled to fit and centred (any screen shape), the window's size
+  and place come back afterwards. In a DAW nothing changes. ui_snapshot FULL SCREEN fit PASS (19z_full_screen_16x9.png);
+  the real full screen not tried on Windows / Mac.
 - Owner: an additional noise gate per amp with an indication on the card.
   - Engine: a NoiseGate per path; listens to the guitar going into that amp, silences the amp's sound after its
     chain (in addition to the global NOISE GATE). Off by default; when off and fully open it does not run.

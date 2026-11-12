@@ -1890,6 +1890,17 @@ int main(int argc, char** argv)
         e->showPlayer(true);
         e->refreshAll();
         save(*ed, out.getChildFile("19_player.png"));
+        // FULL SCREEN (owner 2026-11-12): a screen of another shape (16:9) - AMPSURD fitted and centred, nothing cut off
+        {
+            ed->setSize(1920, 1080);
+            const auto t = e->getChildComponent(0)->getTransform();
+            const auto tl = juce::Point<float>(0.0f, 0.0f).transformedBy(t), br = juce::Point<float>(1200.0f, 800.0f).transformedBy(t);
+            const bool fits = std::abs(tl.y) < 1.0f && std::abs(br.y - 1080.0f) < 1.0f && std::abs(tl.x - 150.0f) < 1.0f && std::abs(br.x - 1770.0f) < 1.0f;
+            save(*ed, out.getChildFile("19z_full_screen_16x9.png"));
+            std::cout << (fits ? "[PASS]" : "[FAIL]") << " FULL SCREEN: a 1920 x 1080 screen shows AMPSURD fitted and centred ("
+                      << tl.x << "," << tl.y << " - " << br.x << "," << br.y << ")\n";
+            ed->setSize(1200, 800);
+        }
         pl->stop();
         // the X before the GUITAR track asks first; DELETE removes the take, CANCEL keeps it
         {

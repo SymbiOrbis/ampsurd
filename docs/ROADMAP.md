@@ -84,7 +84,7 @@ preset whose files moved is found again by file name (next to the preset, then i
 
 ## 3k. Metronome in the recorder — IMPLEMENTED 2026-10-17, awaiting test
 
-## 3k3. SCREEN BOX for video takes + a noise gate per amp — IMPLEMENTED 2026-11-12, awaiting test on Windows / Mac
+## 3k3. SCREEN BOX for video takes + a noise gate per amp + full screen — IMPLEMENTED 2026-11-12, awaiting test on Windows / Mac
 Screen recording (DXGI / ScreenCaptureKit) shown as a movable box over the camera picture, combined when saving;
 each amp's own gate (GATE on the card). Possible later: swap (screen large, camera in the box), a single window
 instead of a whole screen.
