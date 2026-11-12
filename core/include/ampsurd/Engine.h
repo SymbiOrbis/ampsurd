@@ -73,6 +73,8 @@ struct SlotSettings
     bool gateOn = false;
     float gateThresholdDb = NoiseGate::kDefaultThresholdDb;
     float gateDecayMs = NoiseGate::kDefaultDecayMs;
+    // TWO PLAYERS (owner 2026-11-12): whose amp this is - 0 = player 1 (the guitar input), 1 = player 2 (input 2)
+    int player = 0;
 };
 
 struct EngineSettings
@@ -82,6 +84,9 @@ struct EngineSettings
     bool globalEqEnabled = false;           // final tone-shaping EQ on the blended signal
     std::array<EqBand, ParametricEq::kNumBands> globalEq = ParametricEq::defaultBands();
     bool rotationActive = false; // true when any path uses phase rotation
+    // TWO PLAYERS: each amp plays its player's guitar (SlotSettings::player); each player's amps are mixed on their
+    // own (mix law, solo, blend tone per player) into that player's output. Frankenstein is off meanwhile.
+    bool twoPlayers = false;
 };
 
 class Engine
@@ -139,7 +144,16 @@ public:
     float getToneLearned() const noexcept { return toneConfidence.load(std::memory_order_relaxed); }
 
     // Audio thread. Outputs must not alias the input; n <= maxBlockSize.
-    void process(const double* in, double* outL, double* outR, int n, const EngineSettings& settings) noexcept;
+    void process(const double* in, double* outL, double* outR, int n, const EngineSettings& settings) noexcept
+    {
+        process(in, outL, outR, n, settings, nullptr, nullptr, nullptr);
+    }
+    // TWO PLAYERS: in2 = player 2's guitar, out2L / out2R = player 2's amps (all three needed, else one player;
+    // out2 is then silent). Player 1 = in -> outL / outR as always.
+    void process(const double* in, double* outL, double* outR, int n, const EngineSettings& settings,
+                 const double* in2, double* out2L, double* out2R) noexcept;
+    // Pure function: the slots of player `g` only (TWO PLAYERS), as a "loaded" mask
+    static std::array<bool, kNumSlots> playerMask(const EngineSettings& s, const std::array<bool, kNumSlots>& isLoaded, int g) noexcept;
     // Mono convenience (tests / tools): left channel only.
     void process(const double* in, double* out, int n, const EngineSettings& settings) noexcept
     {
@@ -190,14 +204,14 @@ private:
     std::array<PathAligner, kNumSlots> aligners;
     std::array<ParametricEq, kNumSlots> eqs;
     std::array<NoiseGate, kNumSlots> gates; // per-amp noise gates
-    ParametricEq globalEq, globalEqR;
+    ParametricEq globalEq, globalEqR, globalEq2, globalEq2R; // 2: player 2 (TWO PLAYERS)
     std::array<double, kNumSlots> gains {}, gainsR {};
 
     std::array<std::array<std::atomic<double>, kNumSlots>, kNumSlots> cov;
     std::array<std::atomic<bool>, kNumSlots> covValid;
     std::array<std::array<std::array<std::atomic<double>, kNumSlots>, kNumSlots>, BlendToneEq::kBands> bandCov;
     std::atomic<bool> bandCovValid { false };
-    BlendToneEq blendTone;
+    BlendToneEq blendTone, blendTone2;
     BlendToneTracker toneTracker;                       // learns the blend's tone while you play
     std::array<std::array<double, 4>, kNumSlots> trackSig {}; // loaded / delay / polarity / phase seen by the tracker
     std::array<std::atomic<float>, BlendToneEq::kBands> toneDb {};
@@ -232,6 +246,7 @@ private:
         Engine* engine = nullptr;
         const EngineSettings* settings = nullptr;
         const double* in = nullptr;
+        const double* in2 = nullptr; // TWO PLAYERS: player 2's guitar (nullptr = one player)
         int n = 0, stride = 0;
         double rotationMix = 0.0;
         std::array<int, kNumSlots> slot {};

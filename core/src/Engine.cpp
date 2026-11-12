@@ -55,7 +55,10 @@ void Engine::prepare(double sr, int maxBlockSize, double maxDelayMs)
     scratchR.assign((size_t) maxBlock, 0.0);
     globalEq.prepare(sr);
     globalEqR.prepare(sr);
+    globalEq2.prepare(sr);
+    globalEq2R.prepare(sr);
     blendTone.prepare(sr);
+    blendTone2.prepare(sr);
     toneTracker.prepare(sr);
     for (auto& sig : trackSig) sig = { -1.0, 0.0, 0.0, 0.0 };
     frankenstein.prepare(sr, maxBlock);
@@ -236,7 +239,9 @@ void Engine::setMultiCore(int workers)
 void Engine::runPathJob(void* context, int index) noexcept
 {
     const auto& j = *static_cast<const PathJob*>(context);
-    j.engine->processPath(j.slot[(size_t) index], *j.settings, j.in, j.n, j.stride, j.rotationMix);
+    const int i = j.slot[(size_t) index];
+    const bool second = j.in2 != nullptr && j.settings->slots[(size_t) i].player == 1;
+    j.engine->processPath(i, *j.settings, second ? j.in2 : j.in, j.n, j.stride, j.rotationMix);
 }
 
 void Engine::processPath(int i, const EngineSettings& s, const double* in, int n, int stride, double rotationMix) noexcept
@@ -328,9 +333,53 @@ void Engine::processPath(int i, const EngineSettings& s, const double* in, int n
     tm[BlockTimes::eq] += (float) (nowMs() - t4);
 }
 
-void Engine::process(const double* in, double* out, double* outR, int n, const EngineSettings& s) noexcept
+std::array<bool, kNumSlots> Engine::playerMask(const EngineSettings& s, const std::array<bool, kNumSlots>& isLoaded, int g) noexcept
+{
+    std::array<bool, kNumSlots> m {};
+    for (int i = 0; i < kNumSlots; ++i)
+        m[(size_t) i] = isLoaded[(size_t) i] && (s.twoPlayers ? (s.slots[(size_t) i].player == 1 ? 1 : 0) : 0) == g;
+    return m;
+}
+
+void Engine::process(const double* in, double* out, double* outR, int n, const EngineSettings& s,
+                     const double* in2, double* out2, double* out2R) noexcept
 {
     const int stride = (int) (scratch.size() / kNumSlots);
+    // TWO PLAYERS: two groups of amps, each mixed on its own (one group = everything as before)
+    const bool two = s.twoPlayers && in2 != nullptr && out2 != nullptr && out2R != nullptr;
+    const int groups = two ? 2 : 1;
+    auto groupOf = [&](int i) { return two && s.slots[(size_t) i].player == 1 ? 1 : 0; };
+    auto maskOf = [&](const std::array<bool, kNumSlots>& l, int g) {
+        std::array<bool, kNumSlots> m {};
+        for (int i = 0; i < kNumSlots; ++i) m[(size_t) i] = l[(size_t) i] && groupOf(i) == g;
+        return m;
+    };
+    // per group: proportions (sum to 1 within each player's amps) / audible (SOLO within the player)
+    auto proportions = [&](const std::array<bool, kNumSlots>& l) {
+        std::array<double, kNumSlots> p {};
+        for (int g = 0; g < groups; ++g)
+        {
+            const auto pg = computeProportions(s, maskOf(l, g));
+            for (int i = 0; i < kNumSlots; ++i) if (groupOf(i) == g) p[(size_t) i] = pg[(size_t) i];
+        }
+        return p;
+    };
+    auto audibleOf = [&](const std::array<bool, kNumSlots>& l) {
+        std::array<bool, kNumSlots> a {};
+        for (int g = 0; g < groups; ++g)
+        {
+            const auto ag = computeAudible(s, maskOf(l, g));
+            for (int i = 0; i < kNumSlots; ++i) if (groupOf(i) == g) a[(size_t) i] = ag[(size_t) i];
+        }
+        return a;
+    };
+    auto onlyGroup = [&](const std::array<double, kNumSlots>& p, int g) {
+        std::array<double, kNumSlots> r {};
+        for (int i = 0; i < kNumSlots; ++i) if (groupOf(i) == g) r[(size_t) i] = p[(size_t) i];
+        return r;
+    };
+    if (!two && out2 != nullptr) std::fill(out2, out2 + n, 0.0);
+    if (!two && out2R != nullptr) std::fill(out2R, out2R + n, 0.0);
     const double tStart = nowMs();
     times.path = {};
     times.ran = {};
@@ -339,12 +388,15 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
     {
         std::fill(out, out + n, 0.0);
         if (outR != nullptr) std::fill(outR, outR + n, 0.0);
+        if (out2 != nullptr) std::fill(out2, out2 + n, 0.0);
+        if (out2R != nullptr) std::fill(out2R, out2R + n, 0.0);
         return;
     }
 
     // 0. Frankenstein NOTES mode: the guitar is split BEFORE the amps (each note range -> its amp).
     //    Switching between the modes changes what the amps receive, so the output dips for 20 ms.
-    const bool notesWanted = s.frankenstein.enabled && s.frankenstein.beforeAmps;
+    const bool frankAllowed = s.frankenstein.enabled && !two; // TWO PLAYERS: no Frankenstein
+    const bool notesWanted = frankAllowed && s.frankenstein.beforeAmps;
     if (notesWanted != notesRouting && routeGain == 0.0)
     {
         notesRouting = notesWanted;
@@ -354,7 +406,7 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
             splitterSnap = true;
             frankMix = 0.0;
         }
-        else if (s.frankenstein.enabled)
+        else if (frankAllowed)
         {
             frankenstein.reset();
             frankMix = 1.0; // continue directly in TONE mode (while silent)
@@ -387,9 +439,9 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
     for (int i = 0; i < kNumSlots; ++i)
         present[(size_t) i] = slots[(size_t) i].hasActiveCapture() || slots[(size_t) i].hasPending();
     {
-        const auto audiblePre = computeAudible(s, present);
-        const auto pPre = computeProportions(s, present);
-        const bool splitting = notesRouting || s.frankenstein.enabled || frankMix > 0.0;
+        const auto audiblePre = audibleOf(present);
+        const auto pPre = proportions(present);
+        const bool splitting = notesRouting || frankAllowed || frankMix > 0.0;
         int count = 0;
         for (int i = 0; i < kNumSlots; ++i)
         {
@@ -419,6 +471,7 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
         job.engine = this;
         job.settings = &s;
         job.in = in;
+        job.in2 = two ? in2 : nullptr;
         job.n = n;
         job.stride = stride;
         job.rotationMix = s.rotationActive ? 1.0 : 0.0;
@@ -442,8 +495,8 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
         isLoaded[(size_t) i] = active && !asleep[(size_t) i] && warm == 0;
     }
 
-    // 3. Mix law.
-    const auto p = computeProportions(s, isLoaded);
+    // 3. Mix law (TWO PLAYERS: per player).
+    const auto p = proportions(isLoaded);
     std::array<std::array<double, kNumSlots>, kNumSlots> C {};
     std::array<bool, kNumSlots> valid {};
     for (int i = 0; i < kNumSlots; ++i)
@@ -454,23 +507,33 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
     }
     std::array<std::array<double, 2>, kNumSlots> pan {};
     for (int i = 0; i < kNumSlots; ++i) pan[(size_t) i] = panGains(s.slots[(size_t) i].pan);
-    const double G = computeCompensation(p, C, valid, pan);
+    std::array<double, 2> Gs { 1.0, 1.0 };
+    for (int g = 0; g < groups; ++g) Gs[(size_t) g] = computeCompensation(onlyGroup(p, g), C, valid, pan);
+    const double G = Gs[0];
     // Right channel is accumulated separately (or not at all for mono callers).
     double* R = outR != nullptr ? outR : scratchR.data();
     compensationDb.store((float) (20.0 * std::log10(G)), std::memory_order_relaxed);
 
-    // 4. Gain, pan, sum.
-    const auto audibleNow = computeAudible(s, isLoaded);
+    // 4. Gain, pan, sum (TWO PLAYERS: each amp into its player's output).
+    const auto audibleNow = audibleOf(isLoaded);
     std::fill(out, out + n, 0.0);
     std::fill(R, R + n, 0.0);
+    if (two)
+    {
+        std::fill(out2, out2 + n, 0.0);
+        std::fill(out2R, out2R + n, 0.0);
+    }
     for (int i = 0; i < kNumSlots; ++i)
     {
         const auto& ss = s.slots[(size_t) i];
         const double* buf = scratch.data() + (size_t) i * (size_t) stride;
         effectivePercent[(size_t) i].store((float) (100.0 * p[(size_t) i]), std::memory_order_relaxed);
+        const int grp = groupOf(i);
+        double* oL = grp == 1 ? out2 : out;
+        double* oR = grp == 1 ? out2R : R;
 
         // NOTES mode: every amp plays its own note range in full (no fader blend / mix law)
-        const double base = notesRouting ? (audibleNow[(size_t) i] ? ss.levelGain : 0.0) : p[(size_t) i] * G * ss.levelGain;
+        const double base = notesRouting ? (audibleNow[(size_t) i] ? ss.levelGain : 0.0) : p[(size_t) i] * Gs[(size_t) grp] * ss.levelGain;
         const double target = base * pan[(size_t) i][0], targetR = base * pan[(size_t) i][1];
         double g = gains[(size_t) i], gr = gainsR[(size_t) i];
         if (g == 0.0 && target == 0.0 && gr == 0.0 && targetR == 0.0)
@@ -479,8 +542,8 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
         {
             g += (target - g) * gainCoef;
             gr += (targetR - gr) * gainCoef;
-            out[k] += g * buf[k];
-            R[k] += gr * buf[k];
+            oL[k] += g * buf[k];
+            oR[k] += gr * buf[k];
         }
         if (std::abs(target - g) < 1e-9) g = target;
         if (std::abs(targetR - gr) < 1e-9) gr = targetR;
@@ -488,9 +551,9 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
         gainsR[(size_t) i] = gr;
     }
 
-    // 4b. Tone of the blend: per-band mix law on top of G (BlendToneEq.h). Not in NOTES mode.
+    // 4b. Tone of the blend: per-band mix law on top of G (BlendToneEq.h). Not in NOTES mode. TWO PLAYERS: per player.
     {
-        BlendToneEq::Gains t {};
+        BlendToneEq::Gains t {}, t2 {};
         if (!notesRouting && bandCovValid.load(std::memory_order_acquire))
         {
             {
@@ -499,7 +562,8 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
                     for (int i = 0; i < kNumSlots; ++i)
                         for (int j = 0; j < kNumSlots; ++j)
                             B[(size_t) b][(size_t) i][(size_t) j] = bandCov[(size_t) b][(size_t) i][(size_t) j].load(std::memory_order_relaxed);
-                t = computeToneCorrection(p, B, valid, pan, G);
+                t = computeToneCorrection(onlyGroup(p, 0), B, valid, pan, G);
+                if (two) t2 = computeToneCorrection(onlyGroup(p, 1), B, valid, pan, Gs[1]);
             }
             // learned while playing: the paths as they are mixed (after IR, EQ, alignment), level-matched
             std::array<const double*, kNumSlots> paths {};
@@ -530,12 +594,17 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
                 for (const auto& m : LB)
                     for (int i = 0; i < kNumSlots; ++i)
                         for (int j = 0; j < kNumSlots; ++j) sum[(size_t) i][(size_t) j] += m[(size_t) i][(size_t) j];
-                const double Gl = computeCompensation(p, sum, learned, pan);
-                const auto tl = computeToneCorrection(p, LB, learned, pan, Gl);
-                bool usable = true; // every audible amp must have been learned
-                for (int i = 0; i < kNumSlots; ++i) usable = usable && (p[(size_t) i] <= 0.0 || learned[(size_t) i]);
-                if (usable)
-                    for (int b = 0; b < BlendToneEq::kBands; ++b) t[(size_t) b] = (1.0 - w) * t[(size_t) b] + w * tl[(size_t) b];
+                for (int g = 0; g < groups; ++g)
+                {
+                    const auto pg = onlyGroup(p, g);
+                    const double Gl = computeCompensation(pg, sum, learned, pan);
+                    const auto tl = computeToneCorrection(pg, LB, learned, pan, Gl);
+                    bool usable = true; // every audible amp must have been learned
+                    for (int i = 0; i < kNumSlots; ++i) usable = usable && (pg[(size_t) i] <= 0.0 || learned[(size_t) i]);
+                    auto& tg = g == 0 ? t : t2;
+                    if (usable)
+                        for (int b = 0; b < BlendToneEq::kBands; ++b) tg[(size_t) b] = (1.0 - w) * tg[(size_t) b] + w * tl[(size_t) b];
+                }
             }
             toneConfidence.store((float) w, std::memory_order_relaxed);
         }
@@ -543,13 +612,18 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
         for (int b = 0; b < BlendToneEq::kBands; ++b)
             toneDb[(size_t) b].store((float) blendTone.getTargets()[(size_t) b], std::memory_order_relaxed);
         blendTone.process(out, outR != nullptr ? R : nullptr, n);
+        if (two)
+        {
+            blendTone2.setTargets(t2);
+            blendTone2.process(out2, out2R, n);
+        }
     }
 
     // 5. "Create Frankenstein": frequency-split blending of the same aligned, EQ'd, level-matched paths.
-    const bool frankOn = s.frankenstein.enabled && !notesRouting; // TONE mode: split after the amps
+    const bool frankOn = frankAllowed && !notesRouting; // TONE mode: split after the amps
     if (frankOn || frankMix > 0.0)
     {
-        const auto audible = computeAudible(s, isLoaded);
+        const auto audible = audibleOf(isLoaded);
         const auto layout = computeFrankensteinLayout(s.frankenstein, audible);
         frankenstein.setTarget(layout);
         if (frankMix == 0.0)
@@ -595,6 +669,7 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
                 const double g = routeGain * routeGain * (3.0 - 2.0 * routeGain);
                 out[k] *= g;
                 R[k] *= g;
+                if (two) { out2[k] *= g; out2R[k] *= g; }
             }
     }
 
@@ -606,6 +681,13 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
     {
         globalEqR.setBands(geq);
         globalEqR.process(outR, n);
+    }
+    if (two)
+    {
+        globalEq2.setBands(geq);
+        globalEq2.process(out2, n);
+        globalEq2R.setBands(geq);
+        globalEq2R.process(out2R, n);
     }
     times.mix = std::max(0.0f, (float) (nowMs() - tStart) - times.paths); // everything but the paths
 }

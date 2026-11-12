@@ -406,6 +406,13 @@ SlotComponent::SlotComponent(AmpsurdProcessor& p, int s) : proc(p), slot(s), fad
     gateAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.params, AmpsurdProcessor::slotParamId(s, "gateOn"), gateButton);
     gateButton.setTooltip("GATE: this amp's own noise gate, lit = on (in addition to the NOISE GATE below, which works on the whole sound). "
                           "Its THRESHOLD and DECAY are in EDIT, after the amp");
+    // TWO PLAYERS: whose amp this is (only shown while TWO PLAYERS is on)
+    addChildComponent(playerButton);
+    playerButton.setClickingTogglesState(true);
+    playerButton.setWantsKeyboardFocus(false);
+    playerAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.params, AmpsurdProcessor::slotParamId(s, "player2"), playerButton);
+    playerButton.setTooltip("TWO PLAYERS: whose amp this is. P1 = player 1 (the guitar input), P2 = player 2 (input 2). "
+                            "Click to switch. Each player hears only their own amps' sound");
 
     panSlider.setSliderStyle(juce::Slider::LinearHorizontal);
     panSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
@@ -525,6 +532,7 @@ void SlotComponent::resized()
     fader.setBounds(r.removeFromRight(40).withTrimmedTop(22));
     ecoButton.setBounds(40, 10, 44, 20);
     gateButton.setBounds(90, 10, 50, 20);
+    playerButton.setBounds(146, 10, 34, 20);
     {
         // the shown knobs side by side (GAIN alone, or GAIN + the measured tone knobs)
         auto ka = ampKnobArea();
@@ -731,6 +739,11 @@ void SlotComponent::refresh(bool isSelected, bool irEditorOpen)
     ecoButton.setVisible(st.state != AmpsurdProcessor::SlotState::empty);
     gateButton.setVisible(st.state != AmpsurdProcessor::SlotState::empty);
     gateButton.setEnabled(loaded);
+    playerButton.setVisible(proc.isTwoPlayersOn());
+    {
+        const juce::String pt = playerButton.getToggleState() ? "P2" : "P1";
+        if (playerButton.getButtonText() != pt) playerButton.setButtonText(pt);
+    }
     soloButton.setEnabled(loaded);
     muteButton.setEnabled(loaded);
     fader.setEnabled(loaded && !proc.isFrankensteinOn()); // Frankenstein replaces the fader blend
@@ -2599,7 +2612,7 @@ void Timeline::paint(juce::Graphics& g)
         const bool armed = player.isArmed(t);
         g.setFont(Fonts::get().semibold(10.5f));
         g.setColour(armed ? text : textDim);
-        g.drawText(t == 0 ? "GUITAR" : "INPUT 2", na, juce::Justification::centredLeft, false);
+        g.drawText(PlayerRecorder::trackName(t, player.isTwoPlayers()), na, juce::Justification::centredLeft, false);
         if (t == 1)
         {
             // a small arrow: click to choose the interface input
@@ -2729,7 +2742,9 @@ void Timeline::paint(juce::Graphics& g)
                 hint = "INPUT 2: a mic, a keyboard... on another input of your interface. Click INPUT 2 (left) to choose the input, "
                        "then ARM it - recorded with the guitar, or alone.";
             else
-                hint = "INPUT 2 = " + src + (player.isArmed(1) ? ". Armed: REC records it (heard now)." : ". ARM it (left) to hear it and record it.");
+                hint = player.isTwoPlayers()
+                           ? "PLAYER 2 = " + src + ", through the amps marked P2." + (player.isArmed(1) ? " Armed: REC records player 2." : " ARM it (left) to record player 2.")
+                           : "INPUT 2 = " + src + (player.isArmed(1) ? ". Armed: REC records it (heard now)." : ". ARM it (left) to hear it and record it.");
             g.drawFittedText(hint, glane.reduced(10, 1), juce::Justification::centredLeft, 2, 0.85f);
         }
     }
@@ -3098,8 +3113,9 @@ void PlayerPanel::paint(juce::Graphics& g)
     g.setColour(textDim);
     g.setFont(Fonts::get().semibold(10.5f));
     g.drawText("VOL", backVol.getBounds().withX(backVol.getX() - 34).withWidth(30), juce::Justification::centredLeft, false);
-    g.drawText("GUITAR VOL", takeVol.getBounds().withX(takeVol.getX() - 74).withWidth(72), juce::Justification::centredLeft, false);
-    g.drawText("INPUT 2 VOL", input2Vol.getBounds().withX(input2Vol.getX() - 82).withWidth(80), juce::Justification::centredLeft, false);
+    const bool twoP = player.isTwoPlayers();
+    g.drawText(twoP ? "PLAYER 1" : "GUITAR VOL", takeVol.getBounds().withX(takeVol.getX() - 74).withWidth(72), juce::Justification::centredLeft, false);
+    g.drawText(twoP ? "PLAYER 2" : "INPUT 2 VOL", input2Vol.getBounds().withX(input2Vol.getX() - 82).withWidth(80), juce::Justification::centredLeft, false);
     g.drawText("OFFSET", offset.getBounds().withX(offset.getX() - 52).withWidth(50), juce::Justification::centredLeft, false);
     g.drawText("VOL", clickVol.getBounds().withX(clickVol.getX() - 34).withWidth(30), juce::Justification::centredLeft, false);
 
@@ -3144,7 +3160,7 @@ void PlayerPanel::paint(juce::Graphics& g)
     for (int t = 0; t < PlayerRecorder::kTracks; ++t)
     {
         if (!player.isArmed(t)) continue;
-        armedNames << (armedNames.isEmpty() ? "" : " + ") << PlayerRecorder::trackName(t);
+        armedNames << (armedNames.isEmpty() ? "" : " + ") << PlayerRecorder::trackName(t, player.isTwoPlayers());
         correction = correction || player.hasMaterial(t);
         anyCorrection = anyCorrection || player.getPunchIn(t) >= 0;
     }
@@ -3365,6 +3381,26 @@ void PlayerPanel::recordPressed(bool fromCameraWindow)
         return;
     }
     player.record();
+}
+
+void PlayerPanel::twoPlayersChanged(bool on)
+{
+    player.setTwoPlayers(on && player.isInput2Available()); // (the audio sets it too) - the labels change now
+    timeline.repaint();
+    repaint();
+    if (!on)
+    {
+        setStatus("TWO PLAYERS off: one guitar through all amps; INPUT 2 records its input as it comes in again.");
+        return;
+    }
+    if (!player.isInput2Available())
+    {
+        setStatus("TWO PLAYERS: choose the input player 2 plugs into.");
+        chooseInput2(true);
+        return;
+    }
+    player.setArmed(1, true);
+    setStatus("TWO PLAYERS on: player 2 plays into " + input2Name() + " through the amps marked P2; PLAYER 1 and PLAYER 2 are recorded on their own tracks.");
 }
 
 void PlayerPanel::setInput2Listen(bool on)
@@ -3968,6 +4004,10 @@ void TunerPanel::resized()
 
 void TunerPanel::refresh()
 {
+    {
+        const int who = proc.isTwoPlayersActive() ? (proc.isTunerOnPlayer2() ? 2 : 1) : 0;
+        if (who != playerShown) { playerShown = who; repaint(); }
+    }
     const auto r = proc.analyseTuner();
     const double now = juce::Time::getMillisecondCounterHiRes();
     if (r.valid)
@@ -3993,7 +4033,8 @@ void TunerPanel::refresh()
 
 void TunerPanel::paint(juce::Graphics& g)
 {
-    drawLabel(g, "TUNER", { 16, 12, 200, 24 }, accent, juce::Justification::centredLeft, 11.5f);
+    drawLabel(g, proc.isTwoPlayersActive() ? (proc.isTunerOnPlayer2() ? "TUNER - PLAYER 2" : "TUNER - PLAYER 1") : "TUNER", { 16, 12, 200, 24 }, accent,
+              juce::Justification::centredLeft, 11.5f); // TWO PLAYERS: the tuner follows the player who plays
     const auto area = getLocalBounds().reduced(16, 0).withTrimmedTop(44);
 
     // note name
@@ -4573,7 +4614,7 @@ void MasterPanel::refresh()
             inMeter.setTooltip("Guitar input level (interface input " + juce::String(gi + 1) + ")");
         }
         // not when the other input is the player's INPUT 2 (a mic, a keyboard...: a signal there is wanted)
-        const bool input2InUse = proc.getPlayer() != nullptr && proc.getPlayer()->isInput2Available();
+        const bool input2InUse = (proc.getPlayer() != nullptr && proc.getPlayer()->isInput2Available()) || proc.isTwoPlayersOn();
         const bool showHint = otherInputOnly > 30 && proc.hasSecondInput() && !input2InUse;
         if (showHint != inputHint.isVisible())
         {
@@ -4590,7 +4631,8 @@ void MasterPanel::refresh()
     const int oldHold = limitHold;
     if (gr > 0.05f) { limitDb = juce::jmax(gr, limitHold > 0 ? limitDb : 0.0f); limitHold = 30; }
     else if (limitHold > 0) --limitHold;
-    frankButton.setToggleState(proc.isFrankensteinOn(), juce::dontSendNotification);
+    frankButton.setToggleState(proc.isFrankensteinOn() && !proc.isTwoPlayersOn(), juce::dontSendNotification);
+    frankButton.setEnabled(!proc.isTwoPlayersOn()); // TWO PLAYERS: no Frankenstein (each player's amps are blended)
     rootButton.setToggleState(proc.isRootOn(), juce::dontSendNotification);
     doublerButton.setToggleState(proc.isDoublerOn(), juce::dontSendNotification);
     muteButton.setToggleState(proc.isOutputMuted(), juce::dontSendNotification);
@@ -4983,6 +5025,8 @@ void HeaderBar::showSettings()
    #endif
     if (onToggleFullScreen)
         m.addItem(95, "Full screen  (" + fsKeys + ", Esc leaves it)", true, isFullScreen && isFullScreen());
+    if (onToggleTwoPlayers)
+        m.addItem(96, "Two players  (player 2 on input 2, own amps: P1 / P2 on the cards)", true, proc.isTwoPlayersOn());
     m.addItem(41, "Show log (dropouts, problems)...");
     m.addItem(40, "Check for updates...");
     m.addItem(3, "About AMPSURD");
@@ -5007,6 +5051,7 @@ void HeaderBar::showSettings()
             proc.startMidiLearn(AmpsurdProcessor::midiActions()[(size_t) (r - 1000)].id);
         if (r == 41 && onShowLog) onShowLog();
         if (r == 95 && onToggleFullScreen) onToggleFullScreen();
+        if (r == 96 && onToggleTwoPlayers) onToggleTwoPlayers();
         if (r == 40)
             ampsurd::checkForUpdates([sp = juce::Component::SafePointer<HeaderBar>(this)](const ampsurd::UpdateInfo& u) {
                 const juce::String current = JucePlugin_VersionString;

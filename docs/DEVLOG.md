@@ -6,6 +6,32 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-12 — Session 5k: TWO PLAYERS - Claude (Opus 5.5)
+
+- Owner: two guitarists, each with their own set of captures, one recording (with or without video). Approved the
+  proposal: a PLAYER 1 / PLAYER 2 switch per amp, shared effects, no extra mic track.
+  - Settings menu: "Two players". On: player 2 plays into the other input (standalone: the input chosen as INPUT 2 -
+    asked for if none is chosen; in a DAW: the second input channel). Every card shows P1 / P2 (nobody on P2 yet:
+    amps 4 + 5). Frankenstein is off and greyed meanwhile.
+  - Engine: SlotSettings.player, EngineSettings.twoPlayers, process(in, L, R, n, s, in2, out2L, out2R). Each amp
+    plays its player's guitar; mix law, SOLO and the blend tone EQ per player (amps of one player sum to 100 %);
+    the global EQ on both outputs (second instances).
+  - Processor: player 2 gets the same INPUT gain, PITCH, global gate, flanger / delays / reverb, OUTPUT, limiter,
+    BYPASS / tuner mute (second instances, same settings; ROOT / DOUBLER: player 1 only). The tuner follows the
+    player who plays (the other one 3x louder: switch), its title says PLAYER 1 / PLAYER 2.
+  - Recorder: player 2's finished sound is the INPUT 2 track's live source (renamed PLAYER 2; GUITAR = PLAYER 1):
+    recorded with its PAN, heard always (LISTEN off = not), at its VOL while recording, lined up with AMPSURD's
+    latency like the guitar. Audio export / BOUNCE / video mix both tracks as before.
+  - Not part of tones (the P1 / P2 setting belongs to the rig, like PAN); stored in presets.
+- Files: core Engine.h/.cpp, PluginProcessor.*, RigControl.cpp, PlayerRecorder.*, PluginEditor.*, ui/Components.*, tests.
+- Tested (Linux): engine_test TWO PLAYERS (player 1 alone = bit-identical to one player, no leaks between the
+  outputs, player 2 through their amp, SOLO within a player); recorder_test TWO PLAYERS (player 2 heard, each player
+  on their own track, both exactly on the clicks); ui_snapshot 19d_two_players.png (P1 / P2, Frankenstein greyed,
+  tuner on player 2). Not tested with a real two-input interface and two guitars.
+- CPU: player 2 adds a second set of effects (delay / reverb...) and its amps; the five amps are shared.
+
+---
+
 ## 2026-11-12 — Release 0.9.18 - Claude (Opus 5.5)
 
 - Owner: "Yes, please" - 0.9.18 published (full screen button, video window SWAP / seek bar / maximise, INPUT 2

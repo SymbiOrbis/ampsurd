@@ -21,7 +21,10 @@ VIDEO in the player).
 
 ## Next version (not released yet)
 
-(nothing yet)
+- TWO PLAYERS (settings menu): two guitarists, each with their own amps - P1 / P2 on every amp card. Player 2 plugs
+  into the second input of the interface. Both go through the same effects (gate, EQ, delay, reverb...). The
+  player records PLAYER 1 and PLAYER 2 on their own tracks, together, into one song or video. The tuner follows
+  the player who plays.
 
 ## AMPSURD 0.9.18 (beta)
 

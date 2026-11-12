@@ -42,6 +42,8 @@ public:
     // (the window's full screen button between - and X, a double click on the title bar, F11, on a Mac also
     // Ctrl+Cmd+F; Esc or the EXIT FULL SCREEN button leaves it; settings menu). In a DAW the DAW handles its windows.
     void setFullScreen(bool on);
+    // TWO PLAYERS (owner 2026-11-12): on = player 2 on the other input through the amps marked P2 (none yet: amps 4 + 5)
+    void setTwoPlayers(bool on);
     bool isFullScreen() const { return fullScreen; }
     juce::Button& getExitFullScreenButton() { return exitFullScreen; } // tests
     void showRoot(bool show); // ROOT panel (experimental module; does nothing without it)

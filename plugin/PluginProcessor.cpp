@@ -232,6 +232,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout AmpsurdProcessor::createLayo
 
     // Create Frankenstein: frequency-split blending
     layout.add(std::make_unique<AudioParameterBool>(ParameterID { "frankOn", 1 }, "Frankenstein", false));
+    layout.add(std::make_unique<AudioParameterBool>(ParameterID { "twoPlayers", 1 }, "Two Players", false));
     layout.add(std::make_unique<AudioParameterChoice>(ParameterID { "frankMode", 1 }, "Frankenstein Split",
                                                       StringArray { "Tone (after the amps)", "Notes (before the amps)" }, 0));
     layout.add(std::make_unique<AudioParameterInt>(ParameterID { "frankSections", 1 }, "Frankenstein Sections", 2, 5, 2));
@@ -306,6 +307,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout AmpsurdProcessor::createLayo
                                                                   n + "Pedal " + String(k + 1) + " Level",
                                                                   NormalisableRange<float>(-24.0f, 12.0f, 0.1f), 0.0f, unitAttr("dB", 1)));
         }
+        // TWO PLAYERS (owner 2026-11-12): whose amp - off = player 1, on = player 2
+        group->addChild(std::make_unique<AudioParameterBool>(ParameterID { slotParamId(s, "player2"), 1 }, n + "Player 2", false));
         // this amp's own noise gate (owner 2026-11-12), in addition to the global gate; off by default
         group->addChild(std::make_unique<AudioParameterBool>(ParameterID { slotParamId(s, "gateOn"), 1 }, n + "Gate", false));
         group->addChild(std::make_unique<AudioParameterFloat>(ParameterID { slotParamId(s, "gateThreshold"), 1 }, n + "Gate Threshold",
@@ -495,6 +498,7 @@ AmpsurdProcessor::AmpsurdProcessor()
     gateDecayParam = params.getRawParameterValue("gateDecay");
     tunerMuteParam = params.getRawParameterValue("tunerMute");
     frankOnParam = params.getRawParameterValue("frankOn");
+    twoPlayersParam = params.getRawParameterValue("twoPlayers");
     frankModeParam = params.getRawParameterValue("frankMode");
     frankSectionsParam = params.getRawParameterValue("frankSections");
     frankWidthParam = params.getRawParameterValue("frankWidth");
@@ -518,6 +522,7 @@ AmpsurdProcessor::AmpsurdProcessor()
         sp.level = params.getRawParameterValue(slotParamId(s, "level"));
         sp.ampGain = params.getRawParameterValue(slotParamId(s, "ampGain"));
         sp.gateOn = params.getRawParameterValue(slotParamId(s, "gateOn"));
+        sp.player2 = params.getRawParameterValue(slotParamId(s, "player2"));
         sp.gateThreshold = params.getRawParameterValue(slotParamId(s, "gateThreshold"));
         sp.gateDecay = params.getRawParameterValue(slotParamId(s, "gateDecay"));
         sp.ampTone[0] = params.getRawParameterValue(slotParamId(s, "ampBass"));
@@ -664,10 +669,16 @@ void AmpsurdProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     dryBuffer.assign((size_t) maxBlock, 0.0);
     rawBuffer.assign((size_t) maxBlock, 0.0f);
     input2Buffer.assign((size_t) maxBlock, 0.0f);
+    rawBuffer2.assign((size_t) maxBlock, 0.0f);
+    for (auto* b : { &inBuffer2, &outBuffer2, &outBuffer2R, &dryBuffer2, &gainBuffer }) b->assign((size_t) maxBlock, 0.0);
     gate.prepare(sampleRate);
+    gate2.prepare(sampleRate);
     pitch.prepare(sampleRate);
+    pitch2.prepare(sampleRate);
     tuner.prepare(sampleRate);
     fx.prepare(sampleRate, maxBlock);
+    fx2.prepare(sampleRate, maxBlock);
+    limiter2.prepare(sampleRate);
    #if AMPSURD_ROOT
     root.prepare(sampleRate, maxBlock);
    #endif
@@ -676,6 +687,7 @@ void AmpsurdProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
    #endif
     if (player) player->prepare(sampleRate, maxBlock);
     dryDelay.assign((size_t) (sampleRate * 0.1) + 1, 0.0f); // up to 100 ms of latency
+    dryDelay2.assign(dryDelay.size(), 0.0f);
     dryDelayPos = 0;
     inputGain.reset(sampleRate, 0.02);
     outputGain.reset(sampleRate, 0.02);
@@ -788,6 +800,8 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
     const bool levelMatch = levelMatchParam->load() > 0.5f;
     gate.setParameters(gateOnParam->load() > 0.5f, gateThresholdParam->load(), gateDecayParam->load());
     pitch.setParameters(pitchOnParam->load() > 0.5f, pitchSemiParam->load(), pitchCentsParam->load());
+    gate2.setParameters(gateOnParam->load() > 0.5f, gateThresholdParam->load(), gateDecayParam->load());
+    pitch2.setParameters(pitchOnParam->load() > 0.5f, pitchSemiParam->load(), pitchCentsParam->load());
     const double muteTarget = (tunerMuteParam->load() > 0.5f && tunerVisible.load(std::memory_order_relaxed)) ? 1.0 : 0.0;
     float keyPeak = 0.0f;
 
@@ -816,6 +830,7 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         ss.gateOn = sp.gateOn->load() > 0.5f;
         ss.gateThresholdDb = sp.gateThreshold->load();
         ss.gateDecayMs = sp.gateDecay->load();
+        ss.player = sp.player2->load() > 0.5f ? 1 : 0;
         for (int k = 0; k < kNumPedals; ++k)
         {
             ss.pedalOn[(size_t) k] = sp.pedalOn[(size_t) k]->load() > 0.5f;
@@ -856,6 +871,13 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         if (sel > selectedInputRawPeak.load(std::memory_order_relaxed)) selectedInputRawPeak.store(sel, std::memory_order_relaxed);
         if (other > otherInputRawPeak.load(std::memory_order_relaxed)) otherInputRawPeak.store(other, std::memory_order_relaxed);
     }
+    // TWO PLAYERS: player 2 = the other input (standalone: the input chosen as INPUT 2; in a DAW: the second input channel)
+    const bool two = twoPlayersParam->load() > 0.5f && numIn > 1 && (player == nullptr || player->isInput2Available());
+    settings.twoPlayers = two;
+    twoPlayersActive.store(two, std::memory_order_relaxed);
+    if (player) player->setTwoPlayers(two);
+    const float* in2p = two ? buffer.getReadPointer(1 - inCh) : nullptr;
+    if (!two) tunerOnPlayer2.store(false, std::memory_order_relaxed);
     float* out = buffer.getWritePointer(0);
     float* outR = numOut > 1 ? buffer.getWritePointer(1) : nullptr; // stereo: per-amp PAN
     const int maxBlock = (int) inBuffer.size();
@@ -880,12 +902,45 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
             dryBuffer[(size_t) i] = dryDelay[(size_t) rp];
             dryDelayPos = (dryDelayPos + 1) % (int) dryDelay.size();
 
-            const float x = raw * inputGain.getNextValue();
+            const double ig = inputGain.getNextValue();
+            gainBuffer[(size_t) i] = ig;
+            const float x = raw * (float) ig;
             inPeak = juce::jmax(inPeak, std::abs(x));
             inBuffer[(size_t) i] = x;
         }
-        tuner.push(rawBuffer.data(), n); // tuner works on the clean DI, also when bypassed (the real strings)
+        if (two)
+        {
+            // player 2: the same INPUT, the same delayed dry signal for BYPASS
+            float pk2 = 0.0f;
+            for (int i = 0; i < n; ++i)
+            {
+                float raw = in2p[start + i];
+                raw = std::isfinite(raw) ? juce::jlimit(-64.0f, 64.0f, raw) : 0.0f;
+                rawBuffer2[(size_t) i] = raw;
+                const int wp = (dryDelayPos - n + i + (int) dryDelay2.size()) % (int) dryDelay2.size(); // the same positions as player 1's
+                dryDelay2[(size_t) wp] = raw;
+                int rp = wp - latency;
+                if (rp < 0) rp += (int) dryDelay2.size();
+                dryBuffer2[(size_t) i] = dryDelay2[(size_t) rp];
+                const double x = raw * gainBuffer[(size_t) i];
+                pk2 = juce::jmax(pk2, (float) std::abs(x));
+                inBuffer2[(size_t) i] = x;
+            }
+            if (pk2 > player2InputPeak.load(std::memory_order_relaxed)) player2InputPeak.store(pk2, std::memory_order_relaxed);
+            // the tuner follows the player who plays (the other one louder for a moment: switch)
+            float p1 = 0.0f, p2 = 0.0f;
+            for (int i = 0; i < n; ++i) { p1 = juce::jmax(p1, std::abs(rawBuffer[(size_t) i])); p2 = juce::jmax(p2, std::abs(rawBuffer2[(size_t) i])); }
+            const double fall = std::exp(-(double) n / (0.4 * sr));
+            tunerEnv1 = juce::jmax((double) p1, tunerEnv1 * fall);
+            tunerEnv2 = juce::jmax((double) p2, tunerEnv2 * fall);
+            const bool on2 = tunerOnPlayer2.load(std::memory_order_relaxed);
+            if (!on2 && tunerEnv2 > 0.01 && tunerEnv2 > 3.0 * tunerEnv1) tunerOnPlayer2.store(true, std::memory_order_relaxed);
+            if (on2 && tunerEnv1 > 0.01 && tunerEnv1 > 3.0 * tunerEnv2) tunerOnPlayer2.store(false, std::memory_order_relaxed);
+        }
+        // tuner works on the clean DI, also when bypassed (the real strings); TWO PLAYERS: the player who plays
+        tuner.push(two && tunerOnPlayer2.load(std::memory_order_relaxed) ? rawBuffer2.data() : rawBuffer.data(), n);
         pitch.process(inBuffer.data(), n); // PITCH: the whole guitar re-tuned before the amps
+        if (two) pitch2.process(inBuffer2.data(), n);
         {
             int w = specWrite.load(std::memory_order_relaxed);
             for (int i = 0; i < n; ++i)
@@ -901,7 +956,9 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         double* R = outBufferR.data();
         const double tEngine = clockMs();
         partMs[0] += (float) (tEngine - tIn);
-        engine.process(inBuffer.data(), L, R, n, settings);
+        double* L2 = outBuffer2.data();
+        double* R2 = outBuffer2R.data();
+        engine.process(inBuffer.data(), L, R, n, settings, two ? inBuffer2.data() : nullptr, two ? L2 : nullptr, two ? R2 : nullptr);
         {
             // the log: add this part of the block to the block's breakdown (a host block can be split in several)
             const auto& t = engine.lastTimes();
@@ -922,6 +979,12 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
         doubler.process(L, R, n, dblSettings); // DOUBLER: after the gate (clean silences), before delays / reverb
        #endif
         fx.process(L, R, n, fxSettings);           // flanger, delays, reverb: after the gate, so tails ring out
+        if (two)
+        {
+            // player 2: the same gate and effects (ROOT / DOUBLER: player 1 only)
+            gate2.process(inBuffer2.data(), L2, n, R2);
+            fx2.process(L2, R2, n, fxSettings);
+        }
         const double tOut = clockMs();
         partMs[1] += (float) (tOut - tFx);
 
@@ -930,15 +993,18 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
             const double og = outputGain.getNextValue();
             L[i] *= og;
             R[i] *= og;
+            if (two) { L2[i] *= og; R2[i] *= og; }
         }
         {
             // last line of defence: if anything inside produced NaN / inf, the state is reset from the
             // message thread (timerCallback) - the sound comes back instead of staying silent
             bool finite = true;
             for (int i = 0; i < n && finite; ++i) finite = std::isfinite(L[i]) && std::isfinite(R[i]);
+            for (int i = 0; two && i < n && finite; ++i) finite = std::isfinite(L2[i]) && std::isfinite(R2[i]);
             if (!finite) needsRecovery.store(true, std::memory_order_relaxed);
         }
         limiter.process(L, R, n); // never above -1 dBFS, stereo-linked
+        if (two) limiter2.process(L2, R2, n);
 
         for (int i = 0; i < n; ++i)
         {
@@ -949,21 +1015,33 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
             const double dry = bypassMix * dryBuffer[(size_t) i];
             L[i] = ((1.0 - bypassMix) * L[i] + dry) * (1.0 - muteMix);
             R[i] = ((1.0 - bypassMix) * R[i] + dry) * (1.0 - muteMix);
+            if (two)
+            {
+                const double dry2 = bypassMix * dryBuffer2[(size_t) i];
+                L2[i] = ((1.0 - bypassMix) * L2[i] + dry2) * (1.0 - muteMix);
+                R2[i] = ((1.0 - bypassMix) * R2[i] + dry2) * (1.0 - muteMix);
+            }
         }
         // standalone: record the guitar (and INPUT 2), add backing track + takes, limit the sum
         if (player)
         {
             // INPUT 2 of the player = the interface's other input (a mic, a keyboard...), as it comes in
             const float* in2 = nullptr;
-            if (numIn > 1 && player->isInput2Available())
+            if (!two && numIn > 1 && player->isInput2Available())
             {
                 const float* src = buffer.getReadPointer(1 - inCh) + start;
                 for (int i = 0; i < n; ++i)
                     input2Buffer[(size_t) i] = std::isfinite(src[i]) ? juce::jlimit(-64.0f, 64.0f, src[i]) : 0.0f;
                 in2 = input2Buffer.data();
             }
-            player->process(L, R, n, latency, isNonRealtime(), in2);
+            player->process(L, R, n, latency, isNonRealtime(), in2, two ? L2 : nullptr, two ? R2 : nullptr);
         }
+        else if (two)
+            for (int i = 0; i < n; ++i) // in a DAW: both players in the one output
+            {
+                L[i] += L2[i];
+                R[i] += R2[i];
+            }
         {
             // MUTE: everything (amps, effects, player) to silence
             const double target = outputMuted.load(std::memory_order_relaxed) ? 1.0 : 0.0;

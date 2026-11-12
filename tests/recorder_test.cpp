@@ -806,6 +806,56 @@ int main()
         check(undone && berr.isEmpty() && !pl->hasAnyTake() && pl->hasBacking(),
               "INPUT 2: UNDO takes back only the INPUT 2 take; BOUNCE puts both tracks into the backing " + berr);
 
+        // TWO PLAYERS (owner 2026-11-12): player 2 on input 2 through AMPSURD (bypassed here: their dry guitar, with
+        // AMPSURD's latency) - heard, recorded on the INPUT 2 track, lined up like the guitar; player 1 on GUITAR only
+        {
+            pl->removeBacking();
+            pl->clearTake();
+            pl->renderNow();
+            pl->toStart();
+            setP(*proc, "twoPlayers", 1.0f);
+            pl->setArmed(0, true);
+            pl->setArmed(1, true);
+            run2(0.1, nullptr, nullptr);
+            const bool active = proc->isTwoPlayersActive() && pl->isTwoPlayers();
+            const float heard2 = run2(0.3, nullptr, tone2).getMagnitude(0, (int) (0.2 * sr), (int) (0.1 * sr));
+            run2(0.1, nullptr, nullptr);
+            pl->toStart();
+            pl->record();
+            juce::int64 z = -1;
+            auto hit = [&](juce::int64 clock, int every) {
+                if (z < 0) z = clock;
+                const juce::int64 h = clock - z - limLat - deviceLatency;
+                return h > 0 && h % every == 0;
+            };
+            run2(2.6, [&](juce::int64 c) { return hit(c, 24000) ? 0.3f : 0.0f; }, [&](juce::int64 c) { return hit(c, 48000) ? 0.2f : 0.0f; });
+            pl->stop();
+            pl->renderNow();
+            auto trackPeaks = [&](int track) {
+                pl->setTakeGainDb(-100.0f, 1 - track); // the other track silent
+                juce::AudioBuffer<float> b;
+                int off = 0;
+                pl->renderMix(false, b, off);
+                pl->setTakeGainDb(0.0f, 1 - track);
+                std::vector<int> at;
+                for (auto pk : peaks(b, 0.1f)) at.push_back(pk + off);
+                return std::make_pair(at, b.getNumSamples() > 0 ? b.getMagnitude(0, 0, b.getNumSamples()) : 0.0f);
+            };
+            const auto t0 = trackPeaks(0), t1 = trackPeaks(1);
+            bool p1 = t0.first.size() >= 3 && t0.second < 0.35f, p2 = t1.first.size() >= 2 && t1.second < 0.25f;
+            juce::String w0, w1;
+            for (size_t k = 0; k < t0.first.size() && k < 4; ++k) { w0 << t0.first[k] << " "; if (k < 3) p1 = p1 && t0.first[k] == (int) (24000 * (k + 1)); }
+            for (size_t k = 0; k < t1.first.size() && k < 3; ++k) { w1 << t1.first[k] << " "; if (k < 2) p2 = p2 && t1.first[k] == (int) (48000 * (k + 1)); }
+            check(active && heard2 > 0.15f && p1 && p2,
+                  "TWO PLAYERS: on (" + juce::String((int) active) + "), player 2 heard (" + juce::String(heard2, 3) + "), player 1 on GUITAR only: "
+                      + w0 + "(max " + juce::String(t0.second, 2) + "), player 2 on INPUT 2, lined up like the guitar: " + w1 + "(max "
+                      + juce::String(t1.second, 2) + ")");
+            setP(*proc, "twoPlayers", 0.0f);
+            pl->clearTake();
+            pl->renderNow();
+            run2(0.05, nullptr, nullptr);
+        }
+
         // keys: R and Ctrl+R start recording, Space stops it
         {
             pl->removeBacking();

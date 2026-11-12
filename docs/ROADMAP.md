@@ -84,7 +84,7 @@ preset whose files moved is found again by file name (next to the preset, then i
 
 ## 3k. Metronome in the recorder — IMPLEMENTED 2026-10-17, awaiting test
 
-## 3k4. TWO PLAYERS (owner idea 2026-11-12) — PROPOSED, awaiting the owner's decision
+## 3k4. TWO PLAYERS (owner idea 2026-11-12) — IMPLEMENTED 2026-11-12 (P1 / P2 per amp, shared effects), awaiting a test with two guitars
 Two guitarists, two interface inputs, each with their own amps (each amp card: PLAYER 1 / PLAYER 2), each player's
 sound recorded on its own track (GUITAR / INPUT 2), one audio or video recording. Open questions: how amps are
 split, effects shared or separate, a third track for a mic. Today already possible in a DAW: two tracks, one AMPSURD

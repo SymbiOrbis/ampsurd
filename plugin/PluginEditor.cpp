@@ -161,6 +161,8 @@ AmpsurdEditor::AmpsurdEditor(AmpsurdProcessor& p) : AudioProcessorEditor(&p), pr
     content.log.onClose = [this] { timerCallback(); };
     content.footer.onCpuClicked = [this] { showLog(!content.log.isVisible()); };
     content.header.onShowLog = [this] { showLog(true); };
+    // TWO PLAYERS (owner 2026-11-12): settings menu; the cards then show P1 / P2
+    content.header.onToggleTwoPlayers = [this] { setTwoPlayers(!proc.isTwoPlayersOn()); };
     if (juce::JUCEApplicationBase::isStandaloneApp())
     {
         content.header.onToggleFullScreen = [this] { setFullScreen(!fullScreen); };
@@ -301,6 +303,26 @@ void AmpsurdEditor::resized()
     const bool room = ox >= (float) (bw + pad * 2) || oy >= (float) (bh + pad * 2);
     exitFullScreen.setBounds(getWidth() - bw - pad, room ? pad : getHeight() - bh - pad, bw, bh);
     exitFullScreen.setVisible(fullScreen);
+}
+
+void AmpsurdEditor::setTwoPlayers(bool on)
+{
+    auto set = [this](const juce::String& id, float v) {
+        if (auto* prm = proc.params.getParameter(id)) prm->setValueNotifyingHost(prm->convertTo0to1(v));
+    };
+    if (on)
+    {
+        // nobody's amps chosen for player 2 yet: amps 4 and 5 (P1 / P2 on the cards changes it)
+        bool any = false;
+        for (int s = 0; s < AmpsurdProcessor::kNumSlots; ++s)
+            if (auto* v = proc.params.getRawParameterValue(AmpsurdProcessor::slotParamId(s, "player2"))) any = any || v->load() > 0.5f;
+        if (!any)
+            for (int s = 3; s < AmpsurdProcessor::kNumSlots; ++s) set(AmpsurdProcessor::slotParamId(s, "player2"), 1.0f);
+        if (proc.isFrankensteinOn()) proc.setFrankenstein(false); // no Frankenstein with two players
+    }
+    set("twoPlayers", on ? 1.0f : 0.0f);
+    if (content.playerPanel) content.playerPanel->twoPlayersChanged(on);
+    timerCallback();
 }
 
 void AmpsurdEditor::setFullScreen(bool on)

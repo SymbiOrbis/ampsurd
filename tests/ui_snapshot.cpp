@@ -2013,6 +2013,50 @@ int main(int argc, char** argv)
             pl->clearTake();
             pl->renderNow();
         }
+        // TWO PLAYERS (owner 2026-11-12): settings menu -> the cards show P1 / P2 (amps 4 + 5 for player 2 by default),
+        // Frankenstein greyed, the tracks are PLAYER 1 / PLAYER 2, the tuner follows the player who plays
+        {
+            pl->setInput2Available(true);
+            e->setTwoPlayers(true);
+            for (int k = 0; k < 60; ++k)
+            {
+                buf.clear();
+                for (int i = 0; i < buf.getNumSamples(); ++i)
+                    buf.setSample(1, i, (float) (0.3 * std::sin(2 * juce::MathConstants<double>::pi * 110.0 * (k * 256 + i) / 48000.0))); // player 2 plays A
+                proc->processBlock(buf, midi);
+            }
+            e->showPlayer(true);
+            e->refreshAll();
+            int p1 = 0, p2 = 0;
+            bool frankGrey = false;
+            std::function<void(juce::Component&)> scan = [&](juce::Component& c) {
+                for (auto* ch : c.getChildren())
+                {
+                    if (auto* b = dynamic_cast<juce::TextButton*>(ch); b != nullptr && b->isVisible())
+                    {
+                        if (b->getButtonText() == "P1") ++p1;
+                        if (b->getButtonText() == "P2") ++p2;
+                        if (b->getButtonText().containsIgnoreCase("FRANKENSTEIN")) frankGrey = !b->isEnabled();
+                    }
+                    scan(*ch);
+                }
+            };
+            scan(*ed);
+            const bool tuner2 = proc->isTunerOnPlayer2();
+            save(*ed, out.getChildFile("19d_two_players.png"));
+            const bool on = proc->isTwoPlayersActive() && p1 == 3 && p2 == 2 && frankGrey && pl->isTwoPlayers();
+            e->setTwoPlayers(false);
+            e->refreshAll();
+            p1 = p2 = 0;
+            scan(*ed);
+            const bool off = p1 == 0 && p2 == 0 && !proc->isTwoPlayersOn();
+            std::cout << (on && off && tuner2 ? "[PASS]" : "[FAIL]") << " TWO PLAYERS: P1 / P2 on the cards (" << p1 << "/" << p2
+                      << " after off; on: amps 4 + 5 = P2), Frankenstein greyed, the tuner on player 2 when only player 2 plays ("
+                      << (int) tuner2 << "), off again: hidden\n";
+            for (int s = 0; s < AmpsurdProcessor::kNumSlots; ++s)
+                if (auto* prm = proc->params.getParameter(AmpsurdProcessor::slotParamId(s, "player2"))) prm->setValueNotifyingHost(0.0f);
+            pl->setInput2Available(false);
+        }
         proc->setNonRealtime(false);
         wavFile.deleteFile();
     }

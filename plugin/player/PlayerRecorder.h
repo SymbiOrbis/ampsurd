@@ -68,11 +68,17 @@ public:
     // audio thread: L/R = AMPSURD's guitar output; adds the tracks and limits the sum (in place)
     // offline = rendering faster than real time (tests, DAW bounce): wait for disk reads instead of
     // playing silence when the read-ahead is late. input2 = the second interface input (nullptr: none)
-    void process(double* L, double* R, int n, int ampsurdLatencySamples, bool offline = false, const float* input2 = nullptr) noexcept;
+    // TWO PLAYERS (owner 2026-11-12): player2L / R = player 2's sound as AMPSURD made it (their amps + effects).
+    // It is then the INPUT 2 track's live source instead of input2: recorded with INPUT 2 PAN, heard always (like
+    // the guitar; LISTEN off = not heard), at INPUT 2 VOL while recording, lined up like the guitar.
+    void process(double* L, double* R, int n, int ampsurdLatencySamples, bool offline = false, const float* input2 = nullptr,
+                 double* player2L = nullptr, double* player2R = nullptr) noexcept;
+    void setTwoPlayers(bool on) { twoPlayers.store(on); }
+    bool isTwoPlayers() const { return twoPlayers.load(); }
 
     // --- the recording tracks ---
     static constexpr int kTracks = 2;   // 0 = GUITAR, 1 = INPUT 2
-    static juce::String trackName(int t) { return t == 0 ? "GUITAR" : "INPUT 2"; }
+    static juce::String trackName(int t, bool twoPlayers = false) { return twoPlayers ? (t == 0 ? "PLAYER 1" : "PLAYER 2") : (t == 0 ? "GUITAR" : "INPUT 2"); }
     // ARM (message thread): REC records the armed tracks. Not while recording (false = not changed).
     bool setArmed(int track, bool on);
     bool isArmed(int track) const { return validTrack(track) && lanes[(size_t) track].armed.load(); }
@@ -298,6 +304,8 @@ private:
     std::atomic<float> input2Peak { 0.0f };
     std::atomic<bool> input2Listen { true };
     double mon2L = 0.0, mon2R = 0.0;     // smoothed monitor gains of the live INPUT 2
+    double pan2LiveL = 1.0, pan2LiveR = 1.0; // TWO PLAYERS: smoothed INPUT 2 PAN on player 2's live sound
+    std::atomic<bool> twoPlayers { false };
 
     std::atomic<int> state { (int) State::stopped };
     std::atomic<juce::int64> songPos { 0 };

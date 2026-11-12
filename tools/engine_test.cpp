@@ -905,6 +905,60 @@ int main(int argc, char** argv)
               20.0 * std::log10(noteOn / noteOff), 20.0 * std::log10(tailOff + 1e-12), 20.0 * std::log10(tailOn + 1e-12));
     }
 
+    // ---------------- TWO PLAYERS (owner 2026-11-12): two guitars, each through their own amps ----------------
+    {
+        const auto test = CaptureAnalyzer::makeTestSignal(sr);
+        const std::vector<double> silence(test.size(), 0.0);
+        struct Out { std::vector<double> l, r, l2, r2; };
+        auto render = [&](bool two, const std::vector<double>& in1, const std::vector<double>& in2, bool solo1, bool withSecondAmp) {
+            Engine eng;
+            eng.getSlot(0).submit(loadAt(argv[1]));
+            if (withSecondAmp) eng.getSlot(1).submit(loadAt(argv[2]));
+            eng.prepare(sr, 256, 10.0);
+            EngineSettings s;
+            s.twoPlayers = two;
+            s.slots[0].mix = 50.0f;
+            s.slots[1].mix = 50.0f;
+            s.slots[1].player = 1;
+            s.slots[0].solo = solo1;
+            Out o { std::vector<double>(test.size()), std::vector<double>(test.size()), std::vector<double>(test.size()), std::vector<double>(test.size()) };
+            for (size_t pos = 0; pos < test.size(); pos += 256)
+            {
+                const int n = (int) std::min<size_t>(256, test.size() - pos);
+                eng.process(in1.data() + pos, o.l.data() + pos, o.r.data() + pos, n, s, in2.data() + pos, o.l2.data() + pos, o.r2.data() + pos);
+            }
+            return o;
+        };
+        auto rms = [&](const std::vector<double>& y) {
+            double p = 0.0;
+            for (size_t i = test.size() / 2; i < test.size(); ++i) p += y[i] * y[i];
+            return std::sqrt(p / (double) (test.size() - test.size() / 2));
+        };
+        const auto alone = render(false, test, silence, false, false);  // amp 1 alone, one player
+        const auto p1 = render(true, test, silence, false, true);       // player 1 plays, player 2 silent
+        const auto p2 = render(true, silence, test, false, true);       // player 2 plays, player 1 silent
+        const auto soloed = render(true, test, test, true, true);       // SOLO on player 1's amp
+        double diff = 0.0;
+        for (size_t i = 0; i < test.size(); ++i) diff = std::max(diff, std::abs(alone.l[i] - p1.l[i]));
+        // an amp given silence still has its own output (model noise / DC): the outputs are compared with that
+        const auto quiet1 = render(true, silence, silence, false, true);
+        double leak1 = 0.0, leak2 = 0.0;
+        for (size_t i = 0; i < test.size(); ++i)
+        {
+            leak1 = std::max(leak1, std::abs(p1.l2[i] - quiet1.l2[i]));
+            leak2 = std::max(leak2, std::abs(p2.l[i] - quiet1.l[i]));
+        }
+        std::printf("[INFO] TWO PLAYERS: an amp's own output on silence: %.4f / %.4f rms\n", rms(quiet1.l), rms(quiet1.l2));
+        const double level2 = rms(p2.l2), soloOther = rms(soloed.l2);
+        check(diff < 1e-9 && leak1 < 1e-9 && leak2 < 1e-9 && level2 > 0.01 && soloOther > 0.01,
+              "TWO PLAYERS: player 1's amp alone = as with one player (max diff %.2g), no leaks between the players' outputs "
+              "(%.2g), player 2 heard through their amp (rms %.3f), SOLO stays within a player (%.3f)",
+              diff, std::max(leak1, leak2), level2, soloOther);
+        // one player (TWO PLAYERS off): both amps play the guitar, the second output stays silent
+        const auto one = render(false, test, test, false, true);
+        check(rms(one.l2) == 0.0 && rms(one.l) > 0.01, "TWO PLAYERS off: both amps in one output, the second output silent");
+    }
+
     std::printf(failures == 0 ? "\nALL PASS\n" : "\n%d FAILURE(S)\n", failures);
     return failures == 0 ? 0 : 1;
 }

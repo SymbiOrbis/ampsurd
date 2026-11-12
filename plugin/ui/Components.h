@@ -96,7 +96,8 @@ private:
     juce::TextButton loadButton { "LOAD NAM" }, editButton { "EDIT" }, irButton { "ADD IR" },
                      soloButton { "SOLO" }, muteButton { "MUTE" }, removeButton { "REMOVE" }, ecoButton { "ECO" },
                      gateButton { "GATE" }; // this amp's own noise gate: lit = on (owner 2026-11-12)
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> ecoAtt, gateAtt;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> ecoAtt, gateAtt, playerAtt;
+    juce::TextButton playerButton { "P1" }; // TWO PLAYERS: whose amp (P1 / P2), shown only while TWO PLAYERS is on
     double removeArmedAt = -1.0; // REMOVE needs a second click within 3 s
     AmpsurdProcessor::IrStatus irStatus;
     juce::String pedalLine; // "lstm  >" when pedal captures play before this amp
@@ -391,6 +392,7 @@ private:
     ampsurd::PitchDetector::Result shown;
     std::array<double, 5> recentCents {};
     int recentCount = 0, lastNote = -1;
+    int playerShown = -1; // TWO PLAYERS: whose guitar the tuner shows (0 = one player)
     double lastValidMs = 0.0;
 };
 
@@ -604,6 +606,7 @@ public:
     void refresh();
     std::function<void()> onShowLog; // settings menu -> Show log...
     std::function<void()> onToggleFullScreen; // settings menu -> Full screen (standalone app only; null in a DAW)
+    std::function<void()> onToggleTwoPlayers; // settings menu -> Two players
     std::function<bool()> isFullScreen;
 
     // SAVE AS writes what the chosen file type says: .ampsurd = the preset, .ampsurdpack = a pack (preset +
@@ -721,6 +724,7 @@ public:
     void paint(juce::Graphics&) override;
     void resized() override;
     void refresh();
+    void twoPlayersChanged(bool on); // TWO PLAYERS switched: INPUT 2 = player 2 (asks for the input if none is chosen)
     void recordPressed(bool fromCameraWindow = false); // REC (player, camera window) and the R key: audio take / punch, or a VIDEO take (VIDEO on)
     std::function<void()> onClose;
     std::function<bool(const juce::KeyPress&)> onKey; // the main window's keys, also from the camera window

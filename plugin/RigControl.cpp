@@ -338,7 +338,7 @@ namespace
 // the amp's own parameters, without what belongs to the rig (its share, place and alignment)
 bool isToneParam(const juce::String& suffix)
 {
-    for (auto* rig : { "mix", "mute", "solo", "pan", "align", "time", "phase" })
+    for (auto* rig : { "mix", "mute", "solo", "pan", "align", "time", "phase", "player2" })
         if (suffix == rig) return false;
     return true;
 }

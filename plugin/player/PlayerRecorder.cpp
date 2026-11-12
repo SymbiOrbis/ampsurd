@@ -234,8 +234,10 @@ void PlayerRecorder::readTrack(Track& t, juce::AudioBuffer<float>& buf, int n, b
 }
 
 // ---------------------------------------------------------------------------------------------
-void PlayerRecorder::process(double* L, double* R, int n, int ampsurdLatency, bool offline, const float* in2) noexcept
+void PlayerRecorder::process(double* L, double* R, int n, int ampsurdLatency, bool offline, const float* in2, double* p2L, double* p2R) noexcept
 {
+    if (p2L == nullptr || p2R == nullptr) p2L = p2R = nullptr;
+    if (p2L != nullptr) in2 = nullptr; // TWO PLAYERS: INPUT 2 = player 2's sound, not the raw input
     lastAmpsurdLatency.store(ampsurdLatency, std::memory_order_relaxed);
     const auto st = (State) state.load(std::memory_order_acquire);
     const bool running = st == State::playing || st == State::recording;
@@ -280,6 +282,22 @@ void PlayerRecorder::process(double* L, double* R, int n, int ampsurdLatency, bo
     // INPUT 2 (a mic, a keyboard...): heard while it is armed, at INPUT 2 VOL and PAN. Recorded with its PAN
     // (like the guitar), never with VOL.
     const auto pan2 = ampsurd::Engine::panGains(il.pan.load(std::memory_order_relaxed));
+    if (p2L != nullptr)
+    {
+        // TWO PLAYERS: player 2's PAN on their live sound (recorded with it, like the guitar's)
+        float pk = 0.0f;
+        for (int i = 0; i < n; ++i)
+        {
+            pan2LiveL += (pan2[0] - pan2LiveL) * 0.002;
+            pan2LiveR += (pan2[1] - pan2LiveR) * 0.002;
+            p2L[i] *= pan2LiveL;
+            p2R[i] *= pan2LiveR;
+            pk = std::max(pk, (float) std::max(std::abs(p2L[i]), std::abs(p2R[i])));
+        }
+        if (std::abs(pan2[0] - pan2LiveL) < 1e-7) pan2LiveL = pan2[0];
+        if (std::abs(pan2[1] - pan2LiveR) < 1e-7) pan2LiveR = pan2[1];
+        if (pk > input2Peak.load(std::memory_order_relaxed)) input2Peak.store(pk, std::memory_order_relaxed);
+    }
     if (in2 != nullptr)
     {
         float pk = 0.0f;
@@ -287,6 +305,21 @@ void PlayerRecorder::process(double* L, double* R, int n, int ampsurdLatency, bo
         if (pk > input2Peak.load(std::memory_order_relaxed)) input2Peak.store(pk, std::memory_order_relaxed);
     }
     auto monitorInput2 = [&] {
+        if (p2L != nullptr)
+        {
+            // TWO PLAYERS: player 2 always heard (LISTEN off: not), at INPUT 2 VOL while recording - like the guitar
+            const double v2 = juce::Decibels::decibelsToGain((double) il.gainDb.load(std::memory_order_relaxed), -100.0);
+            const double tg = input2Listen.load(std::memory_order_relaxed) ? (liveAsTrack ? v2 : 1.0) : 0.0;
+            for (int i = 0; i < n; ++i)
+            {
+                mon2L += (tg - mon2L) * 0.002;
+                L[i] += mon2L * p2L[i];
+                R[i] += mon2L * p2R[i];
+            }
+            if (std::abs(tg - mon2L) < 1e-7) mon2L = tg;
+            mon2R = mon2L;
+            return;
+        }
         const bool on = in2 != nullptr && il.armed.load(std::memory_order_relaxed) && input2Listen.load(std::memory_order_relaxed);
         const double v2 = juce::Decibels::decibelsToGain((double) il.gainDb.load(std::memory_order_relaxed), -100.0);
         const double tl = on ? pan2[0] * v2 : 0.0, tr = on ? pan2[1] * v2 : 0.0;
@@ -346,6 +379,12 @@ void PlayerRecorder::process(double* L, double* R, int n, int ampsurdLatency, bo
                 {
                     a[i] = (float) L[skip + i];
                     b[i] = (float) R[skip + i];
+                }
+            else if (p2L != nullptr)
+                for (int i = 0; i < count; ++i)
+                {
+                    a[i] = (float) p2L[skip + i]; // TWO PLAYERS: player 2's sound, with their PAN
+                    b[i] = (float) p2R[skip + i];
                 }
             else
                 for (int i = 0; i < count; ++i)
@@ -757,9 +796,9 @@ void PlayerRecorder::setPositionSeconds(double seconds)
 
 double PlayerRecorder::getCompensationMs(int track) const
 {
-    // INPUT 2 does not pass through AMPSURD: its own latency is not part of it
+    // INPUT 2 does not pass through AMPSURD: its own latency is not part of it (TWO PLAYERS: player 2 does)
     const int dev = deviceLatency ? deviceLatency() : 0;
-    const double samples = (track == 0 ? lastAmpsurdLatency.load() : 0) + dev + limiter.getLatencySamples();
+    const double samples = (track == 0 || twoPlayers.load() ? lastAmpsurdLatency.load() : 0) + dev + limiter.getLatencySamples();
     return samples * 1000.0 / sampleRate + offsetMs.load();
 }
 

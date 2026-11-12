@@ -185,6 +185,12 @@ public:
     void setFrankensteinSections(int sections);     // 2..5, redistributes dividers
     ampsurd::FrankensteinLayout getFrankensteinLayout() const; // what is heard right now (mute/solo aware)
     bool isFrankensteinOn() const { return frankOnParam->load() > 0.5f; }
+    // TWO PLAYERS (owner 2026-11-12): player 2 plays into the other input, through the amps set to PLAYER 2, with
+    // the same effects; each player is recorded on their own track (GUITAR = player 1, INPUT 2 = player 2).
+    bool isTwoPlayersOn() const { return twoPlayersParam->load() > 0.5f; }
+    bool isTwoPlayersActive() const { return twoPlayersActive.load(std::memory_order_relaxed); } // on AND player 2's input there
+    bool isTunerOnPlayer2() const { return tunerOnPlayer2.load(std::memory_order_relaxed); }
+    float getAndResetPlayer2InputPeak() { return player2InputPeak.exchange(0.0f); }
     // live spectrum of the guitar (clean DI, after INPUT), magnitudes in dB for bins of `binHz` each
     void getInputSpectrum(std::vector<float>& magsDb, double& binHz);
 
@@ -404,6 +410,7 @@ private:
 
     struct SlotParams
     {
+        std::atomic<float>* player2 = nullptr;   // TWO PLAYERS: this amp belongs to player 2
         std::atomic<float>* mix = nullptr;
         std::atomic<float>* mute = nullptr;
         std::atomic<float>* solo = nullptr;
@@ -494,6 +501,17 @@ private:
     std::atomic<float>* gateDecayParam = nullptr;
     std::atomic<float>* tunerMuteParam = nullptr;
     std::atomic<float>* frankOnParam = nullptr;
+    std::atomic<float>* twoPlayersParam = nullptr;
+    std::atomic<bool> twoPlayersActive { false }, tunerOnPlayer2 { false };
+    std::atomic<float> player2InputPeak { 0.0f };
+    // TWO PLAYERS: player 2's own copies of everything after the input (same settings as player 1's)
+    ampsurd::SafetyLimiter limiter2;
+    ampsurd::NoiseGate gate2;
+    ampsurd::PitchShifter pitch2;
+    std::vector<float> rawBuffer2;
+    std::vector<double> inBuffer2, outBuffer2, outBuffer2R, dryBuffer2, gainBuffer;
+    std::vector<float> dryDelay2;
+    double tunerEnv1 = 0.0, tunerEnv2 = 0.0;
     std::atomic<float>* frankModeParam = nullptr;
     static constexpr int kSpecRing = 8192;
     std::vector<float> specRing = std::vector<float>((size_t) kSpecRing, 0.0f); // DI for the note band (audio thread writes)
@@ -505,6 +523,7 @@ private:
     ampsurd::FrankensteinSettings readFrankenstein() const noexcept;
     ampsurd::FxSettings readFx() const noexcept;
     ampsurd::FxChain fx;
+    ampsurd::FxChain fx2; // TWO PLAYERS: player 2's flanger / delays / reverb (same settings)
    #if AMPSURD_ROOT
     // ROOT (experimental, docs/ROOT_MODULE.md): low layer under the amps, before the gate
     ampsurd::RootEnhancer root;
