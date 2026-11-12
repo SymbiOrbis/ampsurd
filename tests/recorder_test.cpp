@@ -963,7 +963,7 @@ int main()
         const bool drawn = camY[(size_t) (10 * cw + 10)] == 100 && camY[(size_t) (140 * cw + 200)] == 200
                            && camY[(size_t) (pic.getCentreY() * cw + pic.getCentreX())] == 50 && std::abs(pic.getWidth() * 9 - pic.getHeight() * 16) < 40;
         const auto rs = sc::recordSize(2560, 1440);
-        check(timing && inside && colours && average && drawn && rs.x == 1920 && rs.y == 1080,
+        check(timing && inside && colours && average && drawn && rs.x == 1920 && rs.y == 1072,
               "SCREEN BOX maths: box shown / hidden at its times (" + juce::String((int) timing) + "), kept inside a 4:3 picture ("
                   + b.toString() + "), colours to NV12 (" + juce::String(Y) + "/" + juce::String(Y2) + "/" + juce::String(Y3) + "), area average "
                   + juce::String(half[0]) + ", box drawn (" + juce::String((int) drawn) + "), screen recorded at " + juce::String(rs.x) + " x " + juce::String(rs.y));
@@ -987,7 +987,7 @@ int main()
         int maxStep = 0;
         for (int i = 9; i < 55; ++i) maxStep = std::max(maxStep, std::abs((int) dst[(size_t) i + 1] - (int) dst[(size_t) i]));
         check(boxOnly == juce::Point<int>(640, 480) && swapped == juce::Point<int>(1440, 1080) && wide == juce::Point<int>(1920, 1080)
-                  && hd == juce::Point<int>(1920, 1080) && rs == juce::Point<int>(1920, 1080) && maxStep <= 5,
+                  && hd == juce::Point<int>(1920, 1080) && rs == juce::Point<int>(1920, 1072) && maxStep <= 5,
               "VIDEO SIZE: box only = the camera's size, with SWAP 640x480 -> " + juce::String(swapped.x) + "x" + juce::String(swapped.y) + ", 1280x720 -> "
                   + juce::String(wide.x) + "x" + juce::String(wide.y) + "; the screen recorded at " + juce::String(rs.x) + "x" + juce::String(rs.y)
                   + "; scaling up is smooth (largest step " + juce::String(maxStep) + ")");

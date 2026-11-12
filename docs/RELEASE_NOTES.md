@@ -21,7 +21,7 @@ VIDEO in the player).
 
 ## Next version (not released yet)
 
-(nothing yet)
+- Fix (Windows): videos with SWAP showed the screen with a green band on top and its colours shifted down.
 
 ## AMPSURD 0.9.20 (beta)
 

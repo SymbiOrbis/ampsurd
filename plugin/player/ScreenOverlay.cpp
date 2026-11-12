@@ -313,6 +313,8 @@ juce::Point<int> recordSize(int w, int h)
 {
     if (w <= 0 || h <= 0) return {};
     const double s = std::min({ 1.0, 1920.0 / w, 1080.0 / h }); // up to 1080p (owner 2026-11-12: SWAP needs the detail)
-    return { std::max(16, (int) std::lround(w * s) & ~1), std::max(16, (int) std::lround(h * s) & ~1) };
+    // multiples of 16 (H.264's blocks): a decoder then has no padded rows to get wrong (0.9.20: 1080 -> 1088 padding
+    // shifted the colours of the screen in the saved video); the shape changes by < 1 %
+    return { std::max(16, (int) std::lround(w * s) & ~15), std::max(16, (int) std::lround(h * s) & ~15) };
 }
 } // namespace ampsurd::screen

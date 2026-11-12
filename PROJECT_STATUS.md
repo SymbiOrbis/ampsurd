@@ -58,6 +58,8 @@ https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.0
 
 **Public beta v0.9.20 released 2026-11-12:** track strips (VOL / PAN knobs, meter, input, LOAD / LISTEN, ARM on the right); ARM while recording (one track punches in / out); sharper SWAP videos (screen up to 1080p, video saved up to 1080p); the box keeps its shape when the camera window is maximised; a 2 PLAYERS button above the tracks. Not tested with real hardware yet.
 
+**In main, not released yet:** fix for SWAP videos on Windows (green band on top, colours shifted down - the decoder's padded rows); the screen recorded at multiples of 16 (1920x1072).
+
 **Public beta v0.9.16 released 2026-11-09:** Copy / Paste tone (slot menu), Save tone - SAVE AS..., log: sudden spikes named correctly. https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.16 - Windows files to be signed by the owner.
 
 **Public beta v0.9.15 released 2026-11-07:** own names on the IR map (BRIT 30 / HEAVY 77 / BAYOU x DYN / DYN WIDE / RIBBON), no brand names in the app or on the website. https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.15 - Windows files to be signed by the owner.

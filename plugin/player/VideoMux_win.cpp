@@ -56,9 +56,23 @@ static bool copyNv12(IMFSample* sample, int w, int h, int planeH, std::vector<ui
     BYTE* base = nullptr;
     LONG pitch = 0;
     ComPtr<IMF2DBuffer> b2;
+    ComPtr<IMF2DBuffer2> b22;
     bool locked2d = false;
     DWORD len = 0;
-    if (SUCCEEDED(buf.As(&b2)) && SUCCEEDED(b2->Lock2D(&base, &pitch)) && pitch > 0)
+    BYTE* start = nullptr;
+    // the buffer's real size tells its real plane height: decoders pad 1080 to 1088 without saying so in the
+    // media type (0.9.20: the UV plane read 8 rows too early - a green band on top, the colours shifted down)
+    if (SUCCEEDED(buf.As(&b22)) && SUCCEEDED(b22->Lock2DSize(MF2DBuffer_LockFlags_Read, &base, &pitch, &start, &len)) && pitch > 0)
+    {
+        locked2d = true;
+        b2 = b22;
+        if (len >= (DWORD) pitch * (DWORD) h * 3 / 2)
+        {
+            const int ph = (int) ((juce::uint64) len * 2 / 3 / (juce::uint64) pitch) & ~1;
+            if (ph >= h && ph <= h + 32) planeH = std::max(planeH, ph);
+        }
+    }
+    else if (SUCCEEDED(buf.As(&b2)) && SUCCEEDED(b2->Lock2D(&base, &pitch)) && pitch > 0)
         locked2d = true;
     else
     {

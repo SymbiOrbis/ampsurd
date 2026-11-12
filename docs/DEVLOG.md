@@ -6,6 +6,21 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-12 — Session 5m: SWAP video colours fixed - Claude (Opus 5.5)
+
+- Owner (testing 0.9.20, screenshot of a saved SWAP video): "the screen recording looks weird, broken" - a green
+  band at the top of the screen picture and every colour shifted down (the logo and the red CLOSE button doubled).
+- Cause: the screen is now recorded at 1920x1080 (0.9.20; before <= 1280x720, a multiple of 16). The H.264 decoder
+  gives 1080-row pictures in a buffer padded to 1088 rows without saying so in the media type, so the colour (UV)
+  plane was read 8 rows too early.
+- Fix (Windows, VideoMux_win.cpp copyNv12): the plane height is taken from the locked buffer's real size
+  (IMF2DBuffer2::Lock2DSize). And the screen is now recorded at multiples of 16 (ScreenOverlay::recordSize:
+  2560x1440 -> 1920x1072, < 1 % shape change), so no padded rows exist at all. macOS reads BGRA with its own row
+  size and was not affected by the padding; the size change applies there too.
+- Tested (Linux): recorder_test ALL PASS (expectations 1920x1072). Not tested on Windows yet - CI builds it.
+
+---
+
 ## 2026-11-12 — Release 0.9.20 - Claude (Opus 5.5)
 
 - Owner: "yes" - 0.9.20 published (track strips, ARM while recording, sharper SWAP video, box shape, 2 PLAYERS
