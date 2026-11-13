@@ -21,6 +21,15 @@ VIDEO in the player).
 
 ## Next version (not released yet)
 
+(nothing yet)
+
+## AMPSURD 0.9.22 (beta)
+
+**Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the standalone app.
+**macOS 10.15 or newer:** AMPSURD-macOS.pkg installs the app, the VST3 plugin and the Audio Unit. Installing over an
+older version is fine: presets and recordings (Documents/AMPSURD) stay untouched.
+
+New in 0.9.22:
 - SAVE AS starts at WAV 24-bit (was 16-bit CD quality).
 - The screen's live picture in the camera window is sharper (SWAP shows it large).
 - The screen box in the saved video keeps the shape it had on screen, also when the camera window was maximised or resized.

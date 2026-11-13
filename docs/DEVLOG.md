@@ -6,6 +6,13 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-13 — Release 0.9.22 - Claude (Opus 5.5)
+
+- Owner: "please implement the changes as proposed and publish a new version" - 0.9.22 published. Windows files to be
+  signed by the owner.
+
+---
+
 ## 2026-11-13 — Session 5n: SWAP preview sharper, box shape in the video - Claude (Opus 5.5)
 
 - Owner (0.9.21): "screen recording still showing that extremely low resolution during recording, that swapped did
