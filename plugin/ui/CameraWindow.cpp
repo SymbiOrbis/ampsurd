@@ -426,7 +426,7 @@ void CameraView::boxMoved(bool finished)
         juce::PropertiesFile pf(settingsOptions());
         pf.setValue("screenBoxRect", boxRect.toString());
         pf.saveIfNeeded();
-        if (!camera.isRecording() && onBoxMovedAfterTake) onBoxMovedAfterTake(boxRect);
+        if (!camera.isRecording() && onBoxMovedAfterTake) onBoxMovedAfterTake(normalisedBox());
     }
 }
 
@@ -444,6 +444,7 @@ void CameraView::pushKey()
     k.visible = boxShown && screen.isOpen();
     k.swapped = swapped && screen.isOpen();
     k.rect = normalisedBox(); // as it is shown (its height follows the picture's proportions)
+    k.aspect = previewAspect(); // the area those units belong to (the window may change shape later)
     liveKeys.push_back({ juce::Time::currentTimeMillis(), k });
 }
 
@@ -512,9 +513,11 @@ void CameraView::resized()
     const int bw = juce::jmin(96, controls.getWidth());
     showButton.setBounds(controls.removeFromLeft(bw).withSizeKeepingCentre(bw, 30));
     r.reduce(0, 8);
+    const bool areaChanged = previewArea != r;
     previewArea = r;
     layoutPictures();
     placeBox();
+    if (areaChanged && camera.isRecording()) pushKey(); // maximised / resized during a take: the box as it is now
     if (boxView != nullptr && boxView->isVisible()) boxView->toFront(false);
    #if JUCE_WINDOWS || JUCE_MAC
     if (playback != nullptr) playback->setBounds(r);

@@ -45,7 +45,7 @@ public:
     std::function<void(const juce::String&)> onInfo;  // notes for the log (how the screen is recorded), message thread
     juce::String getLastError() const { return lastError; } // the last problem (message thread), cleared by open()
 
-    // a preview picture (about 480 px wide) from a BGRA frame
+    // a preview picture (up to 1280 px wide: sharp enough for SWAP's large picture, owner 2026-11-13) from a BGRA frame
     static juce::Image makePreview(const uint8_t* bgra, int w, int h, int pitch);
 
     struct Impl; // the platform's part (also used by its frame callback)

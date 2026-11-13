@@ -5,7 +5,7 @@
 juce::Image ScreenCapture::makePreview(const uint8_t* bgra, int w, int h, int pitch)
 {
     if (bgra == nullptr || w < 2 || h < 2) return {};
-    const int pw = std::min(480, w), ph = std::max(2, (int) std::lround((double) h * pw / w));
+    const int pw = std::min(1280, w), ph = std::max(2, (int) std::lround((double) h * pw / w));
     juce::Image img(juce::Image::ARGB, pw, ph, false, juce::SoftwareImageType());
     {
         juce::Image::BitmapData bd(img, juce::Image::BitmapData::writeOnly);

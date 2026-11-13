@@ -3323,7 +3323,8 @@ void PlayerPanel::setVideo(bool on)
             // the box moved after the take: the take's box is there for its whole length (shown / hidden times stay)
             auto ov = player.getTakeScreen();
             if (!player.takeHasVideo() || ov.file == juce::File()) return;
-            for (auto& k : ov.keys) k.rect = r;
+            const double aspect = cameraWindow != nullptr ? cameraWindow->view().previewAspect() : 0.0;
+            for (auto& k : ov.keys) { k.rect = r; k.aspect = aspect; }
             player.setTakeScreen(ov);
             setStatus("The screen box moved. SAVE AS... with MP4 VIDEO saves the take again with the box there.");
         };
@@ -3625,7 +3626,10 @@ void PlayerPanel::finishVideoTake()
         }
         player.setTakeScreen(ov);
         proc.getEventLog().add("Video", "Screen box attached: " + sf.getFileName() + ", " + juce::String(ov.keys.size()) + " box states, offset "
-                                            + juce::String(ov.offsetSeconds, 2) + " s" + (ov.isUsed() ? "" : " (the box was never shown)"));
+                                            + juce::String(ov.offsetSeconds, 2) + " s, preview shape " + juce::String(ov.previewAspect, 2)
+                                            + (ov.keys.empty() ? juce::String() : " (first box state: " + ov.keys.front().rect.toString() + " in a "
+                                                                                      + juce::String(ov.keys.front().aspect, 2) + " area)")
+                                            + (ov.isUsed() ? "" : " (the box was never shown)"));
     }
     else if (screenWasRecording)
     {

@@ -255,7 +255,7 @@ bool composeNv12(const BoxKey& key, double previewAspect, uint8_t* frame, int w,
                  const uint8_t* screenNv12, int screenW, int screenH, std::vector<uint8_t>& scratch)
 {
     if (screenNv12 == nullptr || w < 16 || h < 16) return false;
-    const auto box = key.visible ? boxInPicture(key.rect, previewAspect, w, h) : juce::Rectangle<int>();
+    const auto box = key.visible ? boxInPicture(key.rect, key.aspect > 0.0 ? key.aspect : previewAspect, w, h) : juce::Rectangle<int>();
     const size_t ySize = (size_t) w * (size_t) h, sY = (size_t) screenW * (size_t) screenH;
     if (!key.swapped)
     {
@@ -273,7 +273,7 @@ bool composeBgra(const BoxKey& key, double previewAspect, uint8_t* frame, int w,
                  const uint8_t* screenBgra, int screenW, int screenH, int screenPitch, std::vector<uint8_t>& scratch)
 {
     if (screenBgra == nullptr || w < 16 || h < 16) return false;
-    const auto box = key.visible ? boxInPicture(key.rect, previewAspect, w, h) : juce::Rectangle<int>();
+    const auto box = key.visible ? boxInPicture(key.rect, key.aspect > 0.0 ? key.aspect : previewAspect, w, h) : juce::Rectangle<int>();
     if (!key.swapped)
     {
         if (box.isEmpty()) return false;

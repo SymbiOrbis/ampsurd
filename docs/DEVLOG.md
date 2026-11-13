@@ -6,6 +6,27 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-13 — Session 5n: SWAP preview sharper, box shape in the video - Claude (Opus 5.5)
+
+- Owner (0.9.21): "screen recording still showing that extremely low resolution during recording, that swapped did
+  not get included in the final record - no screen recording just camera".
+- Checked his files through the bridge (log, Screen 2026-11-13 07-08-29.mp4, AMPSURD video 2026-11-13 07-09-40.mp4):
+  the screen file is sharp (1920x1072, 972 pictures, colours right - the 0.9.21 fix works); the saved MP4
+  (1906x1072) HAS the screen: in the box until ~0:38, then SWAP (screen large, camera in the box) to the end.
+  Open: how he watched it - WATCH "Last take" plays the camera take only (with AMPSURD's live sound), never the
+  screen; the saved MP4 is in WATCH's list. Asked him.
+- Low resolution while recording: the live screen picture (makePreview) was at most 480 px wide - fine for the
+  small box, blurry as SWAP's large picture. Now up to 1280 px.
+- The box in the video was much wider than on screen (3.3:1 instead of 16:9, the screen letterboxed in it). The
+  box's states are stored in units of the preview area, and the video used the preview area's shape at SAVE time
+  for all of them. Now each box state stores its own area shape (BoxKey.aspect); a resize / maximise during a take
+  adds a new box state; moving the box after a take stores the box as shown (normalisedBox, not the raw dragged
+  rect). The log's "Screen box attached" line now also shows the shapes.
+- Tested (Linux): recorder_test ALL PASS (new: BOX SHAPE - a 16:9 box from a 2.4:1 preview stays 1.78 even when the
+  window has another shape at saving). Not tested on Windows / macOS yet.
+
+---
+
 ## 2026-11-13 — Release 0.9.21 - Claude (Opus 5.5)
 
 - Owner: "Yes" - 0.9.21 published (SWAP video colours fixed). Windows files to be signed by the owner.

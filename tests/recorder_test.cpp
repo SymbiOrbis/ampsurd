@@ -1027,6 +1027,33 @@ int main()
                   + juce::String((int) (unused && used)) + ")");
     }
 
+    // BOX SHAPE (owner 2026-11-13): a 16:9 box seen in a wide preview stays 16:9 in the video, even when the window has
+    // another shape when the take is saved (each box state keeps its own preview shape)
+    {
+        namespace sc = ampsurd::screen;
+        const double wide = 2.4;                       // the preview area when the box state was taken (maximised)
+        const float bw = 0.3f, bh = (float) (bw * wide / (16.0 / 9.0)); // a 16:9 box in that area's units
+        const auto withOwn = sc::boxInPicture({ 0.6f, 0.5f, bw, bh }, wide, 1920, 1080);
+        sc::BoxKey k;
+        k.visible = true;
+        k.rect = { 0.6f, 0.5f, bw, bh };
+        k.aspect = wide;
+        const int cw = 320, ch = 180, sw = 160, sh = 90;
+        std::vector<uint8_t> f((size_t) (cw * ch * 3 / 2), 128), scr((size_t) (sw * sh * 3 / 2), 128), scratch;
+        std::fill_n(f.begin(), cw * ch, (uint8_t) 100);
+        std::fill_n(scr.begin(), sw * sh, (uint8_t) 200);
+        sc::composeNv12(k, 1.5 /* the window's shape at saving: another one */, f.data(), cw, ch, scr.data(), sw, sh, scratch);
+        int x0 = cw, x1 = -1, y0 = ch, y1 = -1;
+        for (int y = 0; y < ch; ++y)
+            for (int x = 0; x < cw; ++x)
+                if (f[(size_t) (y * cw + x)] != 100) { x0 = std::min(x0, x); x1 = std::max(x1, x); y0 = std::min(y0, y); y1 = std::max(y1, y); }
+        const double drawn = x1 > x0 ? (double) (x1 - x0 + 1) / (double) (y1 - y0 + 1) : 0.0;
+        const double own = withOwn.getHeight() > 0 ? (double) withOwn.getWidth() / withOwn.getHeight() : 0.0;
+        check(std::abs(own - 16.0 / 9.0) < 0.08 && std::abs(drawn - 16.0 / 9.0) < 0.15,
+              "BOX SHAPE: a 16:9 box in a wide preview is " + juce::String(own, 2) + " in the video; drawn with another window shape at saving: "
+                  + juce::String(drawn, 2) + " (16:9 = 1.78)");
+    }
+
     proc.reset();
     tmp.deleteRecursively();
     std::cout << (failures == 0 ? "\nALL PASS\n" : "\n" + juce::String(failures) + " FAILURE(S)\n");

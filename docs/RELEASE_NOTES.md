@@ -21,7 +21,8 @@ VIDEO in the player).
 
 ## Next version (not released yet)
 
-(nothing yet)
+- The screen's live picture in the camera window is sharper (SWAP shows it large).
+- The screen box in the saved video keeps the shape it had on screen, also when the camera window was maximised or resized.
 
 ## AMPSURD 0.9.21 (beta)
 

@@ -23,7 +23,9 @@ struct BoxKey
     bool visible = false;   // the box is shown
     juce::Rectangle<float> rect { 0.62f, 0.62f, 0.34f, 0.34f };
     bool swapped = false;   // SWAP (owner 2026-11-12): the screen large, the camera in the box (box hidden: the screen alone)
-    bool operator==(const BoxKey& o) const { return juce::exactlyEqual(t, o.t) && visible == o.visible && swapped == o.swapped && rect == o.rect; }
+    double aspect = 0.0;    // the preview area's shape when this state was taken (0 = the overlay's previewAspect):
+                            // rect is in that area's units, so a window resized during / after the take does not bend the box
+    bool operator==(const BoxKey& o) const { return juce::exactlyEqual(t, o.t) && visible == o.visible && swapped == o.swapped && rect == o.rect && juce::exactlyEqual(aspect, o.aspect); }
 };
 
 // A take's screen recording and its box over time.
