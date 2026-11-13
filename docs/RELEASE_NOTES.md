@@ -21,7 +21,7 @@ VIDEO in the player).
 
 ## Next version (not released yet)
 
-(nothing yet)
+- Full screen stays on when you click another window or screen; the title bar with its buttons and Options stays, the taskbar too.
 
 ## AMPSURD 0.9.22 (beta)
 

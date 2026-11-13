@@ -38,14 +38,14 @@ public:
     ampsurd::ui::LogPanel& getLogPanel() { return content.log; } // tests
     ampsurd::ui::CabIrMatrix& getCabIrMatrix() { return content.cabIrs; } // tests
     void showPlayer(bool show);
-    // FULL SCREEN (standalone app, owner 2026-11-12): the window fills the whole screen, AMPSURD scaled to fit
-    // (the window's full screen button between - and X, a double click on the title bar, F11, on a Mac also
-    // Ctrl+Cmd+F; Esc or the EXIT FULL SCREEN button leaves it; settings menu). In a DAW the DAW handles its windows.
+    // FULL SCREEN (standalone app, owner 2026-11-12/13): the window fills the screen's usable area (title bar, its
+    // buttons and the taskbar / Dock stay), AMPSURD scaled to fit (the window's button between - and X, a double
+    // click on the title bar, F11, on a Mac also Ctrl+Cmd+F; Esc or the same button leaves it; settings menu). In a
+    // DAW the DAW handles its windows.
     void setFullScreen(bool on);
     // TWO PLAYERS (owner 2026-11-12): on = player 2 on the other input through the amps marked P2 (none yet: amps 4 + 5)
     void setTwoPlayers(bool on);
     bool isFullScreen() const { return fullScreen; }
-    juce::Button& getExitFullScreenButton() { return exitFullScreen; } // tests
     void showRoot(bool show); // ROOT panel (experimental module; does nothing without it)
     void showDoubler(bool show); // DOUBLER panel (experimental module; does nothing without it)
     void showFxPage(int which) { content.globalEq.selectFx(which); } // tests / screenshots
@@ -91,9 +91,7 @@ private:
     int selected = -1;
     bool globalEqOpen = false, playerOpen = false, rootOpen = false, doublerOpen = false, lastFrankOn = false;
     bool fullScreen = false;
-    juce::TextButton exitFullScreen { "EXIT FULL SCREEN" }; // shown only in full screen (no title bar then)
     juce::Rectangle<int> windowBoundsBeforeFullScreen;
-    int titleBarBeforeFullScreen = 26;
     double cpuAverage = -1.0;     // CPU display: averaged, updated once per second (readable)
     juce::uint32 cpuShownAt = 0;
 

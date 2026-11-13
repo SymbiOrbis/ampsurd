@@ -6,6 +6,28 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-13 — Session 5o: full screen that stays - Claude (Opus 5.5)
+
+- Owner (0.9.22, Windows, two screens on a docking station): the maximised window goes back to normal by itself as
+  soon as anything on the other screen is clicked; the window's - / full screen / X buttons and the Options button
+  (top left) are then gone; the second screen often went dark (docking station reconnected). F11 too, until anything
+  else is touched.
+- Cause: full screen used JUCE's kiosk mode (title bar hidden, the window covering the whole monitor). JUCE on
+  Windows ends kiosk mode whenever the app loses focus (WM_ACTIVATEAPP) - without telling AMPSURD, so the title bar
+  stayed hidden. A borderless window covering a whole monitor is also what Windows treats as a full-screen app
+  (display mode / "fullscreen optimisations"); likely what upset the dock's screen (not proven).
+- Fix: full screen = the window fills the screen's usable area (Displays::userArea: the taskbar / Dock stays), title
+  bar, its buttons and Options kept; no kiosk mode, nothing ends it but the user (the same button, a double click on
+  the title bar, F11, Esc). The EXIT FULL SCREEN button is gone (the title bar's button does it). Same on macOS.
+- Owner asked whether video on a separate core would stop the pops during video takes with several amps. His log:
+  the blocks take ~10-11 ms of 10.7 ms (512 samples) with 4 amps (AMPSURD amps with GAIN between two recorded
+  positions = two captures each) even without video; the screen is recorded the slow way (GDI fallback: desktop
+  duplication gives no picture on his setup). Video already runs on its own threads; answered with options, asked.
+- Tested (Linux): ui_snapshot - FULL SCREEN fit PASS, only the 3 known capture-dependent failures. Not tested on
+  Windows / macOS yet.
+
+---
+
 ## 2026-11-13 — Release 0.9.22 - Claude (Opus 5.5)
 
 - Owner: "please implement the changes as proposed and publish a new version" - 0.9.22 published. Windows files to be

@@ -1899,11 +1899,6 @@ int main(int argc, char** argv)
             save(*ed, out.getChildFile("19z_full_screen_16x9.png"));
             std::cout << (fits ? "[PASS]" : "[FAIL]") << " FULL SCREEN: a 1920 x 1080 screen shows AMPSURD fitted and centred ("
                       << tl.x << "," << tl.y << " - " << br.x << "," << br.y << ")\n";
-            // EXIT FULL SCREEN (no title bar in full screen): beside AMPSURD, not over it, on the screen
-            const auto xb = e->getExitFullScreenButton().getBounds();
-            const bool beside = xb.getX() >= (int) br.x && xb.getRight() <= 1920 && xb.getY() >= 0 && xb.getY() < 60 && !xb.isEmpty();
-            std::cout << (beside ? "[PASS]" : "[FAIL]") << " FULL SCREEN: EXIT FULL SCREEN is at the top right, beside AMPSURD ("
-                      << xb.toString() << ")\n";
             ed->setSize(1200, 800);
         }
         pl->stop();

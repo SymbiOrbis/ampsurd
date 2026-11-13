@@ -210,11 +210,6 @@ AmpsurdEditor::AmpsurdEditor(AmpsurdProcessor& p) : AudioProcessorEditor(&p), pr
     setWantsKeyboardFocus(proc.getPlayer() != nullptr);
 
     // full screen has no title bar: this button (in the free space beside AMPSURD) brings the window back
-    exitFullScreen.setTooltip("Back to the normal window (Esc)");
-    exitFullScreen.setWantsKeyboardFocus(false);
-    exitFullScreen.setMouseClickGrabsKeyboardFocus(false);
-    exitFullScreen.onClick = [this] { setFullScreen(false); };
-    addChildComponent(exitFullScreen); // after the content: drawn on top
 
     timerCallback();
     startTimerHz(30);
@@ -299,11 +294,6 @@ void AmpsurdEditor::resized()
     const float scale = juce::jmin((float) getWidth() / (float) kWidth, (float) getHeight() / (float) kHeight);
     const float ox = std::floor(((float) getWidth() - kWidth * scale) * 0.5f), oy = std::floor(((float) getHeight() - kHeight * scale) * 0.5f);
     content.setTransform(juce::AffineTransform::scale(scale).translated(ox, oy));
-    // EXIT FULL SCREEN: top right, in the free strip beside or above AMPSURD; the bottom right corner if there is none
-    const int bw = 132, bh = 24, pad = 6;
-    const bool room = ox >= (float) (bw + pad * 2) || oy >= (float) (bh + pad * 2);
-    exitFullScreen.setBounds(getWidth() - bw - pad, room ? pad : getHeight() - bh - pad, bw, bh);
-    exitFullScreen.setVisible(fullScreen);
 }
 
 void AmpsurdEditor::setTwoPlayers(bool on)
@@ -331,23 +321,22 @@ void AmpsurdEditor::setFullScreen(bool on)
     if (on == fullScreen || !juce::JUCEApplicationBase::isStandaloneApp()) return;
     auto* win = dynamic_cast<juce::DocumentWindow*>(getTopLevelComponent());
     if (win == nullptr) return;
+    // owner 2026-11-13: the old full screen (JUCE's kiosk mode, no title bar) fell back by itself as soon as another
+    // window or screen was clicked (Windows ends kiosk mode when the app loses focus), left the window without its
+    // title bar and buttons, and a second screen on a docking station went dark. Now: a normal window filling the
+    // screen's usable area (the taskbar / Dock stays), title bar and buttons kept, nothing ends it but the user.
+    const auto& displays = juce::Desktop::getInstance().getDisplays();
+    const auto* display = displays.getDisplayForRect(win->getScreenBounds());
+    if (on && display == nullptr) return;
     fullScreen = on;
-    if (on)
-    {
-        windowBoundsBeforeFullScreen = win->getBounds();
-        titleBarBeforeFullScreen = win->getTitleBarHeight();
-    }
-    // any shape while in full screen (the content is fitted), the usual limits and proportions otherwise
+    if (on) windowBoundsBeforeFullScreen = win->getBounds();
+    // any shape while maximised (the content is fitted), the usual limits and proportions otherwise
     if (auto* c = getConstrainer()) c->setFixedAspectRatio(on ? 0.0 : (double) kWidth / (double) kHeight);
     if (on) setResizeLimits(kWidth / 4, kHeight / 4, 16384, 16384);
     else setResizeLimits(kWidth * 2 / 3, kHeight * 2 / 3, kWidth * 2, kHeight * 2);
-    // no title bar (with JUCE's Options button) in full screen: Audio / MIDI settings are in the settings menu too
-    for (auto* c : win->getChildren())
-        if (auto* b = dynamic_cast<juce::TextButton*>(c); b != nullptr && b->getButtonText() == "Options") b->setVisible(!on);
-    win->setTitleBarHeight(on ? 0 : titleBarBeforeFullScreen);
-    juce::Desktop::getInstance().setKioskModeComponent(on ? win : nullptr, false);
-    if (!on && !windowBoundsBeforeFullScreen.isEmpty()) win->setBounds(windowBoundsBeforeFullScreen);
-    resized(); // shows / hides EXIT FULL SCREEN
+    if (on) win->setBounds(display->userArea);
+    else if (!windowBoundsBeforeFullScreen.isEmpty()) win->setBounds(windowBoundsBeforeFullScreen);
+    resized();
     grabKeyboardFocus();
 }
 
