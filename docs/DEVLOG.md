@@ -22,6 +22,11 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
   for all of them. Now each box state stores its own area shape (BoxKey.aspect); a resize / maximise during a take
   adds a new box state; moving the box after a take stores the box as shown (normalisedBox, not the raw dragged
   rect). The log's "Screen box attached" line now also shows the shapes.
+- Owner: "change the resolution from 16 kilohertz to 24 kilohertz to match as default with any output or recording,
+  including video" (= 16 -> 24 bit). The save format now starts at WAV 24-bit (was WAV 16-bit (CD)). Already 24 / 32
+  bit before: the takes (32-bit float), BOUNCE (32-bit float), macOS video's mix (24-bit before AAC). Video sound is
+  AAC (lossy, no bit depth): Windows' AAC encoder takes only 16-bit input and at most 192 kbit/s - already used at
+  its best (48 kHz, 192 kbit/s); nothing to change there.
 - Tested (Linux): recorder_test ALL PASS (new: BOX SHAPE - a 16:9 box from a 2.4:1 preview stays 1.78 even when the
   window has another shape at saving). Not tested on Windows / macOS yet.
 

@@ -2965,7 +2965,7 @@ PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), pla
     formatBox.addItemList(PlayerRecorder::formatNames(), 1);
     formatBox.addItem("MP4 VIDEO", PlayerRecorder::formatNames().size() + 1); // the video take with AMPSURD's sound
     formatBox.setItemEnabled(PlayerRecorder::formatNames().size() + 1, isVideoExportSupported());
-    formatBox.setSelectedItemIndex(0, juce::dontSendNotification); // CD quality
+    formatBox.setSelectedItemIndex(1, juce::dontSendNotification); // WAV 24-bit (owner 2026-11-13: the default for every save)
     formatBox.onChange = [this] { rateBox.setEnabled(formatBox.getSelectedItemIndex() < PlayerRecorder::formatNames().size()); };
     for (auto r : PlayerRecorder::exportRates()) rateBox.addItem(juce::String(r / 1000.0, 1) + " kHz", (int) r);
     rateBox.setSelectedItemIndex(0, juce::dontSendNotification);   // 44.1 kHz

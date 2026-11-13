@@ -21,6 +21,7 @@ VIDEO in the player).
 
 ## Next version (not released yet)
 
+- SAVE AS starts at WAV 24-bit (was 16-bit CD quality).
 - The screen's live picture in the camera window is sharper (SWAP shows it large).
 - The screen box in the saved video keeps the shape it had on screen, also when the camera window was maximised or resized.
 

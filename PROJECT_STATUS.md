@@ -60,7 +60,7 @@ https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.0
 
 **Public beta v0.9.21 released 2026-11-13:** fix for SWAP videos on Windows (green band on top, colours shifted down - the decoder's padded rows); the screen recorded at multiples of 16 (1920x1072).
 
-**In main, not released yet:** sharper live screen picture (SWAP); the screen box in the saved video keeps its on-screen shape (each box state stores its preview's shape).
+**In main, not released yet:** SAVE AS starts at WAV 24-bit; sharper live screen picture (SWAP); the screen box in the saved video keeps its on-screen shape (each box state stores its preview's shape).
 
 **Public beta v0.9.16 released 2026-11-09:** Copy / Paste tone (slot menu), Save tone - SAVE AS..., log: sudden spikes named correctly. https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.16 - Windows files to be signed by the owner.
 
