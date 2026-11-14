@@ -19,6 +19,11 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
   ESR <= 0.003); PUSHED 11:00-17:00 carry 15-23 % of their energy below 15 Hz (others < 1 %) - matches the poor
   training there (ESR 0.05-0.16). Delivered high-passed copies (4th-order Butterworth 25 Hz, causal so the timing
   blips stay put) for retraining.
+- PUSHED retrained from the filtered copies on RunPod (5 machines x 2, 400 epochs, ~65 min, ~$3). ESR 8:00-11:00
+  0.001-0.004 (was 0.004-0.053), 12:00 0.035 (0.101), 13:00-17:00 0.066-0.076 (0.12-0.16): all better, the top
+  settings still weaker than the rest. PUSHED 8:00 still -40.6 dB.
+- CI: the release Mac job takes 56-60 min; the session's CI watcher cancelled anything past 55 min as "stuck" -
+  limit raised to 100 min (3 needless Mac restarts of the 0.9.23 release).
 - Tested: ui_snapshot AMP BUILDER CAPTURE CHECK PASS (loud-only clip builds with the quiet sweep, a clip in both
   stops); amp_profile_test ALL PASS. ui_snapshot has 5 capture-dependent failures with the current attachment
   captures (MUTE, PEDALS, AMPSURD AMP FROM SILENCE, AMPSURD AMP, PACK) - the same 5 on main without this change.
