@@ -78,7 +78,7 @@ const std::vector<double>& ToneSweep::gridHz()
     return g;
 }
 
-bool ToneSweep::analyse(const std::vector<double>& rec, double fs, Response& out, std::string& error)
+bool ToneSweep::analyse(const std::vector<double>& rec, double fs, Response& out, std::string& error, bool forceQuiet)
 {
     if (std::abs(fs - kRate) > 0.5) { error = "The recording must be at 48 kHz (as the sweep file)."; return false; }
     if (rec.size() < (size_t) ((kQuietAt + kSeconds + 0.5) * fs)) { error = "The recording is too short: record the whole 27 s of the sweep file."; return false; }
@@ -98,7 +98,7 @@ bool ToneSweep::analyse(const std::vector<double>& rec, double fs, Response& out
     double worst = 0.0;
     for (double v : d) worst = std::max(worst, std::abs(v - median));
     out.loudQuietDiffDb = std::max(worst, std::abs(median)); // shape AND level (a compressing amp keeps the shape)
-    out.usedQuiet = out.loudQuietDiffDb > 1.0;
+    out.usedQuiet = forceQuiet || out.loudQuietDiffDb > 1.0;
     out.db = out.usedQuiet ? quiet : loud;
     return true;
 }

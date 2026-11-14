@@ -1378,14 +1378,22 @@ int main(int argc, char** argv)
             linearNam(cdir.getChildFile("G1_gain_0900.nam"), 10, 0.2); linearNam(cdir.getChildFile("G2_gain_1100.nam"), 10, 0.4);
             cdir.getChildFile("G3_gain_1300.nam").replaceWithText("{ not a capture");
             const bool broken = !tryBuild(e5) && e5.contains("does not load");
-            fresh(); // 6. good captures, but a tone sweep clips
+            fresh(); // 6. good captures, but a tone sweep clips: only the loud part (x8 = +18 dB) -> the quiet sweep is
+            // used and it builds (owner 2026-11-14); the quiet part too (x40 = +32 dB) -> stops
             linearNam(cdir.getChildFile("G1_gain_0900.nam"), 10, 0.2); linearNam(cdir.getChildFile("G2_gain_1100.nam"), 10, 0.4);
-            auto clip = sweep;
-            for (auto& v : clip) v = juce::jlimit(-1.0, 1.0, v * 8.0);
-            juce::AudioBuffer<float> cb(1, (int) clip.size());
-            for (size_t i = 0; i < clip.size(); ++i) cb.setSample(0, (int) i, (float) clip[i]);
-            writeWav(cdir.getChildFile("T00_ref_all_noon.wav"), cb, 48000.0);
-            const bool clipStops = !tryBuild(e6) && e6.contains("clip");
+            auto writeClipped = [&](double times) {
+                auto clip = sweep;
+                for (auto& v : clip) v = juce::jlimit(-1.0, 1.0, v * times);
+                juce::AudioBuffer<float> cb(1, (int) clip.size());
+                for (size_t i = 0; i < clip.size(); ++i) cb.setSample(0, (int) i, (float) clip[i]);
+                writeWav(cdir.getChildFile("T00_ref_all_noon.wav"), cb, 48000.0);
+            };
+            writeClipped(8.0);
+            juce::String loudRep, e6b;
+            const bool loudClipBuilds = ampsurd::amp::build(cdir, "Check", "ui_snapshot", out.getChildFile("check.ampsurdamp"), loudRep, e6b)
+                                        && loudRep.contains("loud sweep clips - the quiet one was used");
+            writeClipped(40.0);
+            const bool clipStops = loudClipBuilds && !tryBuild(e6) && e6.contains("clip") && e6.contains("quiet");
             // 7. loudness (owner 2026-11-08: at least -37 dB): a too quiet 7:30 is left out (GAIN fades from silence up
             // to 8:00); 8. a too quiet 8:00 stops the build; -36.9 dB passes
             fresh();
@@ -1401,9 +1409,9 @@ int main(int argc, char** argv)
             out.getChildFile("check.ampsurdamp").deleteFile();
             checkOk = clean && late && dup && order && broken && clipStops && quietLeftOut && quietStops;
             checkWhy << "clean builds " << (int) clean << " (" << e1 << "), 4 ms off stops " << (int) late << ", duplicate stops " << (int) dup
-                     << ", swapped gain stops " << (int) order << ", broken file stops " << (int) broken << ", clipped sweep stops " << (int) clipStops
+                     << ", swapped gain stops " << (int) order << ", broken file stops " << (int) broken << ", loud sweep clips: quiet used " << (int) loudClipBuilds << ", quiet clips too: stops " << (int) clipStops
                      << ", too quiet 7:30 left out " << (int) quietLeftOut << ", too quiet 8:00 stops " << (int) quietStops;
-            if (!checkOk) checkWhy << "\n" << e2 << "\n" << e3 << "\n" << e4 << "\n" << e5 << "\n" << e6 << "\n" << e7 << "\n" << e8;
+            if (!checkOk) checkWhy << "\n" << e2 << "\n" << e3 << "\n" << e4 << "\n" << e5 << "\n" << e6b << "\n" << e6 << "\n" << e7 << "\n" << e8;
         }
         std::cout << (checkOk ? "[PASS]" : "[FAIL]") << " AMP BUILDER CAPTURE CHECK: " << checkWhy << "\n";
         const auto ampFile = out.getChildFile("Test amp.ampsurdamp");

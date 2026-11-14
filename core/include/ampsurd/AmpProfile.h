@@ -34,8 +34,10 @@ struct ToneSweep
         double loudQuietDiffDb = 0; // how much the two sweeps' shapes differ (100 Hz - 8 kHz)
         double levelDb = -200;      // overall level of the recording
     };
-    // a recording of the whole file through the amp (any extra latency up to 0.5 s); false + error if unusable
-    static bool analyse(const std::vector<double>& recording, double sampleRate, Response& out, std::string& error);
+    // a recording of the whole file through the amp (any extra latency up to 0.5 s); false + error if unusable.
+    // forceQuiet: use the quiet sweep whatever the loud one looks like (the loud one clipped in the recording)
+    static bool analyse(const std::vector<double>& recording, double sampleRate, Response& out, std::string& error,
+                        bool forceQuiet = false);
 };
 
 struct ToneStack

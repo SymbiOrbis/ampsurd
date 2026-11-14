@@ -302,7 +302,9 @@ bool build(const juce::File& folder, const juce::String& name, const juce::Strin
     // tone sweeps
     juce::AudioFormatManager fm;
     fm.registerBasicFormats();
-    juce::StringArray clipped; // sweeps that reach 0 dBFS: the build stops (their tone curve would be wrong)
+    // sweeps whose QUIET part reaches 0 dBFS: the build stops (their tone curve would be wrong). The loud part may clip
+    // (owner 2026-11-14): the quiet sweep 20 dB lower is there for exactly that, so it is used instead
+    juce::StringArray clipped;
     auto analyse = [&](const juce::File& f, ToneSweep::Response& r) {
         std::unique_ptr<juce::AudioFormatReader> rd(fm.createReaderFor(f));
         if (rd == nullptr) { report << "cannot read: " << f.getFileName() << "\n"; return false; }
@@ -310,12 +312,17 @@ bool build(const juce::File& folder, const juce::String& name, const juce::Strin
         rd->read(&b, 0, b.getNumSamples(), 0, true, false);
         std::vector<double> x((size_t) b.getNumSamples());
         for (int i = 0; i < b.getNumSamples(); ++i) x[(size_t) i] = b.getSample(0, i);
-        double peak = 0.0;
-        for (double v : x) peak = std::max(peak, std::abs(v));
-        if (peak >= 0.999) clipped.add(f.getFileName());
+        // the loud sweep (1 s) and its tail end before 13.5 s; the quiet one starts at 14 s (latency up to 0.5 s)
+        const size_t split = std::min(x.size(), (size_t) ((ToneSweep::kQuietAt - 0.5) * rd->sampleRate));
+        double loudPeak = 0.0, quietPeak = 0.0;
+        for (size_t i = 0; i < split; ++i) loudPeak = std::max(loudPeak, std::abs(x[i]));
+        for (size_t i = split; i < x.size(); ++i) quietPeak = std::max(quietPeak, std::abs(x[i]));
+        if (quietPeak >= 0.999) clipped.add(f.getFileName());
+        const bool loudClips = loudPeak >= 0.999;
         std::string e;
-        if (!ToneSweep::analyse(x, rd->sampleRate, r, e)) { report << f.getFileName() << ": " << e << "\n"; return false; }
-        if (r.usedQuiet) report << f.getFileName() << ": the loud sweep distorted - the quiet one was used\n";
+        if (!ToneSweep::analyse(x, rd->sampleRate, r, e, loudClips)) { report << f.getFileName() << ": " << e << "\n"; return false; }
+        if (loudClips) report << f.getFileName() << ": the loud sweep clips - the quiet one was used\n";
+        else if (r.usedQuiet) report << f.getFileName() << ": the loud sweep distorted - the quiet one was used\n";
         return true;
     };
     std::vector<ToneSweep::Response> refs;
@@ -381,7 +388,7 @@ bool build(const juce::File& folder, const juce::String& name, const juce::Strin
     if (!clipped.isEmpty())
     {
         error = "The amp was NOT built - " + juce::String(clipped.size()) + " tone sweep" + (clipped.size() > 1 ? "s clip" : " clips")
-              + " (reach 0 dBFS), so the tone curves would be wrong:\n\n" + clipped.joinIntoString("\n")
+              + " (reach 0 dBFS) even in the quiet sweep, so the tone curves would be wrong:\n\n" + clipped.joinIntoString("\n")
               + "\n\nRecord " + (clipped.size() > 1 ? "them" : "it") + " a little quieter, then build again.";
         return false;
     }

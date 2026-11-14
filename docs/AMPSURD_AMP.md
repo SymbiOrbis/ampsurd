@@ -71,7 +71,8 @@ message names the file and the reason:
   both neighbours (similarity below 0.6; real neighbours are mostly above 0.85) - with 3 or more captures;
 - it is the same capture as another one (same weights hash, or the same file content);
 - it has less gain than the capture before it (NAM's own gain estimate falls by more than 0.05: files named wrong?);
-- a tone sweep clips (reaches 0 dBFS): its tone curve would be wrong.
+- a tone sweep clips (reaches 0 dBFS) in its quiet part: its tone curve would be wrong. When only the loud part clips,
+  the quiet sweep (20 dB lower) is used instead and the report says so (owner 2026-11-14).
 
 Two captures for the same GAIN position stop the build too. Found on the owner's EVH 5150 III recordings: the boosted
 CH2 13:00 capture was 3.5 ms early (TONE3000 training) - the only one in nine amps (EVH x 6, Framus Cobra x 3).
