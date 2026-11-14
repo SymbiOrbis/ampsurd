@@ -6,6 +6,25 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-14 — Session 5q: amp builder uses the quiet sweep when the loud one clips; CH1 capture checks - Claude (Opus 5.5)
+
+- Owner: the loud part of a tone sweep may clip - the quiet sweep (20 dB lower) is there for that. AmpProfileFile
+  build(): peaks measured separately before / after 13.5 s; a clip in the loud part -> ToneSweep::analyse(...,
+  forceQuiet = true) and the report says "the loud sweep clips - the quiet one was used"; only a clip in the quiet
+  part still stops the build. docs/AMPSURD_AMP.md.
+- Owner's Mesa Dual CH1 CLEAN amp built with it (GAIN 8:00-17:00, BASS / MID / TREBLE 5 positions each; treble
+  15:00 and max from the quiet sweep; references differ by 1.03 dB) and delivered.
+- Capture checks for the owner: list of captures by trainer (.nam metadata: TONE3000 vs rented NAM trainer) - Claude
+  Doc + claude/CAPTURE_TRAINING.md (20 rented, 129 TONE3000). CH1 recordings consistent (length, timing, replicate
+  ESR <= 0.003); PUSHED 11:00-17:00 carry 15-23 % of their energy below 15 Hz (others < 1 %) - matches the poor
+  training there (ESR 0.05-0.16). Delivered high-passed copies (4th-order Butterworth 25 Hz, causal so the timing
+  blips stay put) for retraining.
+- Tested: ui_snapshot AMP BUILDER CAPTURE CHECK PASS (loud-only clip builds with the quiet sweep, a clip in both
+  stops); amp_profile_test ALL PASS. ui_snapshot has 5 capture-dependent failures with the current attachment
+  captures (MUTE, PEDALS, AMPSURD AMP FROM SILENCE, AMPSURD AMP, PACK) - the same 5 on main without this change.
+
+---
+
 ## 2026-11-14 — Release 0.9.23 - Claude (Opus 5.5)
 
 - Owner: "Please implement and publish all changes" - 0.9.23 published. Windows files to be

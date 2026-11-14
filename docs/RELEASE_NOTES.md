@@ -21,7 +21,8 @@ VIDEO in the player).
 
 ## Next version (not released yet)
 
-(nothing yet)
+- Amp builder: when the loud part of a tone sweep clips, the quiet part is used instead of stopping the build. Only a
+  sweep that clips even in its quiet part still stops it.
 
 ## AMPSURD 0.9.23 (beta)
 
