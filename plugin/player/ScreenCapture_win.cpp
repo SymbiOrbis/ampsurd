@@ -13,6 +13,7 @@
 #include <mfapi.h>
 #include <mfidl.h>
 #include <mfreadwrite.h>
+#include <strmif.h>
 #include <wrl/client.h>
 
 #include <mutex>
@@ -25,6 +26,11 @@
 #pragma comment(lib, "mfuuid.lib")
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
+#pragma comment(lib, "oleaut32.lib")
+
+// ICodecAPI settings (codecapi.h's values, here so no GUID library is needed)
+static const GUID kAVEncNumWorkerThreads = { 0xb0c8bf60, 0x16f7, 0x4951, { 0xa3, 0x0b, 0x1d, 0xb1, 0x60, 0x92, 0x93, 0xd6 } };
+static const GUID kAVEncCommonQualityVsSpeed = { 0x98332df8, 0x03cd, 0x476b, { 0x89, 0xfa, 0x3f, 0x9e, 0x44, 0x2d, 0xec, 0x9f } };
 
 using Microsoft::WRL::ComPtr;
 
@@ -123,7 +129,8 @@ struct ScreenCapture::Impl final : public juce::Thread
         srcW = (int) (r.right - r.left);
         srcH = (int) (r.bottom - r.top);
         if (srcW < 16 || srcH < 16) return false;
-        const auto rs = ampsurd::screen::recordSize(srcW, srcH);
+        // lighter; but a recording already running keeps its picture size (the file cannot change it)
+        const auto rs = writer != nullptr && recW > 0 ? juce::Point<int>(recW, recH) : ampsurd::screen::recordSize(srcW, srcH, true);
         if (rs.x != recW || rs.y != recH) haveFrame = false;
         recW = rs.x;
         recH = rs.y;
@@ -146,8 +153,8 @@ struct ScreenCapture::Impl final : public juce::Thread
 
     bool grabGdi()
     {
-        // 15 pictures a second (GDI has no "new picture" signal)
-        const double interval = 1000.0 / ampsurd::screen::kFramesPerSecond;
+        // 10 pictures a second (GDI has no "new picture" signal; each one is copied by the processor)
+        const double interval = 1000.0 / ampsurd::screen::kLightFramesPerSecond;
         const double wait = gdiLast + interval - juce::Time::getMillisecondCounterHiRes();
         if (wait > 0.0) juce::Thread::sleep((int) std::ceil(wait));
         gdiLast = juce::Time::getMillisecondCounterHiRes();
@@ -252,6 +259,8 @@ struct ScreenCapture::Impl final : public juce::Thread
         return ok;
     }
 
+    int fps() const { return gdi ? ampsurd::screen::kLightFramesPerSecond : ampsurd::screen::kFramesPerSecond; }
+
     // H.264 into an MP4; the graphics card's encoder first, Windows' own (software) encoder if that fails
     HRESULT openWriter(const juce::File& f)
     {
@@ -282,7 +291,7 @@ struct ScreenCapture::Impl final : public juce::Thread
         outT->SetUINT32(MF_MT_AVG_BITRATE, (UINT32) juce::jlimit(3000000, 8000000, recW * recH * 4)); // ~8 Mbit/s at 1080p: text stays sharp
         outT->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
         MFSetAttributeSize(outT.Get(), MF_MT_FRAME_SIZE, (UINT32) recW, (UINT32) recH);
-        MFSetAttributeRatio(outT.Get(), MF_MT_FRAME_RATE, ampsurd::screen::kFramesPerSecond, 1);
+        MFSetAttributeRatio(outT.Get(), MF_MT_FRAME_RATE, (UINT32) fps(), 1);
         MFSetAttributeRatio(outT.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
         hr = writer->AddStream(outT.Get(), &stream);
         if (FAILED(hr)) return hr;
@@ -291,10 +300,25 @@ struct ScreenCapture::Impl final : public juce::Thread
         inT->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12);
         inT->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
         MFSetAttributeSize(inT.Get(), MF_MT_FRAME_SIZE, (UINT32) recW, (UINT32) recH);
-        MFSetAttributeRatio(inT.Get(), MF_MT_FRAME_RATE, ampsurd::screen::kFramesPerSecond, 1);
+        MFSetAttributeRatio(inT.Get(), MF_MT_FRAME_RATE, (UINT32) fps(), 1);
         MFSetAttributeRatio(inT.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
         hr = writer->SetInputMediaType(stream, inT.Get(), nullptr);
         if (FAILED(hr)) return hr;
+        if (!hardware)
+        {
+            // Windows' own encoder: few threads and its quicker settings - it shares the processor with the amps
+            ComPtr<ICodecAPI> codec;
+            if (SUCCEEDED(writer->GetServiceForStream(stream, GUID_NULL, IID_PPV_ARGS(&codec))))
+            {
+                VARIANT v;
+                VariantInit(&v);
+                v.vt = VT_UI4;
+                v.ulVal = 2;
+                codec->SetValue(&kAVEncNumWorkerThreads, &v);
+                v.ulVal = 0; // 0 = fastest .. 100 = best quality
+                codec->SetValue(&kAVEncCommonQualityVsSpeed, &v);
+            }
+        }
         return writer->BeginWriting();
     }
 
@@ -317,12 +341,15 @@ struct ScreenCapture::Impl final : public juce::Thread
         MFCreateSample(&s);
         s->AddBuffer(buf.Get());
         s->SetSampleTime(t);
-        s->SetSampleDuration(10000000LL / ampsurd::screen::kFramesPerSecond);
+        s->SetSampleDuration(10000000LL / fps());
         if (SUCCEEDED(writer->WriteSample(stream, s.Get()))) { lastTime = t; ++framesWritten; }
     }
 
     void run() override
     {
+        // below the audio (owner 2026-11-13: pops in video takes): the amps' helper threads come first, the
+        // screen waits - a late screen picture is invisible, a late audio block is a pop
+        SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
         const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
         const HRESULT mf = MFStartup(MF_VERSION);
         const auto err = setUp();
@@ -333,11 +360,11 @@ struct ScreenCapture::Impl final : public juce::Thread
         }
         const double openedMs = juce::Time::getMillisecondCounterHiRes();
         double lastShown = 0.0, lastWritten = 0.0;
-        const double interval = 1000.0 / ampsurd::screen::kFramesPerSecond;
         while (!threadShouldExit())
         {
             const bool fresh = grab(30);
             const double now = juce::Time::getMillisecondCounterHiRes();
+            const double interval = 1000.0 / fps();
             // desktop duplication gave no picture in 2 s: the GDI way
             if (!gdi && !haveFrame && now - openedMs > 2000.0)
             {

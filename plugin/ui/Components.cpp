@@ -3368,6 +3368,9 @@ void PlayerPanel::startVideoTake()
     const auto err = camera.startRecording(player.getRecordingsFolder().getChildFile("Takes"));
     if (err.isNotEmpty()) { setStatus(err); return; }
     videoRecording = true;
+    if (videoActivity < 0)
+        videoActivity = proc.getEventLog().beginActivity(screenCap.isOpen() ? "a video take (camera + screen recording; if it pops: ECO on some amps or buffer 1024 while filming)"
+                                                                            : "a video take (camera recording; if it pops: ECO on some amps or buffer 1024 while filming)");
     screenProblem.clear();
     // SCREEN BOX: the chosen screen is recorded too (the box can be shown / hidden / moved during the take)
     juce::String screenErr;
@@ -3601,6 +3604,7 @@ void PlayerPanel::chooseInput2(bool armAfter)
 void PlayerPanel::finishVideoTake()
 {
     videoRecording = false;
+    if (videoActivity >= 0) { proc.getEventLog().endActivity(videoActivity); videoActivity = -1; }
     juce::File f, sf;
     const auto firstFrame = camera.stopRecording(f);
     const bool screenWasRecording = screenCap.isRecording();

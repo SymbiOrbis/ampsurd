@@ -57,7 +57,8 @@ struct ScreenCapture::Impl
 {
     Impl(ScreenCapture& o, DisplayInfo d) : owner(o), display(d)
     {
-        queue = dispatch_queue_create("AMPSURD screen", DISPATCH_QUEUE_SERIAL);
+        // below the audio (owner 2026-11-13: pops in video takes): a late screen picture is invisible, a late audio block a pop
+        queue = dispatch_queue_create("AMPSURD screen", dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_UTILITY, 0));
         const auto rs = ampsurd::screen::recordSize(d.w > 0 ? d.w : 1920, d.h > 0 ? d.h : 1080);
         recW = rs.x;
         recH = rs.y;

@@ -309,10 +309,10 @@ void drawPointer(uint8_t* bgra, int w, int h, int pitch, int x, int y, float sca
         }
 }
 
-juce::Point<int> recordSize(int w, int h)
+juce::Point<int> recordSize(int w, int h, bool light)
 {
     if (w <= 0 || h <= 0) return {};
-    const double s = std::min({ 1.0, 1920.0 / w, 1080.0 / h }); // up to 1080p (owner 2026-11-12: SWAP needs the detail)
+    const double s = light ? std::min({ 1.0, 1280.0 / w, 720.0 / h }) : std::min({ 1.0, 1920.0 / w, 1080.0 / h }); // up to 1080p (owner 2026-11-12: SWAP needs the detail)
     // multiples of 16 (H.264's blocks): a decoder then has no padded rows to get wrong (0.9.20: 1080 -> 1088 padding
     // shifted the colours of the screen in the saved video); the shape changes by < 1 %
     return { std::max(16, (int) std::lround(w * s) & ~15), std::max(16, (int) std::lround(h * s) & ~15) };

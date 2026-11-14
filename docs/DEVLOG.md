@@ -6,6 +6,24 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-14 — Session 5p: video takes lighter on the CPU - Claude (Opus 5.5)
+
+- Owner: "Please implement and publish all changes" (the full screen fix + the two proposals against pops in video
+  takes with several amps).
+- Video below the audio: the Windows screen thread runs at THREAD_PRIORITY_BELOW_NORMAL, the macOS screen queue at
+  QOS_CLASS_UTILITY - the amps' helper threads come first.
+- Windows' own (software) H.264 encoder for the screen: 2 worker threads, fastest setting (ICodecAPI
+  AVEncNumWorkerThreads / AVEncCommonQualityVsSpeed 0). The graphics card's encoder is unchanged.
+- The slow GDI way (desktop duplication gives no picture - his docking-station screen): at most 1280 x 720 and 10
+  pictures a second (recordSize(..., light), kLightFramesPerSecond); a recording already running keeps its size.
+- A dropout during a video take names it in the log ("at the same time: a video take ... if it pops: ECO on some
+  amps or buffer 1024 while filming").
+- Not done (not asked yet): removing the video viewer for OPEN VIDEO.
+- Tested (Linux): recorder_test ALL PASS (VIDEO SIZE: the GDI way 1280x720); Windows / macOS code built by CI only;
+  not tested on his PC.
+
+---
+
 ## 2026-11-13 — Session 5o: full screen that stays - Claude (Opus 5.5)
 
 - Owner (0.9.22, Windows, two screens on a docking station): the maximised window goes back to normal by itself as

@@ -91,6 +91,9 @@ bool composeBgra(const BoxKey& key, double previewAspect, uint8_t* frame, int w,
 void drawPointer(uint8_t* bgra, int w, int h, int pitch, int x, int y, float scale);
 
 // the screen's size for recording: at most 1920 x 1080 (sharp also large with SWAP), even
-juce::Point<int> recordSize(int screenW, int screenH);
+// light (owner 2026-11-13: pops in video takes with several amps): the slow GDI way records at most 1280 x 720 and
+// kLightFramesPerSecond pictures a second - it copies every picture with the processor, which the amps need
+juce::Point<int> recordSize(int screenW, int screenH, bool light = false);
 constexpr int kFramesPerSecond = 15;
+constexpr int kLightFramesPerSecond = 10;
 } // namespace ampsurd::screen

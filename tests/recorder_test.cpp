@@ -979,7 +979,7 @@ int main()
         const auto boxOnly = sc::outputSize(640, 480, &ov, 1080);
         ov.keys[0].swapped = true;
         const auto swapped = sc::outputSize(640, 480, &ov, 1080), wide = sc::outputSize(1280, 720, &ov, 1080), hd = sc::outputSize(1920, 1080, &ov, 1080);
-        const auto rs = sc::recordSize(2560, 1440);
+        const auto rs = sc::recordSize(2560, 1440), light = sc::recordSize(1920, 1080, true);
         // a ramp scaled up 4x stays a smooth ramp (no steps of 4)
         std::vector<uint8_t> src(16), dst(64);
         for (int i = 0; i < 16; ++i) src[(size_t) i] = (uint8_t) (i * 16);
@@ -987,10 +987,10 @@ int main()
         int maxStep = 0;
         for (int i = 9; i < 55; ++i) maxStep = std::max(maxStep, std::abs((int) dst[(size_t) i + 1] - (int) dst[(size_t) i]));
         check(boxOnly == juce::Point<int>(640, 480) && swapped == juce::Point<int>(1440, 1080) && wide == juce::Point<int>(1920, 1080)
-                  && hd == juce::Point<int>(1920, 1080) && rs == juce::Point<int>(1920, 1072) && maxStep <= 5,
+                  && hd == juce::Point<int>(1920, 1080) && rs == juce::Point<int>(1920, 1072) && light == juce::Point<int>(1280, 720) && maxStep <= 5,
               "VIDEO SIZE: box only = the camera's size, with SWAP 640x480 -> " + juce::String(swapped.x) + "x" + juce::String(swapped.y) + ", 1280x720 -> "
                   + juce::String(wide.x) + "x" + juce::String(wide.y) + "; the screen recorded at " + juce::String(rs.x) + "x" + juce::String(rs.y)
-                  + "; scaling up is smooth (largest step " + juce::String(maxStep) + ")");
+                  + " (the slow GDI way: " + juce::String(light.x) + "x" + juce::String(light.y) + ")" + "; scaling up is smooth (largest step " + juce::String(maxStep) + ")");
     }
     // SWAP (owner 2026-11-12): the screen large and the camera in the box; box hidden = the screen alone
     {

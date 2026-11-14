@@ -21,6 +21,8 @@ VIDEO in the player).
 
 ## Next version (not released yet)
 
+- Fewer pops while recording video with several amps: the video work runs below the audio; Windows' own encoder uses fewer threads; when the screen can only be recorded the slow way (some docking-station screens) it is recorded at 1280 x 720, 10 pictures a second.
+- A dropout during a video take says so in the log, with tips.
 - Full screen stays on when you click another window or screen; the title bar with its buttons and Options stays, the taskbar too.
 
 ## AMPSURD 0.9.22 (beta)

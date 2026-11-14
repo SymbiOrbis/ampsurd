@@ -62,7 +62,7 @@ https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.0
 
 **Public beta v0.9.22 released 2026-11-13:** SAVE AS starts at WAV 24-bit; sharper live screen picture (SWAP); the screen box in the saved video keeps its on-screen shape (each box state stores its preview's shape).
 
-**In main, not released yet:** full screen = the window filling the screen's usable area (no kiosk mode: no longer ended by clicking elsewhere, title bar kept).
+**In main, not released yet:** video takes lighter on the CPU (video below the audio, fewer encoder threads, GDI way 1280x720 at 10 fps, dropouts during video takes named in the log); full screen = the window filling the screen's usable area (no kiosk mode: no longer ended by clicking elsewhere, title bar kept).
 
 **Public beta v0.9.16 released 2026-11-09:** Copy / Paste tone (slot menu), Save tone - SAVE AS..., log: sudden spikes named correctly. https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.16 - Windows files to be signed by the owner.
 

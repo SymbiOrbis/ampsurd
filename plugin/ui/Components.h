@@ -783,6 +783,7 @@ private:
     juce::String screenProblem; // why the last video take has no screen (shown when it is saved)
     std::unique_ptr<CameraWindow> cameraWindow;
     bool videoRecording = false, videoSaving = false;
+    int videoActivity = -1; // the log's "at the same time" for dropouts during a video take (camera / screen use the CPU)
     double replaceArmedAt = -1.0;
     juce::File lastSavedVideo;
     juce::File savedTakeVideo; // the take's camera file whose MP4 has been saved: a new video take needs no REPLACE?
