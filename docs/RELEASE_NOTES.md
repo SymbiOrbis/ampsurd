@@ -21,6 +21,15 @@ VIDEO in the player).
 
 ## Next version (not released yet)
 
+(nothing yet)
+
+## AMPSURD 0.9.23 (beta)
+
+**Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the standalone app.
+**macOS 10.15 or newer:** AMPSURD-macOS.pkg installs the app, the VST3 plugin and the Audio Unit. Installing over an
+older version is fine: presets and recordings (Documents/AMPSURD) stay untouched.
+
+New in 0.9.23:
 - Fewer pops while recording video with several amps: the video work runs below the audio; Windows' own encoder uses fewer threads; when the screen can only be recorded the slow way (some docking-station screens) it is recorded at 1280 x 720, 10 pictures a second.
 - A dropout during a video take says so in the log, with tips.
 - Full screen stays on when you click another window or screen; the title bar with its buttons and Options stays, the taskbar too.

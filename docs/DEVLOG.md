@@ -6,6 +6,13 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-14 — Release 0.9.23 - Claude (Opus 5.5)
+
+- Owner: "Please implement and publish all changes" - 0.9.23 published. Windows files to be
+  signed by the owner.
+
+---
+
 ## 2026-11-14 — Session 5p: video takes lighter on the CPU - Claude (Opus 5.5)
 
 - Owner: "Please implement and publish all changes" (the full screen fix + the two proposals against pops in video
@@ -48,7 +55,7 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ## 2026-11-13 — Release 0.9.22 - Claude (Opus 5.5)
 
-- Owner: "please implement the changes as proposed and publish a new version" - 0.9.22 published. Windows files to be
+- Owner: "Please implement and publish all changes" - 0.9.22 published. Windows files to be
   signed by the owner.
 
 ---
