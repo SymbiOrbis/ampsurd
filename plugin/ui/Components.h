@@ -782,7 +782,13 @@ private:
     ScreenCapture screenCap; // SCREEN BOX: the screen recorded with a video take
     juce::String screenProblem; // why the last video take has no screen (shown when it is saved)
     std::unique_ptr<CameraWindow> cameraWindow;
-    bool videoRecording = false, videoSaving = false;
+    bool videoRecording = false;
+    // saving a video take: the sound is mixed first (videoMixing: the take must stay as it is), then the MP4 is made
+    // in the background - a new video take may start meanwhile (owner 2026-11-14: after a 24-minute take REC did
+    // nothing for 4 minutes)
+    bool videoMixing = false;
+    int videoSavesRunning = 0;
+    juce::Array<juce::File> videosBeingSaved; // camera files of takes whose MP4 is being made
     int videoActivity = -1; // the log's "at the same time" for dropouts during a video take (camera / screen use the CPU)
     double replaceArmedAt = -1.0;
     juce::File lastSavedVideo;

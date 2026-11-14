@@ -23,6 +23,8 @@ VIDEO in the player).
 
 - Amp builder: when the loud part of a tone sweep clips, the quiet part is used instead of stopping the build. Only a
   sweep that clips even in its quiet part still stops it.
+- Video takes: REC starts a new video take a few seconds after the last one ends - the MP4 of the last take is made in
+  the background meanwhile (before, REC did nothing until it was saved, which takes about as long as the video).
 
 ## AMPSURD 0.9.23 (beta)
 

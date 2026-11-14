@@ -3358,7 +3358,7 @@ void PlayerPanel::setStatus(const juce::String& s)
 void PlayerPanel::startVideoTake()
 {
     using S = PlayerRecorder::State;
-    if (player.isBusy() || videoSaving) { setStatus("Still saving - REC works again in a moment."); return; }
+    if (player.isBusy() || videoMixing) { setStatus("Still saving - REC works again in a moment."); return; }
     // a video take is one continuous take from the playhead (owner 2026-11-12: anywhere in the song, not only
     // from the start); while playing: from where the song is now
     const double at = player.getPositionSeconds();
@@ -3375,7 +3375,11 @@ void PlayerPanel::startVideoTake()
     // SCREEN BOX: the chosen screen is recorded too (the box can be shown / hidden / moved during the take)
     juce::String screenErr;
     if (screenCap.isOpen()) screenErr = screenCap.startRecording(player.getRecordingsFolder().getChildFile("Takes"));
-    if (cameraWindow != nullptr) cameraWindow->view().beginTakeKeys();
+    if (cameraWindow != nullptr)
+    {
+        cameraWindow->view().beginTakeKeys();
+        if (videoSavesRunning > 0) cameraWindow->view().showNotice({}, 0.0); // "SAVING THE VIDEO..." of the last take: it goes on quietly
+    }
     player.record();
     if (player.getState() != S::recording) { finishVideoTake(); setStatus("The recording could not start."); return; }
     setStatus(screenErr.isNotEmpty() ? "Recording a video take - but the screen: " + screenErr
@@ -3413,7 +3417,14 @@ void PlayerPanel::recordPressed(bool fromCameraWindow)
         if (cameraWindow != nullptr) cameraWindow->view().stopPlayback();
         if (st == S::recording || st == S::pausedRec) { player.stop(); return; } // a video take ends with REC or STOP
         if (!camera.isOpen()) { setStatus("VIDEO: no camera is open - see the camera window."); return; }
-        const bool saved = player.takeHasVideo() && player.getTakeVideo() == savedTakeVideo;
+        if (videoMixing)
+        {
+            setStatus("Preparing the sound of the last video - REC works again in a few seconds.");
+            return;
+        }
+        // saved, or its MP4 is being made right now (from a copy of the sound): nothing is lost by a new take
+        const bool saved = player.takeHasVideo()
+                           && (player.getTakeVideo() == savedTakeVideo || videosBeingSaved.contains(player.getTakeVideo()));
         if (saved)
         {
             // this take is saved as an MP4 already: nothing is lost, so a new take starts right away (owner 2026-10-24)
@@ -3421,8 +3432,10 @@ void PlayerPanel::recordPressed(bool fromCameraWindow)
             clearArmed();
             startVideoTake();
             if (videoRecording)
-                setStatus("Recording a new video take - the previous one is saved"
-                          + (lastSavedVideo.existsAsFile() ? " as " + lastSavedVideo.getFileName() : juce::String()) + ". STOP (or REC) ends it.");
+                setStatus(videoSavesRunning > 0
+                              ? juce::String("Recording a new video take - the previous one is still being saved in the background. STOP (or REC) ends it.")
+                              : "Recording a new video take - the previous one is saved"
+                                    + (lastSavedVideo.existsAsFile() ? " as " + lastSavedVideo.getFileName() : juce::String()) + ". STOP (or REC) ends it.");
             return;
         }
         if (armedMaterial)
@@ -3664,7 +3677,8 @@ void PlayerPanel::saveVideo()
         setStatus("No video take yet: switch VIDEO on and record one (or wait a moment until the camera file is written).");
         return;
     }
-    if (videoSaving) { setStatus("The video is still being saved..."); return; }
+    if (videoMixing) { setStatus("The video is still being saved..."); return; }
+    if (videosBeingSaved.contains(player.getTakeVideo())) { setStatus("This video take is being saved already..."); return; }
     // straight into Recordings, no dialog: a file dialog could open behind the camera window (which stays on
     // top) and block the app (owner, 2026-10-23). SHOW FILE in the camera window opens the folder.
     const bool withBacking = contentBox.getSelectedId() == 1;
@@ -3675,18 +3689,41 @@ void PlayerPanel::saveVideo()
     const double sr = player.getSampleRate();
     const auto video = player.getTakeVideo();
     const auto screen = player.getTakeScreen(); // SCREEN BOX (when it was shown during the take)
-    videoSaving = true;
-    setStatus("Saving the video " + f.getFileName() + "... (about as long as the video itself)");
+    videoMixing = true;
+    ++videoSavesRunning;
+    videosBeingSaved.add(video);
+    setStatus("Saving the video " + f.getFileName() + "... (about as long as the video itself; REC starts a new take in a few seconds)");
     if (cameraWindow != nullptr) cameraWindow->view().showNotice("SAVING THE VIDEO...", 600.0);
-    // the sound is rendered here too, in the background: a long song must not freeze the window
-    juce::Thread::launch([sp = juce::Component::SafePointer<PlayerPanel>(this), pl = &player, withBacking, video, screen, sr, f] {
+    // the sound is rendered here too, in the background: a long song must not freeze the window. Once the sound
+    // is mixed (seconds), REC may start a new take; the MP4 is made from the copy, at low priority so a new take
+    // keeps the CPU it needs
+    juce::Thread::launch(juce::Thread::Priority::low, [sp = juce::Component::SafePointer<PlayerPanel>(this), pl = &player, withBacking, video, screen, sr, f] {
         juce::AudioBuffer<float> mix;
         int start = 0;
         auto e = pl->renderMix(withBacking, mix, start);
-        if (e.isEmpty()) e = muxVideoToMp4(video, mix, sr, pl->videoAudioLeadSeconds(start), f, {}, &screen);
+        const double lead = pl->videoAudioLeadSeconds(start);
+        juce::MessageManager::callAsync([sp] {
+            if (sp != nullptr) sp->videoMixing = false;
+        });
+        if (e.isEmpty()) e = muxVideoToMp4(video, mix, sr, lead, f, {}, &screen);
         juce::MessageManager::callAsync([sp, e, f, video] {
             if (sp == nullptr) return;
-            sp->videoSaving = false;
+            sp->videoSavesRunning = std::max(0, sp->videoSavesRunning - 1);
+            sp->videosBeingSaved.removeFirstMatchingValue(video);
+            if (sp->videoRecording)
+            {
+                // a new take is being recorded: say it quietly, the camera window keeps showing the new take
+                sp->setStatus(e.isEmpty() && f.existsAsFile()
+                                  ? "Recording a video take... (the previous one is saved: " + f.getFileName() + ")"
+                                  : "Recording a video take... (the previous one could not be saved: " + (e.isNotEmpty() ? e : juce::String("no file was written")) + ")");
+                if (e.isEmpty() && f.existsAsFile())
+                {
+                    sp->lastSavedVideo = f;
+                    sp->savedTakeVideo = video;
+                    if (sp->cameraWindow != nullptr) sp->cameraWindow->view().refreshVideoList();
+                }
+                return;
+            }
             if (e.isEmpty() && f.existsAsFile())
             {
                 sp->lastSavedVideo = f;

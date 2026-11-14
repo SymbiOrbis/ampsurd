@@ -6,6 +6,20 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-14 — Session 5r: a new video take while the last one is saved - Claude (Opus 5.5)
+
+- Owner: "Once I have stopped recording video, I cannot restart recording." His log + Recordings folder: a 24-minute
+  take (22:23-22:46) whose MP4 (662 MB) took until 22:51 to make; startVideoTake() refused REC the whole time
+  (videoSaving), and the earlier REC press during saving only said "not saved yet - press again within 3 s". Twice
+  he restarted the app right after a save.
+- Fix (plugin/ui/Components.cpp / .h): saving = mixing the sound (seconds; `videoMixing` blocks REC, the take's files
+  must stay) + making the MP4 from that copy on a low-priority thread (`videoSavesRunning`, `videosBeingSaved`).
+  REC during the MP4 counts the take as saved (no REPLACE prompt) and starts a new take; the finished save of the old
+  take only updates the status line while a new one records; the camera window's "SAVING THE VIDEO..." is cleared
+  when the new take starts. Several MP4s can be made at once.
+- Tested: Linux build + recorder_test ALL PASS. Video exists only on Windows / macOS: untested there (CI builds).
+  Risk to watch: making an MP4 while recording uses CPU (low priority) - dropouts in the log during such a take.
+
 ## 2026-11-14 — Session 5q: amp builder uses the quiet sweep when the loud one clips; CH1 capture checks - Claude (Opus 5.5)
 
 - Owner: the loud part of a tone sweep may clip - the quiet sweep (20 dB lower) is there for that. AmpProfileFile
