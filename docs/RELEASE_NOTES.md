@@ -21,6 +21,15 @@ VIDEO in the player).
 
 ## Next version (not released yet)
 
+(nothing yet)
+
+## AMPSURD 0.9.24 (beta)
+
+**Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the standalone app.
+**macOS 10.15 or newer:** AMPSURD-macOS.pkg installs the app, the VST3 plugin and the Audio Unit. Installing over an
+older version is fine: presets and recordings (Documents/AMPSURD) stay untouched.
+
+New in 0.9.24:
 - Amp builder: when the loud part of a tone sweep clips, the quiet part is used instead of stopping the build. Only a
   sweep that clips even in its quiet part still stops it.
 - Video takes: REC starts a new video take a few seconds after the last one ends - the MP4 of the last take is made in

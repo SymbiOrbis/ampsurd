@@ -6,6 +6,13 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-15 — Release 0.9.24 - Claude (Opus 5.5)
+
+- Owner: "(asked whether to publish the video REC fix + builder change as 0.9.24) "Yes please."" - 0.9.24 published. Windows files to be
+  signed by the owner.
+
+---
+
 ## 2026-11-14 — Session 5r: a new video take while the last one is saved - Claude (Opus 5.5)
 
 - Owner: "Once I have stopped recording video, I cannot restart recording." His log + Recordings folder: a 24-minute

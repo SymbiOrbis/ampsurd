@@ -62,7 +62,7 @@ https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.0
 
 **Public beta v0.9.22 released 2026-11-13:** SAVE AS starts at WAV 24-bit; sharper live screen picture (SWAP); the screen box in the saved video keeps its on-screen shape (each box state stores its preview's shape).
 
-**In main, not released yet:** the amp builder uses the quiet tone sweep when the loud one clips (only a clip in the quiet sweep stops the build); a new video take can start while the last one's MP4 is still being made (untested on Windows / Mac).
+**Public beta v0.9.24 released 2026-11-15:** the amp builder uses the quiet tone sweep when the loud one clips (only a clip in the quiet sweep stops the build); a new video take can start while the last one's MP4 is still being made (untested on Windows / Mac). Windows files to be signed by the owner.
 
 **Public beta v0.9.23 released 2026-11-14:** video takes lighter on the CPU (video below the audio, fewer encoder threads, GDI way 1280x720 at 10 fps, dropouts during video takes named in the log); full screen = the window filling the screen's usable area (no kiosk mode: no longer ended by clicking elsewhere, title bar kept).
 
