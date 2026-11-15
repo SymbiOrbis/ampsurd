@@ -10,6 +10,9 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 - Owner: "(asked whether to publish the video REC fix + builder change as 0.9.24) "Yes please."" - 0.9.24 published. Windows files to be
   signed by the owner.
+- Website (index.html) reviewed against the release notes 0.9.10-0.9.23: Two players and video takes linked in the
+  top "New:" line; added PEDAL 1 / 2 and P1 / P2 on the slot, COPY / PASTE TONE, guitar input choice, INPUT 2
+  LISTEN / MUTED, video from the playhead + seek bar, F11 full screen. FAQ not changed.
 
 ---
 
