@@ -13,6 +13,10 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 - Website (index.html) reviewed against the release notes 0.9.10-0.9.23: Two players and video takes linked in the
   top "New:" line; added PEDAL 1 / 2 and P1 / P2 on the slot, COPY / PASTE TONE, guitar input choice, INPUT 2
   LISTEN / MUTED, video from the playhead + seek bar, F11 full screen. FAQ not changed.
+- Dual CH1 PUSHED.ampsurdamp built (owner: "please treat 07-09 with 0 to 100% volume of 09"): the 9 retrained
+  captures 9:00-17:00 (8:00 left out, -40.6 dB) + the CH1 tone sweeps; silenceFrom=0 added to amp.xml by hand, so GAIN
+  fades from silence at 7:00 up to the 9:00 capture. Builder notes: the all-noon references differ by 1.03 dB;
+  treble 15:00 / max used the quiet sweep. Saved to the owner's Mesa Dual\CH1 folder; not yet played by the owner.
 
 ---
 
