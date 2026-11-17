@@ -6,6 +6,16 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-17 — Session 5s: macOS 27 Bluetooth crash - Claude (Opus 5.5)
+
+- Owner sent a Mac crash report: AMPSURD 0.9.24, macOS 27.2 (Mac17,2), closed 15 s after launch. EXC_CRASH (SIGABRT),
+  namespace TCC: "must contain an NSBluetoothAlwaysUsageDescription key". Crashing thread is TCC's reply queue, so the
+  caller is not in the report; AMPSURD's own code uses no Bluetooth - most likely CoreMIDI (Bluetooth MIDI) or the
+  CoreAudio device list.
+- Owner approved the fix ("yes please"): plugin/CMakeLists.txt BLUETOOTH_PERMISSION_ENABLED TRUE + text (JUCE writes
+  NSBluetoothAlwaysUsageDescription into Info.plist on macOS too). Checked: cmake picks it up; Linux standalone builds.
+  Not tested on macOS 27 - released as 0.9.25 for the owner to try.
+
 ## 2026-11-15 — Release 0.9.24 - Claude (Opus 5.5)
 
 - Owner: "(asked whether to publish the video REC fix + builder change as 0.9.24) "Yes please."" - 0.9.24 published. Windows files to be

@@ -21,7 +21,7 @@ VIDEO in the player).
 
 ## Next version (not released yet)
 
-(nothing yet)
+- Mac: AMPSURD no longer closes right after starting on macOS 27 when Bluetooth is on. macOS now asks once whether AMPSURD may use Bluetooth (only to find Bluetooth MIDI controllers and audio devices) - "Don't Allow" is fine.
 
 ## AMPSURD 0.9.24 (beta)
 

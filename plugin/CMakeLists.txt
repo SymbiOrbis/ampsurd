@@ -18,6 +18,10 @@ juce_add_plugin(Ampsurd
   # VIDEO takes in the standalone player (macOS asks once)
   CAMERA_PERMISSION_ENABLED TRUE
   CAMERA_PERMISSION_TEXT "AMPSURD films you with the camera only while you record a VIDEO take in the player."
+  # macOS 27 closes an app that touches Bluetooth without this text (crash report 2026-11-16, AMPSURD 0.9.24 on
+  # macOS 27.2: Apple's MIDI / audio code looks for Bluetooth devices). With it, macOS asks once instead.
+  BLUETOOTH_PERMISSION_ENABLED TRUE
+  BLUETOOTH_PERMISSION_TEXT "AMPSURD uses Bluetooth only to find Bluetooth MIDI controllers and audio devices. AMPSURD works without it."
   AU_MAIN_TYPE              kAudioUnitType_MusicEffect
   IS_SYNTH                  FALSE
   NEEDS_MIDI_INPUT          TRUE
