@@ -21,6 +21,15 @@ VIDEO in the player).
 
 ## Next version (not released yet)
 
+(nothing yet)
+
+## AMPSURD 0.9.25 (beta)
+
+**Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the standalone app.
+**macOS 10.15 or newer:** AMPSURD-macOS.pkg installs the app, the VST3 plugin and the Audio Unit. Installing over an
+older version is fine: presets and recordings (Documents/AMPSURD) stay untouched.
+
+New in 0.9.25:
 - Mac: AMPSURD no longer closes right after starting on macOS 27 when Bluetooth is on. macOS now asks once whether AMPSURD may use Bluetooth (only to find Bluetooth MIDI controllers and audio devices) - "Don't Allow" is fine.
 
 ## AMPSURD 0.9.24 (beta)

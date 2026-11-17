@@ -6,6 +6,13 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-17 — Release 0.9.25 - Claude (Opus 5.5)
+
+- Owner: (Bluetooth fix, asked to release as 0.9.25) "yes please" - 0.9.25 published. Windows files to be
+  signed by the owner.
+
+---
+
 ## 2026-11-17 — Session 5s: macOS 27 Bluetooth crash - Claude (Opus 5.5)
 
 - Owner sent a Mac crash report: AMPSURD 0.9.24, macOS 27.2 (Mac17,2), closed 15 s after launch. EXC_CRASH (SIGABRT),
