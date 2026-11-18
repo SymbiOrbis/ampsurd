@@ -42,7 +42,8 @@ param(
 $ErrorActionPreference = "Continue"
 $env:RCLONE_LOG_LEVEL = "ERROR"
 $Raw = "https://raw.githubusercontent.com/SymbiOrbis/ampsurd/main/tools/nam_training"
-$Api = "https://rest.runpod.io/v1"
+# RunPod REST API v2 (rest.runpod.io/v1 stopped existing in Nov 2026 - its name no longer resolves)
+$Api = "https://api.runpod.io/v2"
 $Image = "runpod/pytorch:1.5.0-cu1281-torch280-ubuntu2404"
 # cheapest suitable first (RunPod takes the first one that is free); all are fast enough for NAM
 $Gpus = @(
@@ -82,8 +83,10 @@ $Key = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
 $Headers = @{ Authorization = "Bearer $Key" }
 
 function Get-AmpPods {
-    $all = Invoke-RestMethod -Uri "$Api/pods" -Headers $Headers -ErrorAction Stop
-    @($all | Where-Object { $_.name -like "ampsurd-$Slug-*" })
+    $r = Invoke-RestMethod -Uri "$Api/pods" -Headers $Headers -ErrorAction Stop
+    $all = if ($null -ne $r.pods) { $r.pods } else { $r }
+    # v2 may still list switched-off machines: only those that are (or are becoming) active count
+    @($all | Where-Object { $_.name -like "ampsurd-$Slug-*" -and @("TERMINATED", "EXITED", "ERROR") -notcontains $_.status })
 }
 
 $NamDir = if ($Recordings) { Join-Path (Split-Path $Recordings -Parent) "NAMs" } else { Join-Path ([Environment]::GetFolderPath("MyDocuments")) "AMPSURD training\$Amp\NAMs" }
@@ -114,7 +117,11 @@ if ($files.Count -eq 0) { Fail "No recordings on Google Drive for '$Amp'." }
 Say "$($files.Count) recordings, $($done.Count) already trained"
 if ($done.Count -ge $files.Count) { Say "Nothing left to train."; Collect-Nams; exit 0 }
 
-try { $already = @(Get-AmpPods).Count } catch { Fail "RunPod did not answer ($($_.Exception.Message)) - check the API key (delete $KeyFile to enter it again)." }
+try { $already = @(Get-AmpPods).Count } catch {
+    $code = 0; try { $code = [int]$_.Exception.Response.StatusCode } catch {}
+    if ($code -eq 401 -or $code -eq 403) { Fail "RunPod refused the API key ($($_.Exception.Message)) - delete $KeyFile to enter it again." }
+    Fail "RunPod could not be reached ($($_.Exception.Message)) - check the internet connection and try again later."
+}
 if ($already -gt 0) { Fail "Machines for '$Amp' are still running - wait for them, or check RunPod." }
 
 # --- machines ---
@@ -127,33 +134,36 @@ for ($m = 1; $m -le $Machines; $m++) {
     $to = [Math]::Min($m * $PerMachine, $parts)
     $body = @{
         name = "ampsurd-$Slug-$m"
-        imageName = $Image
-        gpuTypeIds = @($Gpus)
-        gpuTypePriority = "custom"
-        gpuCount = 1
-        containerDiskInGb = 30
-        volumeInGb = 0
-        minVCPUPerGPU = 8
-        ports = @()
+        image = $Image
+        disk = 30
         env = @{
             AMP = $Amp; PART_FROM = "$from"; PART_TO = "$to"; PARTS = "$parts"; EPOCHS = "$Epochs"; MAX_HOURS = "$MaxHours"
             RCLONE_CONFIG_GDRIVE_TYPE = "drive"; RCLONE_CONFIG_GDRIVE_SCOPE = "drive.file"; RCLONE_CONFIG_GDRIVE_TOKEN = $tok
             AMPSURD_RUNPOD_KEY = $Key
         }
-        dockerStartCmd = @("bash", "-c", "curl -fsSL $Raw/pod_job.sh -o /pod_job.sh && bash /pod_job.sh")
+        cmd = @("bash", "-c", "curl -fsSL $Raw/pod_job.sh -o /pod_job.sh && bash /pod_job.sh")
     }
-    $pod = $null
+    # v2 takes one GPU type per request: try them cheapest first, secure cloud first
+    $pod = $null; $last = ""
     foreach ($cloud in @("SECURE", "COMMUNITY")) {
-        $body.cloudType = $cloud
-        try {
-            $pod = Invoke-RestMethod -Method Post -Uri "$Api/pods" -Headers $Headers -ContentType "application/json" `
-                -Body ($body | ConvertTo-Json -Depth 5) -ErrorAction Stop
-            break
-        } catch { Say "  no machine free in $cloud cloud ($($_.Exception.Message))" }
+        foreach ($g in $Gpus) {
+            $body.cloud = $cloud
+            $body.gpu = @{ id = $g; count = 1; minVcpuCountPerGpu = 8 }
+            try {
+                $pod = Invoke-RestMethod -Method Post -Uri "$Api/pods" -Headers $Headers -ContentType "application/json" `
+                    -Body ($body | ConvertTo-Json -Depth 5) -ErrorAction Stop
+                break
+            } catch {
+                $last = $_.Exception.Message
+                $code = 0; try { $code = [int]$_.Exception.Response.StatusCode } catch {}
+                if ($code -eq 401 -or $code -eq 402) { Fail "RunPod refused the request ($last) - nothing was rented." }
+            }
+        }
+        if ($pod) { break }
     }
-    if (-not $pod) { Say "Machine $m could not be rented - run the command again later (finished work is kept)."; continue }
-    $gpu = if ($pod.machine.gpuTypeId) { $pod.machine.gpuTypeId } else { "GPU" }
-    $price = if ($pod.costPerHr) { " - `${0}/h" -f $pod.costPerHr } else { "" }
+    if (-not $pod) { Say "Machine $m could not be rented ($last) - run the command again later (finished work is kept)."; continue }
+    $gpu = if ($pod.gpu.id) { $pod.gpu.id } else { "GPU" }
+    $price = if ($pod.cost) { " - `${0}/h" -f $pod.cost } else { "" }
     Say "  machine $m ($gpu$price): parts $from-$to of $parts"
 }
 

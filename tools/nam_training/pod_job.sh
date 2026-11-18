@@ -35,11 +35,12 @@ switch_off() {
     if [ -n "${AMPSURD_RUNPOD_KEY:-}" ] && [ -n "${RUNPOD_POD_ID:-}" ]; then
         for i in 1 2 3; do
             CODE=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE -H "Authorization: Bearer $AMPSURD_RUNPOD_KEY" \
-                "https://rest.runpod.io/v1/pods/$RUNPOD_POD_ID")
+                "https://api.runpod.io/v2/pods/$RUNPOD_POD_ID")
             case "$CODE" in 2*) exit 0;; esac
             sleep 20
         done
-        curl -s -o /dev/null -X POST -H "Authorization: Bearer $AMPSURD_RUNPOD_KEY" "https://rest.runpod.io/v1/pods/$RUNPOD_POD_ID/stop"
+        curl -s -o /dev/null -X POST -H "Authorization: Bearer $AMPSURD_RUNPOD_KEY" -H "Content-Type: application/json" \
+            -d '{"action":"stop"}' "https://api.runpod.io/v2/pods/$RUNPOD_POD_ID/action"
     fi
     exit 0
 }

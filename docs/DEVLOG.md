@@ -6,6 +6,18 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-18 — Session 5t: Framus Cobra CH3 recordings; training script moved to RunPod API v2 - Claude (Opus 5.5)
+
+- Owner sent CH3.zip (Framus Cobra CH3, 11 recordings 7:30-17:00). Checked: right length, no clipping (peak -2.3 dB),
+  constant timing (start = end, 23-25 samples), replicate ESR 0.0001-0.0024 except 7:30 0.0089 (a 0.8 dB level drift
+  between start and end - warm-up; 0.0004 after level match), little below 15 Hz (0.01-0.4 %).
+- train_amp.ps1 uploaded the recordings, then failed: "rest.runpod.io" no longer resolves (also at 8.8.8.8). RunPod
+  moved to REST API v2 (https://api.runpod.io/v2). Ported train_amp.ps1 (list = {pods:[...]} and inactive ones left out;
+  create: image / disk / env / cmd / cloud / gpu {id, count, minVcpuCountPerGpu}, one GPU type per request, tried in
+  order; response gpu.id / cost; a network error no longer says "check the API key"), pod_job.sh and
+  finish_and_upload.sh (DELETE /v2/pods/{id}, stop = POST /v2/pods/{id}/action {"action":"stop"}). Written from the v2
+  docs, not run from here (RunPod is not reachable from the Claude workspace) - the owner's run is the test.
+
 ## 2026-11-17 — Release 0.9.25 - Claude (Opus 5.5)
 
 - Owner: (Bluetooth fix, asked to release as 0.9.25) "yes please" - 0.9.25 published. Windows files to be

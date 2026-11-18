@@ -36,11 +36,11 @@ sleep 30
 # RunPod REST API with the key saved in /root/.rpkey (the older runpodctl may not accept new keys)
 if [ -s /root/.rpkey ]; then
     CODE=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE -H "Authorization: Bearer $(cat /root/.rpkey)" \
-        "https://rest.runpod.io/v1/pods/$RUNPOD_POD_ID")
+        "https://api.runpod.io/v2/pods/$RUNPOD_POD_ID")
     echo "terminate answered $CODE"
     case "$CODE" in 2*) exit 0;; esac
     CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Authorization: Bearer $(cat /root/.rpkey)" \
-        "https://rest.runpod.io/v1/pods/$RUNPOD_POD_ID/stop")
+        -H "Content-Type: application/json" -d '{"action":"stop"}' "https://api.runpod.io/v2/pods/$RUNPOD_POD_ID/action")
     echo "stop answered $CODE"
     case "$CODE" in 2*) exit 0;; esac
 fi
