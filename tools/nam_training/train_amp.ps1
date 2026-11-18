@@ -92,7 +92,7 @@ function Get-AmpPods {
 $NamDir = if ($Recordings) { Join-Path (Split-Path $Recordings -Parent) "NAMs" } else { Join-Path ([Environment]::GetFolderPath("MyDocuments")) "AMPSURD training\$Amp\NAMs" }
 function Collect-Nams {
     New-Item -ItemType Directory -Force -Path $NamDir | Out-Null
-    & $Rclone copy "$Root/$Amp/NAMs" $NamDir --include "*.nam" --include "summary*.txt" --include "logs/**"
+    & $Rclone copy "$Root/$Amp/NAMs" $NamDir --include "/*.nam" --include "/summary*.txt" --include "/logs/**"
     $n = @(Get-ChildItem $NamDir -Filter *.nam).Count
     Say "$n .nam files in $NamDir"
 }
@@ -111,8 +111,9 @@ if (-not $haveInput) {
     if (-not $InputFile) { Fail "The input file is not on Google Drive yet: run again with -InputFile <path to T3K-sweep-v3.wav>" }
     & $Rclone copyto $InputFile "$Root/_input/T3K-sweep-v3.wav" -P
 }
-$files = @(& $Rclone lsf "$Root/$Amp/recordings" --include "*.wav")
-$done = @(& $Rclone lsf "$Root/$Amp/NAMs" --include "*.nam" 2>$null)
+# --files-only: folders (status, the machines' work folders) are not captures
+$files = @(& $Rclone lsf "$Root/$Amp/recordings" --files-only --include "/*.wav")
+$done = @(& $Rclone lsf "$Root/$Amp/NAMs" --files-only --include "/*.nam" 2>$null)
 if ($files.Count -eq 0) { Fail "No recordings on Google Drive for '$Amp'." }
 Say "$($files.Count) recordings, $($done.Count) already trained"
 if ($done.Count -ge $files.Count) { Say "Nothing left to train."; Collect-Nams; exit 0 }
@@ -177,7 +178,7 @@ Say "Waiting - a report every 5 minutes (you can close this window - the machine
 $total = $files.Count
 do {
     Start-Sleep -Seconds 300
-    $n = @(& $Rclone lsf "$Root/$Amp/NAMs" --include "*.nam" 2>$null).Count
+    $n = @(& $Rclone lsf "$Root/$Amp/NAMs" --files-only --include "/*.nam" 2>$null).Count
     try { $pods = @(Get-AmpPods) } catch { Say "RunPod did not answer - trying again in 5 minutes"; continue }
     $running = $pods.Count
     $lines = @(); $worst = 0

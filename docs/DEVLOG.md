@@ -17,6 +17,12 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
   order; response gpu.id / cost; a network error no longer says "check the API key"), pod_job.sh and
   finish_and_upload.sh (DELETE /v2/pods/{id}, stop = POST /v2/pods/{id}/action {"action":"stop"}). Written from the v2
   docs, not run from here (RunPod is not reachable from the Claude workspace) - the owner's run is the test.
+- The v2 run works (4 machines: 3x A40 $0.59/h, 1x L4 $0.69/h; machine 4 at epoch 145 after 33 min), but the PC window
+  showed "epoch 0/400" and "6 of 11 trained". Causes: the epoch was read only as "Epoch N/400", which the progress
+  bar does not print; rclone lsf --include "*.nam" also listed folders (status/ + the machines' _work_* folders), and
+  upload / -Collect copied the trainer's checkpoints in nams/_work_* too. Fixed (owner: "yes"): epoch from "Epoch N"
+  or the newest checkpoint of the current lightning_logs/version_N, whichever is further (tested with a mock folder);
+  --files-only and "/*.nam" (top level) everywhere. Applies to runs started from now on.
 
 ## 2026-11-17 — Release 0.9.25 - Claude (Opus 5.5)
 
