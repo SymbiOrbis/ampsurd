@@ -23,6 +23,13 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
   upload / -Collect copied the trainer's checkpoints in nams/_work_* too. Fixed (owner: "yes"): epoch from "Epoch N"
   or the newest checkpoint of the current lightning_logs/version_N, whichever is further (tested with a mock folder);
   --files-only and "/*.nam" (top level) everywhere. Applies to runs started from now on.
+- CH2 (11 recordings 7:30-17:00) checked before training: all fine (replicate 0.0002-0.0022, no clipping, little
+  below 15 Hz). Trained the same evening, 4x A40.
+- 2026-11-19: owner sent the 22 .nam files + the Cobra tone sweeps (CH1-3, T00-T13). ESR CH2 0.015-0.051, CH3
+  0.010-0.040 (high gain). Framus Cobra CH3.ampsurdamp built (7:30-17:00, fade from 7:00; 9 sweeps used the quiet
+  version) and saved to the owner's Framus Cobra folder. CH2 refused by the builder: NAM's gain estimate 7:30 0.25 >
+  8:00 0.19 (tolerance 0.05) - the recordings' levels rise in order (rms -36.5 / -32.8 / -30.8 dB), so the names are
+  right; the estimate wobbles near clean. Asked the owner how to build it.
 
 ## 2026-11-17 — Release 0.9.25 - Claude (Opus 5.5)
 
