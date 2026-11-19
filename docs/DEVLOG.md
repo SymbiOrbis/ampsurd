@@ -29,7 +29,8 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
   0.010-0.040 (high gain). Framus Cobra CH3.ampsurdamp built (7:30-17:00, fade from 7:00; 9 sweeps used the quiet
   version) and saved to the owner's Framus Cobra folder. CH2 refused by the builder: NAM's gain estimate 7:30 0.25 >
   8:00 0.19 (tolerance 0.05) - the recordings' levels rise in order (rms -36.5 / -32.8 / -30.8 dB), so the names are
-  right; the estimate wobbles near clean. Asked the owner how to build it.
+  right; the estimate wobbles near clean. Owner chose to include all 11 ("yes, please build it"): built once with the
+  gain-order check switched off in a local copy (repo unchanged; the check runs only when building). Saved next to CH3.
 
 ## 2026-11-17 — Release 0.9.25 - Claude (Opus 5.5)
 
