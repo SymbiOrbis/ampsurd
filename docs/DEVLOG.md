@@ -66,6 +66,8 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
   loose NAMs and all NAMs inside the 14 amps, maker / model / notice in amp.xml, NOTICE.txt per folder. Checked: weights
   identical to the originals, amp NAMs = loose copies, all 14 amps pass ampsurd_amp_check. Tool kept as
   tools/nam_training/finalize_release_folder.py. Saved tones pointing at the old _Final amp paths will not find them.
+- Owner plans to sell the captures: "free of charge" in the terms replaced by "... including commercial releases, without
+  paying any royalties or further fees to AMPSURD." Folder rebuilt, sent again as _Final new.zip.
 
 ## 2026-11-17 — Release 0.9.25 - Claude (Opus 5.5)
 

@@ -16,7 +16,7 @@ def notice(maker,gear):
    f"All product names, trademarks and brands belong to their respective owners and are used only to identify the equipment that was captured. "
    f"AMPSURD is not affiliated with, sponsored by or endorsed by {maker}, and the captures were made without the manufacturer's involvement or approval. "
    f"They represent the sound of one individual unit and are provided as they are, without any warranty. "
-   f"Terms of use: you may use these captures free of charge to play, record, perform and publish your own music, including commercial releases. "
+   f"Terms of use: you may use these captures to play, record, perform and publish your own music, including commercial releases, without paying any royalties or further fees to AMPSURD. "
    f"You may not sell, rent or otherwise distribute the capture files themselves, alone or as part of another product, without written permission from AMPSURD.")
 def fix_nam(data,name,maker,model,gtype,note):
   d=json.loads(data); m=d.setdefault('metadata',{})
