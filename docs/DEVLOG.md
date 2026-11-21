@@ -46,6 +46,9 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
   source (guitar volume down / cable out / USB, ground) and the gate.
 - Framus Cobra CH1 v2.ampsurdamp (owner: start at 10:00, below only rising volume): captures 10:00-17:00 + CH1 sweeps,
   silenceFrom=0 added by hand - GAIN 7:00-10:00 fades from silence up to the 10:00 capture. Saved next to CH1.
+- Owner: v2 "is better". Mesa Dual CH1 CLEAN noisy at 8:00 too: 8:00 capture removed from the 14 Nov file (GAIN line and
+  .nam out of amp.xml / the zip; silenceFrom=0 was already set) - GAIN now fades from 7:00 up to 9:00. Saved as
+  Mesa Dual\CH1\Dual CH1 CLEAN.ampsurdamp.
 
 ## 2026-11-17 — Release 0.9.25 - Claude (Opus 5.5)
 
