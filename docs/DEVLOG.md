@@ -51,6 +51,11 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
   Mesa Dual\CH1\Dual CH1 CLEAN.ampsurdamp (also over the old copy in Mesa Dual\_Final).
 - Dual CH2 RAW: 8:00 removed the same way (9 Nov file, silenceFrom=0 already set) - GAIN fades 7:00 -> 9:00. Replaced
   in Mesa Dual\_Final.
+- Owner asked for a kept table of which NAMs each final amp holds, and the NAMs next to the amps in subfolders, named
+  "<amp> <CH> <MODE> GAIN hhmm.nam". Mesa done: the 8 finals in _Final\Ampsurd Amp Capture Mesa Dual Rectifier 100W Head
+  ("Dual CH2 RAW old" skipped) unpacked, 81 NAMs copied out of the .ampsurdamp files themselves into "<amp> NAMs"
+  folders + "_NAM list Mesa.csv" (GAIN, new / original name, TONE3000 or RunPod, ESR, checksum); delivered as
+  Mesa NAMs.zip for the owner to unpack. Table kept in the project as claude/FINAL_AMPS.md. Cobra and EVH to follow.
 
 ## 2026-11-17 — Release 0.9.25 - Claude (Opus 5.5)
 
