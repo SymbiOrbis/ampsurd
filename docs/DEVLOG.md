@@ -31,6 +31,11 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
   8:00 0.19 (tolerance 0.05) - the recordings' levels rise in order (rms -36.5 / -32.8 / -30.8 dB), so the names are
   right; the estimate wobbles near clean. Owner chose to include all 11 ("yes, please build it"): built once with the
   gain-order check switched off in a local copy (repo unchanged; the check runs only when building). Saved next to CH3.
+- 2026-11-20/21 Framus Cobra CH1: 11 recordings checked - 7:30 / 8:00 / 10:00 had level changes inside the file
+  (replicate 0.03 / 0.15 / 0.35: 10:00 first ~10 s +4 dB, 8:00 first ~80 s -2..-3 dB); owner re-recorded 8:00 and 10:00
+  (now 0.004 / 0.001) and left 7:30 out. Trained 10 on RunPod; ESR 0.003-0.009 up to 14:00, 0.022-0.023 at 15-17.
+  Framus Cobra CH1.ampsurdamp built (8:00-17:00, fade from 7:00; 5 sweeps used the quiet version), saved to the
+  owner's Framus Cobra folder.
 
 ## 2026-11-17 — Release 0.9.25 - Claude (Opus 5.5)
 
