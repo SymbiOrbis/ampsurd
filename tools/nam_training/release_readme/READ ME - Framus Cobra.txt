@@ -1,0 +1,42 @@
+Framus Cobra - AMPSURD captures
+
+LEGAL NOTICE AND TERMS OF USE
+
+Neural captures made by AMPSURD (Radovan Glovňa) from a privately owned Framus Cobra 100 W.
+All product names, trademarks and brands belong to their respective owners and are used only to identify the equipment that was captured.
+AMPSURD is not affiliated with, sponsored by or endorsed by Framus, and the captures were made without the manufacturer's involvement or approval.
+They represent the sound of one individual unit and are provided as they are, without any warranty.
+Terms of use: you may use these captures to play, record, perform and publish your own music, including commercial releases, without paying any royalties or further fees to AMPSURD.
+You may not sell, rent or otherwise distribute the capture files themselves, alone or as part of another product, without written permission from AMPSURD.
+
+GROUND RULES FOR A GOOD TONE
+(These apply to any NAM capture and any NAM player, not only to AMPSURD.)
+
+1. Input level matters as much as the guitar.
+   A capture reacts to how loud your guitar arrives, just like a real amp: too quiet sounds thin and
+   weak, with less gain and less punch. Set the input gain of your audio interface as high as possible
+   without clipping - play your hardest and leave a little headroom (the meter should not reach red).
+   If your player has an input level / calibration setting, set it to match your interface.
+
+2. Use a speaker cabinet IR.
+   These are captures of the amplifier only, without the speaker cabinet. Without a cabinet impulse
+   response (IR) the sound is harsh and fizzy. Load a cab IR after the capture.
+
+3. Your guitar's volume knob works like on the real amp.
+   Rolling it back cleans the sound up. Pickups matter too: hotter pickups give more gain and
+   compression, single coils less gain and more clarity (and more hum).
+
+4. Keep noise out at the source.
+   High gain amplifies everything, including hum from single coils, cables, power supplies and screens.
+   Turn away from the computer screen, use good cables, and use a noise gate for high gain.
+
+5. Work at 48 kHz with a small buffer.
+   The captures were made at 48 kHz; other sample rates work but are converted. A small buffer
+   (64-128 samples) keeps the delay low so the amp feels natural to play.
+
+6. Less gain is often more.
+   A tight boost pedal in front with lower amp gain often sounds clearer and heavier in a mix than
+   maximum gain. Shape the sound with the amp's tone controls first, and use EQ after the cab only
+   to fit the mix.
+
+Contact: https://ampsurd.com · contact@ampsurd.com
