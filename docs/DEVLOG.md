@@ -36,6 +36,14 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
   (now 0.004 / 0.001) and left 7:30 out. Trained 10 on RunPod; ESR 0.003-0.009 up to 14:00, 0.022-0.023 at 15-17.
   Framus Cobra CH1.ampsurdamp built (8:00-17:00, fade from 7:00; 5 sweeps used the quiet version), saved to the
   owner's Framus Cobra folder.
+- Owner: "gainy noise" at Cobra CH1 GAIN 8:00-9:00 when the guitar goes quiet, gone at 10:00 (mix2/mix3 clips, gate
+  off). Noise = tones at 1550 / 1950 Hz (50 Hz mains harmonics) in the input; level -75 dB at 8:00, -79 at 9:00, -97 at
+  10:00. Cause: the AMPSURD amp evens the volume over GAIN (calibrateMorph: each step raised to the noon capture's
+  loudness) - 8:00 is ~16 dB quieter than noon, so its hum is raised too; and the 8:00/9:00 captures pass ~9 dB more
+  of that range at very low levels. Checked against the real recordings (training input rendered through the
+  captures, 1.4-2.1 kHz by input level): model = real within 0.0-1.4 dB at 8:00/9:00 (-2.5 dB at 10:00 for the
+  quietest frames) - the captures are faithful, the real amp does the same. No retraining; advised finding the hum
+  source (guitar volume down / cable out / USB, ground) and the gate.
 
 ## 2026-11-17 — Release 0.9.25 - Claude (Opus 5.5)
 
