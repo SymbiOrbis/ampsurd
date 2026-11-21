@@ -20,7 +20,8 @@ GROUND RULES FOR A GOOD TONE
 
 2. Put the pedal in front of an amp.
    This is a capture of the pedal only. Use it before an amp capture (and a cabinet IR), like the
-   real pedal in front of a real amp.
+   real pedal in front of a real amp. The free AMPSURD app has 144 cabinet IRs built in, and you can
+   blend them freely into your own cabinet sound.
 
 3. Your guitar's volume knob works like on the real amp.
    Rolling it back cleans the sound up. Pickups matter too: hotter pickups give more gain and
@@ -30,9 +31,13 @@ GROUND RULES FOR A GOOD TONE
    High gain amplifies everything, including hum from single coils, cables, power supplies and screens.
    Turn away from the computer screen, use good cables, and use a noise gate for high gain.
 
-5. Work at 48 kHz with a small buffer.
-   The captures were made at 48 kHz; other sample rates work but are converted. A small buffer
-   (64-128 samples) keeps the delay low so the amp feels natural to play.
+5. Use 48 kHz, an ASIO driver and a buffer your computer can handle.
+   The captures were made at 48 kHz; other sample rates work but are converted. On Windows use the
+   ASIO driver of your audio interface (Macs do not need one) - it gives far lower delay than the
+   standard Windows audio. Up to around 512 samples the buffer delay still feels natural enough;
+   if your computer can handle it, smaller buffers feel even more natural. If you hear pops, clicks
+   or dropouts (more likely on older computers), choose a larger buffer or play fewer NAM captures
+   at the same time.
 
 6. Less gain is often more.
    A tight boost pedal in front with lower amp gain often sounds clearer and heavier in a mix than
