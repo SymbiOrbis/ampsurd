@@ -23,14 +23,14 @@ Once on this PC:
   - the first run connects rclone to your Google Drive (a browser window: allow access). rclone only sees the files
     it created itself.
 
-Options: -Machines 3 -PerMachine 3 -Epochs 400 -MaxHours 8  -InputFile <path to T3K-sweep-v3.wav>  -NoWait
+Options: -Machines 3 -PerMachine 2 -Epochs 400 -MaxHours 8  -InputFile <path to T3K-sweep-v3.wav>  -NoWait
 #>
 param(
     [Parameter(Mandatory = $true)][string]$Amp,
     [string]$Recordings = "",
     [string]$InputFile = "",
     [int]$Machines = 3,
-    [int]$PerMachine = 3,
+    [int]$PerMachine = 2,   # 3 at once on one GPU took 3.5-4 h (2026-11-18/20 runs) - 2 take ~1.5 h and cost less per capture
     [int]$Epochs = 400,
     [int]$MaxHours = 8,
     [string]$Rclone = "",

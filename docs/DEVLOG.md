@@ -6,6 +6,18 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-21 — Session 5u: Peavey 6505 run stopped (RunPod credit), RunPod cost check - Claude (Opus 5.5)
+
+- 6505+ 112 combo: 32 recordings checked (CH1 rhythm / crunch (7:30 empty, removed) / lead; all fine; 16:00 = 17:00 on
+  the rhythm sets). Tone sweeps: CH1 usable (crunch on, ~8:00, quiet sweep used, references 1.46 dB apart); lead
+  sweeps re-recorded at PRE minimum and reamp -20 dB (CH3_T*): cuts now -13 (mid) / -10 dB (treble), mid max +1 dB,
+  references 0.95 dB. 6505+ has independent EQ per channel (manual).
+- Training run (11 x 3 asked) rented only 8 machines and all stopped at 21:11 local: RunPod balance reached zero
+  (-$0.15). No .nam finished - the run is lost (recordings stay on Drive).
+- Owner asked where his $40 went: billing explorer = runs since 8 Nov ($4.9 + $5.0 + $15.5 + $8.2 + ~$6). Machines did
+  switch off; my estimates were wrong - 3 trainings on one GPU took 3.5-4 h (finish times of the .nam files), 2 take
+  ~1-1.5 h. train_amp.ps1 default -PerMachine 2 (was 3). Advice: top up >= $20, rerun 16 x 2 (~$12-15).
+
 ## 2026-11-18 — Session 5t: Framus Cobra CH3 recordings; training script moved to RunPod API v2 - Claude (Opus 5.5)
 
 - Owner sent CH3.zip (Framus Cobra CH3, 11 recordings 7:30-17:00). Checked: right length, no clipping (peak -2.3 dB),
