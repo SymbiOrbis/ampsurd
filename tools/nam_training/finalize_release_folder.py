@@ -55,9 +55,9 @@ for old,(new,full,maker,model,pre) in AMPS.items():
           b=fix_nam(open(os.path.join(root,f),'rb').read(),f[:-4],maker,model,'amp',note)
           open(os.path.join(dst,rel,f),'wb').write(b); count['nam']+=1
   open(os.path.join(dst,'NOTICE.txt'),'w',encoding='utf-8',newline='\r\n').write(
-    f"{full} - AMPSURD amp captures\n\n"+note.replace('. ','.\n')+"\n\nContact: https://github.com/SymbiOrbis/ampsurd\n")
+    f"{full} - AMPSURD amp captures\n\n"+note.replace('. ','.\n')+"\n\nContact: https://ampsurd.com · contact@ampsurd.com\n")
 pd=os.path.join(O,'Pedals'); os.makedirs(pd); pn=notice('Gerhat','Screamer pedal')
 for old,new in [('Screamer standard.nam','Gerhat Screamer STANDARD'),('Screamer halfdrivew.nam','Gerhat Screamer HALF DRIVE')]:
   open(os.path.join(pd,new+'.nam'),'wb').write(fix_nam(open(os.path.join(F,'Pedals',old),'rb').read(),new,'Gerhat','Screamer','pedal',pn)); count['nam']+=1
-open(os.path.join(pd,'NOTICE.txt'),'w',encoding='utf-8',newline='\r\n').write("Gerhat Screamer - AMPSURD pedal captures\n\n"+pn.replace('. ','.\n')+"\n\nContact: https://github.com/SymbiOrbis/ampsurd\n")
+open(os.path.join(pd,'NOTICE.txt'),'w',encoding='utf-8',newline='\r\n').write("Gerhat Screamer - AMPSURD pedal captures\n\n"+pn.replace('. ','.\n')+"\n\nContact: https://ampsurd.com · contact@ampsurd.com\n")
 print(count)
