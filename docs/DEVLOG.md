@@ -44,6 +44,8 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
   captures, 1.4-2.1 kHz by input level): model = real within 0.0-1.4 dB at 8:00/9:00 (-2.5 dB at 10:00 for the
   quietest frames) - the captures are faithful, the real amp does the same. No retraining; advised finding the hum
   source (guitar volume down / cable out / USB, ground) and the gate.
+- Framus Cobra CH1 v2.ampsurdamp (owner: start at 10:00, below only rising volume): captures 10:00-17:00 + CH1 sweeps,
+  silenceFrom=0 added by hand - GAIN 7:00-10:00 fades from silence up to the 10:00 capture. Saved next to CH1.
 
 ## 2026-11-17 — Release 0.9.25 - Claude (Opus 5.5)
 
