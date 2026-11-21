@@ -59,6 +59,13 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 - Owner approved new folder names and asked for all 3 amps: "<Amp> NAMs" (Mesa Dual Rectifier / Framus Cobra /
   EVH 5150 III) with subfolders "<Amp> <CH> [MODE]"; 14 finals, 145 NAMs, one zip + csv per amp placed in each amp
   folder in _Final for the owner to unpack. Framus Cobra CH1 in _Final is v2 (10:00-17:00).
+- Naming check of _Final (146 .nam) found: short Mesa amp names, "Framus Cobra CH1 v2" shown, mixed folder spelling,
+  a leftover "Dual CH2 RAW old", pedal typo. Owner approved fixes + legal metadata with terms of use (free for own
+  music incl. commercial; files not to be sold / redistributed). Owner uploaded _Final.zip; returned as _Final new.zip
+  (written next to _Final on the PC): renamed folders / amp files / shown names / pedals, metadata + notice in all 146
+  loose NAMs and all NAMs inside the 14 amps, maker / model / notice in amp.xml, NOTICE.txt per folder. Checked: weights
+  identical to the originals, amp NAMs = loose copies, all 14 amps pass ampsurd_amp_check. Tool kept as
+  tools/nam_training/finalize_release_folder.py. Saved tones pointing at the old _Final amp paths will not find them.
 
 ## 2026-11-17 — Release 0.9.25 - Claude (Opus 5.5)
 
