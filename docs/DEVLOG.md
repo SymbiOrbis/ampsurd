@@ -48,7 +48,9 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
   silenceFrom=0 added by hand - GAIN 7:00-10:00 fades from silence up to the 10:00 capture. Saved next to CH1.
 - Owner: v2 "is better". Mesa Dual CH1 CLEAN noisy at 8:00 too: 8:00 capture removed from the 14 Nov file (GAIN line and
   .nam out of amp.xml / the zip; silenceFrom=0 was already set) - GAIN now fades from 7:00 up to 9:00. Saved as
-  Mesa Dual\CH1\Dual CH1 CLEAN.ampsurdamp.
+  Mesa Dual\CH1\Dual CH1 CLEAN.ampsurdamp (also over the old copy in Mesa Dual\_Final).
+- Dual CH2 RAW: 8:00 removed the same way (9 Nov file, silenceFrom=0 already set) - GAIN fades 7:00 -> 9:00. Replaced
+  in Mesa Dual\_Final.
 
 ## 2026-11-17 — Release 0.9.25 - Claude (Opus 5.5)
 
