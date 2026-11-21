@@ -55,7 +55,10 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
   "<amp> <CH> <MODE> GAIN hhmm.nam". Mesa done: the 8 finals in _Final\Ampsurd Amp Capture Mesa Dual Rectifier 100W Head
   ("Dual CH2 RAW old" skipped) unpacked, 81 NAMs copied out of the .ampsurdamp files themselves into "<amp> NAMs"
   folders + "_NAM list Mesa.csv" (GAIN, new / original name, TONE3000 or RunPod, ESR, checksum); delivered as
-  Mesa NAMs.zip for the owner to unpack. Table kept in the project as claude/FINAL_AMPS.md. Cobra and EVH to follow.
+  Mesa NAMs.zip for the owner to unpack. Table kept in the project as claude/FINAL_AMPS.md.
+- Owner approved new folder names and asked for all 3 amps: "<Amp> NAMs" (Mesa Dual Rectifier / Framus Cobra /
+  EVH 5150 III) with subfolders "<Amp> <CH> [MODE]"; 14 finals, 145 NAMs, one zip + csv per amp placed in each amp
+  folder in _Final for the owner to unpack. Framus Cobra CH1 in _Final is v2 (10:00-17:00).
 
 ## 2026-11-17 — Release 0.9.25 - Claude (Opus 5.5)
 
