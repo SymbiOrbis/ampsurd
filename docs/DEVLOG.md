@@ -33,6 +33,10 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
   with the CH1 sweeps (references 1.46 dB apart), lead with the re-recorded CH3_T* sweeps (0.95 dB). Saved to the
   owner's "6505 112 combo 60w" folder. Window quirks seen: "33/35 of 32 trained" (Drive can hold two files with the
   same name - an upload raced the last one) and "epoch 400/400" shown for ~35 min before the end.
+- Overdrives (first run with the shared queue, 17 recordings on 8 machines): the window showed "starting" for 40 min
+  although the machines trained (pod log: "training 1 takes DigiTech Bad Monkey BOOST.wav" 3 min after start). Cause:
+  status() read the name with 'training [^ ]* (' - pedal file names contain spaces, so no status was written. Fixed
+  (name up to " (<E> epochs"); applies to machines started from now on. Training itself unaffected.
 
 ## 2026-11-18 — Session 5t: Framus Cobra CH3 recordings; training script moved to RunPod API v2 - Claude (Opus 5.5)
 

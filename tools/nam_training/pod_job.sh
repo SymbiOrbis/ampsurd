@@ -58,7 +58,8 @@ status() {
     for f in train_part*.txt; do
         [ -f "$f" ] || continue
         k=${f#train_part}; k=${k%.txt}
-        name=$(grep -o 'training [^ ]* (' "$f" | tail -1 | sed 's/training //; s/ (//')
+        # (names may contain spaces, e.g. "Boss SD-1 DRIVE": the line is "[i/n] training <name> (<E> epochs) ...")
+        name=$(grep -oE 'training .* \([0-9]+ epochs' "$f" | tail -1 | sed -E 's/^training //; s/ \([0-9]+ epochs$//')
         pos=$(grep -o '^\[[0-9]*/[0-9]*\] training' "$f" | tail -1 | tr -d '[]' | awk -F'[/ ]' '{print $1, $2}')
         # epoch: from the progress bar ("Epoch 145: ..." or "Epoch 145/400"; counted from 0), or else from the newest
         # checkpoint the trainer saved (".../checkpoint_best_epoch=0145_...nam") - whichever is further
