@@ -28,6 +28,11 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
   recordings / (machines x 2) x time per recording (eta file now "<left> <per recording>"); per-recording summaries in
   NAMs/summaries/. Tested here with a fake rclone / trainer: 3 machines x 2 on 7 recordings - each trained exactly once,
   all workers ended. Not yet run on RunPod.
+- 6505 done (old fixed-parts job, PC on): 32 captures; ESR rhythm 0.005-0.011, crunch 0.007-0.016, lead 0.014-0.039.
+  Built Peavey 6505+ 112 CH1 RHYTHM (7:30-17:00), CH1 CRUNCH (8:00-17:00), CH2 LEAD (7:30-17:00): rhythm / crunch
+  with the CH1 sweeps (references 1.46 dB apart), lead with the re-recorded CH3_T* sweeps (0.95 dB). Saved to the
+  owner's "6505 112 combo 60w" folder. Window quirks seen: "33/35 of 32 trained" (Drive can hold two files with the
+  same name - an upload raced the last one) and "epoch 400/400" shown for ~35 min before the end.
 
 ## 2026-11-18 — Session 5t: Framus Cobra CH3 recordings; training script moved to RunPod API v2 - Claude (Opus 5.5)
 
