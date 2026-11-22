@@ -3,7 +3,8 @@
 #
 # Environment (set by train_amp.ps1 when it creates the machine):
 #   AMP          the amp's folder name on Google Drive ("AMPSURD training/<AMP>")
-#   PART_FROM, PART_TO, PARTS   this machine trains parts PART_FROM..PART_TO of PARTS (one training per part, side by side)
+#   SLOTS        trainings side by side on this machine (2). Each takes the next untrained recording from Google
+#                Drive, trains it, and takes the next one - until none is left (all machines share one queue)
 #   EPOCHS       training passes (400)
 #   MAX_HOURS    safety limit: after this the machine uploads what it has and switches itself off
 #   RCLONE_CONFIG_GDRIVE_TYPE / _SCOPE / _TOKEN   Google Drive access (rclone reads its remote "gdrive" from these)
@@ -13,7 +14,9 @@
 # Google Drive layout:
 #   AMPSURD training/_input/T3K-sweep-v3.wav       the input (NAM standard v3)
 #   AMPSURD training/<AMP>/recordings/*.wav         the amp recordings
-#   AMPSURD training/<AMP>/NAMs/                    the results (.nam, summaries, a log per machine)
+#   AMPSURD training/<AMP>/NAMs/                    the results (.nam, summaries/, a log per machine)
+#   AMPSURD training/<AMP>/claims/<rec>__<pod>_<k>  "taken" marks: who trains which recording (emptied by the PC
+#                                                   before each run, so a run never waits for an old machine)
 #
 # The machine switches itself off at the end in every case (done, failed, or the safety limit) - after uploading
 # everything it finished. Finished .nam files and a status line (status/status_<pod>.txt) go up every 4 minutes.
@@ -45,12 +48,12 @@ switch_off() {
     exit 0
 }
 # only the finished files at the top of nams/ (not the trainer's checkpoints in nams/_work_*)
-upload() { rclone copy nams "$OUT" --include "/*.nam" --include "/summary*.txt" --ignore-existing --retries 5 > /dev/null 2>&1; }
+upload() { rclone copy nams "$OUT" --include "/*.nam" --include "/summaries/*.txt" --ignore-existing --retries 5 > /dev/null 2>&1; }
 # what each training is doing right now (read by train_amp.ps1 on the PC): "CH1_CLEAN_G08 epoch 37/400 | ..."
 status() {
     # per training: what it trains, its epoch, and how long it still needs (from its own epoch speed so far:
     # the rest of this recording + the recordings still waiting in its share); the machine needs the longest one
-    local line="" f name ep pos now t0 e0 rate left worst=0 k
+    local line="" f name ep pos now t0 e0 rate left worst=0 k per=0 one
     now=$(date +%s)
     for f in train_part*.txt; do
         [ -f "$f" ] || continue
@@ -61,7 +64,7 @@ status() {
         # checkpoint the trainer saved (".../checkpoint_best_epoch=0145_...nam") - whichever is further
         ep=$(tr '\r' '\n' < "$f" | grep -oE 'Epoch [0-9]+' | tail -1 | awk '{print $2+1}')
         # (the newest lightning_logs/version_N is the recording being trained now)
-        vd=$(ls -d nams/_work_part${k}of*/lightning_logs/version_* 2> /dev/null | sort -V | tail -1)
+        vd=$(ls -d nams/_work_w${k}/lightning_logs/version_* 2> /dev/null | sort -V | tail -1)
         ck=""
         [ -n "$vd" ] && ck=$(ls "$vd/checkpoints/" 2> /dev/null | grep -oE 'epoch=[0-9]+' | cut -d= -f2 | sort -n | tail -1)
         [ -n "$ck" ] && ck=$(( 10#$ck + 1 )) && [ "$ck" -gt "${ep:-0}" ] && ep=$ck
@@ -79,13 +82,15 @@ status() {
             left=$(awk -v r="$rate" -v e="$ep" -v E="$EPOCHS" -v i="${1:-1}" -v n="${2:-1}" \
                 'BEGIN{printf "%d", ((E - e) + (n - i) * E) / r}')
             [ "$left" -gt "$worst" ] && worst=$left
+            one=$(awk -v r="$rate" -v E="$EPOCHS" 'BEGIN{printf "%d", E / r}')
+            [ "$one" -gt "$per" ] && per=$one
         fi
         line="$line${line:+ | }$name epoch $ep/$EPOCHS"
     done
     [ -n "$line" ] || line="${1:-starting}"
     [ "$worst" -gt 0 ] && line="$line - $(( worst / 3600 )) h $(( worst % 3600 / 60 )) min left"
     echo "$line" > "status_${RUNPOD_POD_ID:-pod}.txt"   # (no time: the machine runs on UTC, the PC adds its own)
-    echo "$worst" > "eta_${RUNPOD_POD_ID:-pod}.txt"
+    echo "$worst $per" > "eta_${RUNPOD_POD_ID:-pod}.txt"   # seconds left on the current recordings, seconds per recording
     rclone copyto "status_${RUNPOD_POD_ID:-pod}.txt" "$OUT/status/status_${RUNPOD_POD_ID:-pod}.txt" > /dev/null 2>&1
     rclone copyto "eta_${RUNPOD_POD_ID:-pod}.txt" "$OUT/status/eta_${RUNPOD_POD_ID:-pod}.txt" > /dev/null 2>&1
 }
@@ -97,7 +102,10 @@ status() {
 LIMIT_PID=$!
 
 status "installing"
-say "AMPSURD training machine: amp '$AMP', parts $PART_FROM-$PART_TO of $PARTS, $EPOCHS epochs, limit ${MAX_HOURS:-8} h"
+SLOTS=${SLOTS:-2}
+CL="$ROOT/$AMP/claims"
+POD=${RUNPOD_POD_ID:-pod}
+say "AMPSURD training machine: amp '$AMP', $SLOTS trainings side by side from the shared queue, $EPOCHS epochs, limit ${MAX_HOURS:-8} h"
 
 # --- tools ---
 say "installing the trainer and rclone ..."
@@ -110,30 +118,60 @@ curl -fsSL "$RAW/train_batch.py" -o train_batch.py
 command -v rclone > /dev/null && python -c "import nam" 2> /dev/null || { say "INSTALL FAILED"; switch_off; }
 
 # --- files ---
-say "downloading this machine's recordings from Google Drive ..."
+say "getting the list of recordings from Google Drive ..."
 rclone copy "$ROOT/_input/T3K-sweep-v3.wav" . || { say "no input file on Google Drive (AMPSURD training/_input)"; switch_off; }
 rclone lsf "$ROOT/$AMP/recordings" --files-only --include "/*.wav" | sort > all.txt
 N=$(wc -l < all.txt)
 [ "$N" -gt 0 ] || { say "no recordings on Google Drive (AMPSURD training/$AMP/recordings)"; switch_off; }
-# the same split as train_batch.py --part p --parts PARTS (every PARTS-th file, starting with file p)
-: > mine.txt
-for p in $(seq "$PART_FROM" "$PART_TO"); do awk -v p="$p" -v n="$PARTS" '(NR - p) % n == 0 && NR >= p' all.txt >> mine.txt; done
-rclone copy "$ROOT/$AMP/recordings" recordings --files-from mine.txt
-# already finished ones (an earlier run) are not trained again
-rclone copy "$OUT" nams --include "/*.nam" > /dev/null 2>&1
-say "$(wc -l < mine.txt) of $N recordings are this machine's; $(ls nams/*.nam 2> /dev/null | wc -l) .nam already finished"
+mkdir -p nams/summaries
 
-# --- training: one per part, side by side; finished .nam files go up every 10 minutes ---
+# --- the queue: take the next recording that is neither finished nor taken by another training ---
+# A training marks a recording as taken (claims/<rec>__<pod>_<k>), waits 20 s and checks the marks again: if
+# another one marked it earlier (or at the same moment with a smaller name), it gives it up and looks further.
+# On this machine the trainings take turns (flock), so they never pick at the same time.
+claim_next() {
+    local k=$1 rec base me first
+    exec 9> "$W/.claim.lock"; flock 9
+    rclone lsf "$OUT" --files-only --include "/*.nam" 2> /dev/null | sed 's/\.nam$//' > done.txt
+    rclone lsf "$CL" --files-only 2> /dev/null > claims.txt
+    while read -r rec; do
+        base=${rec%.wav}
+        grep -qxF "$base" done.txt && continue
+        awk -v b="${base}__" 'index($0, b) == 1 { f = 1 } END { exit !f }' claims.txt && continue
+        me="${base}__${POD}_$k"
+        : > ".claim_$k"; rclone copyto ".claim_$k" "$CL/$me" > /dev/null 2>&1 || continue
+        sleep 20
+        first=$(rclone lsf "$CL" --files-only --format "tp" --separator "|" 2> /dev/null \
+            | awk -F'|' -v b="${base}__" 'index($2, b) == 1' | sort | head -1 | cut -d'|' -f2)
+        if [ "$first" = "$me" ]; then flock -u 9; echo "$rec"; return 0; fi
+        rclone deletefile "$CL/$me" > /dev/null 2>&1
+        rclone lsf "$CL" --files-only 2> /dev/null > claims.txt
+    done < all.txt
+    flock -u 9
+    return 1
+}
+
+worker() {
+    local k=$1 rec base
+    sleep $(( (k - 1) * 30 + RANDOM % 20 ))
+    while rec=$(claim_next "$k"); do
+        base=${rec%.wav}
+        say "training $k takes $rec"
+        rm -rf "rec_$k"; mkdir -p "rec_$k"
+        rclone copyto "$ROOT/$AMP/recordings/$rec" "rec_$k/$rec" || { say "could not download $rec"; continue; }
+        python train_batch.py --input T3K-sweep-v3.wav --recordings "rec_$k" --dest nams --epochs "$EPOCHS" \
+            --tag "_w$k" >> "train_part$k.txt" 2>&1
+        [ -f "nams/summary_w$k.txt" ] && mv "nams/summary_w$k.txt" "nams/summaries/summary_$base.txt"
+        upload
+    done
+    say "training $k: nothing left in the queue"
+}
+
+# --- training: SLOTS side by side, each working through the queue; finished .nam files go up at once ---
 ( sleep 60; while true; do status; upload; sleep 240; done ) &
 UP_PID=$!
-# this machine holds only its own recordings: split them between its trainings (1..L)
-L=$(( PART_TO - PART_FROM + 1 ))
 PIDS=()
-for k in $(seq 1 "$L"); do
-    python train_batch.py --input T3K-sweep-v3.wav --recordings recordings --dest nams --epochs "$EPOCHS" \
-        --part "$k" --parts "$L" > "train_part$k.txt" 2>&1 &
-    PIDS+=($!)
-done
+for k in $(seq 1 "$SLOTS"); do worker "$k" & PIDS+=($!); done
 wait "${PIDS[@]}"
 kill "$UP_PID" 2> /dev/null
 
@@ -141,7 +179,7 @@ kill "$UP_PID" 2> /dev/null
 upload
 status "finished - switching off"
 for f in train_part*.txt; do tail -n 40 "$f"; done
-cat nams/summary*.txt 2> /dev/null
+cat nams/summaries/*.txt 2> /dev/null
 say "$(rclone lsf "$OUT" --files-only --include "/*.nam" | wc -l) .nam files are on Google Drive in AMPSURD training/$AMP/NAMs"
 kill "$LIMIT_PID" 2> /dev/null
 switch_off

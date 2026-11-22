@@ -68,6 +68,7 @@ def main() -> int:
     ap.add_argument("--epochs", type=int, default=400)
     ap.add_argument("--part", type=int, default=1)
     ap.add_argument("--parts", type=int, default=1)
+    ap.add_argument("--tag", default=None, help="name suffix of the work folder and summary (default: from --part)")
     args = ap.parse_args()
     if not (1 <= args.part <= args.parts):
         print("--part must be between 1 and --parts")
@@ -85,6 +86,8 @@ def main() -> int:
         return 1
     files = files[args.part - 1 :: args.parts]  # this terminal's share
     tag = f"_part{args.part}of{args.parts}" if args.parts > 1 else ""
+    if args.tag is not None:
+        tag = args.tag
     print(f"part {args.part} of {args.parts}: {len(files)} recordings")
 
     done, skipped, failed = [], [], []

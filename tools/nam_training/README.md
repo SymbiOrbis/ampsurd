@@ -4,9 +4,13 @@
 
     powershell -ExecutionPolicy Bypass -File .\train_amp.ps1 -Amp "Mesa Dual" -Recordings "C:\...\Mesa Dual\recordings"
 
-Uploads the recordings to Google Drive (AMPSURD training\<amp>\recordings), rents 3 machines (cheapest suitable
-free GPU, 3 trainings each), shows every 5 minutes what each machine trains and how long it still needs, and
-downloads the .nam files to <recordings>\..\NAMs when all machines are off. Each machine (pod_job.sh) switches
+Uploads the recordings to Google Drive (AMPSURD training\<amp>\recordings), rents up to 8 machines (cheapest
+suitable free GPU, 2 trainings at a time each). Since 2026-11-22 the machines share one queue: each training takes
+the next untrained recording (marking it in AMPSURD training\<amp>\claims), trains it, uploads it and takes the
+next, until none is left - so one run trains any number of recordings (e.g. 33 for a 3-channel amp), and the PC can
+be switched off after the start. The window shows every 5 minutes what each machine trains and how long the whole
+run still needs, and downloads the .nam files (+ summaries/) to <recordings>\..\NAMs when all machines are off.
+Measured: 3 trainings on one machine took 3.5-4 h (CPU-bound on ~8-core machines), 2 take ~1-1.5 h. Each machine (pod_job.sh) switches
 itself off when done, on errors, and after 8 hours at the latest; finished .nam files go to Google Drive every
 4 minutes. Running it again for the same amp trains only what is missing; another amp can run at the same time
 in a second window. First run: asks for the RunPod API key (kept encrypted for the Windows user) and connects

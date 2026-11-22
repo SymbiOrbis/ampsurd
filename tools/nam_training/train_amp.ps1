@@ -6,7 +6,9 @@ AMPSURD - train all NAM captures of one amp on rented GPUs (RunPod), with one co
 What it does:
   1. uploads the recordings (*.wav) to Google Drive: "AMPSURD training\<Amp>\recordings"
      (and the input file T3K-sweep-v3.wav to "AMPSURD training\_input", once)
-  2. rents -Machines machines (cheapest suitable GPU that is free); each trains -PerMachine recordings side by side
+  2. rents up to -Machines machines (at most 8; cheapest suitable GPU that is free). Each trains -PerMachine recordings
+     side by side and then takes the next untrained one by itself (one shared queue on Google Drive) until all are done -
+     so all recordings get trained in one run, however many there are, and this PC can be switched off
   3. each machine uploads its .nam files to "AMPSURD training\<Amp>\NAMs" and switches itself off
      (also on errors, and at the latest after -MaxHours hours - after uploading what it finished)
   4. this window shows the progress; when all machines are off it downloads the .nam files to
@@ -23,13 +25,13 @@ Once on this PC:
   - the first run connects rclone to your Google Drive (a browser window: allow access). rclone only sees the files
     it created itself.
 
-Options: -Machines 3 -PerMachine 2 -Epochs 400 -MaxHours 8  -InputFile <path to T3K-sweep-v3.wav>  -NoWait
+Options: -Machines 8 -PerMachine 2 -Epochs 400 -MaxHours 8  -InputFile <path to T3K-sweep-v3.wav>  -NoWait
 #>
 param(
     [Parameter(Mandatory = $true)][string]$Amp,
     [string]$Recordings = "",
     [string]$InputFile = "",
-    [int]$Machines = 3,
+    [int]$Machines = 8,
     [int]$PerMachine = 2,   # 3 at once on one GPU took 3.5-4 h (2026-11-18/20 runs) - 2 take ~1.5 h and cost less per capture
     [int]$Epochs = 400,
     [int]$MaxHours = 8,
@@ -92,7 +94,7 @@ function Get-AmpPods {
 $NamDir = if ($Recordings) { Join-Path (Split-Path $Recordings -Parent) "NAMs" } else { Join-Path ([Environment]::GetFolderPath("MyDocuments")) "AMPSURD training\$Amp\NAMs" }
 function Collect-Nams {
     New-Item -ItemType Directory -Force -Path $NamDir | Out-Null
-    & $Rclone copy "$Root/$Amp/NAMs" $NamDir --include "/*.nam" --include "/summary*.txt" --include "/logs/**"
+    & $Rclone copy "$Root/$Amp/NAMs" $NamDir --include "/*.nam" --include "/summary*.txt" --include "/summaries/**" --include "/logs/**"
     $n = @(Get-ChildItem $NamDir -Filter *.nam).Count
     Say "$n .nam files in $NamDir"
 }
@@ -129,21 +131,19 @@ if ($already -gt 0) { Fail "Machines for '$Amp' are still running - wait for the
 # at most 8 machines at once (owner 2026-11-22: RunPod refused machine 9+ twice; 8 are enough)
 $MaxMachines = 8
 if ($Machines -gt $MaxMachines) { Say "At most $MaxMachines machines at once - using $MaxMachines."; $Machines = $MaxMachines }
-$parts = [Math]::Min($Machines * $PerMachine, $files.Count - $done.Count)
-$left = ($files.Count - $done.Count) - $parts
-if ($left -gt 0) { Say "$left recording(s) do not fit on $Machines machine(s) x $PerMachine - run the same command again when this run is done." }
-$Machines = [Math]::Ceiling($parts / $PerMachine)
+$todo = $files.Count - $done.Count
+$Machines = [Math]::Max(1, [Math]::Min($Machines, [Math]::Ceiling($todo / $PerMachine)))
+# the "taken" marks of an earlier run are stale now (no machine of this amp is running): start with an empty queue
+& $Rclone purge "$Root/$Amp/claims" 2>$null | Out-Null
 $tok = ((& $Rclone config dump) | ConvertFrom-Json).gdrive.token
-Say "Renting $Machines machine(s), $PerMachine trainings each, $Epochs epochs, safety limit $MaxHours h ..."
+Say "Renting $Machines machine(s), $PerMachine trainings at a time each - they work through all $todo recordings, $Epochs epochs, safety limit $MaxHours h ..."
 for ($m = 1; $m -le $Machines; $m++) {
-    $from = ($m - 1) * $PerMachine + 1
-    $to = [Math]::Min($m * $PerMachine, $parts)
     $body = @{
         name = "ampsurd-$Slug-$m"
         image = $Image
         disk = 30
         env = @{
-            AMP = $Amp; PART_FROM = "$from"; PART_TO = "$to"; PARTS = "$parts"; EPOCHS = "$Epochs"; MAX_HOURS = "$MaxHours"
+            AMP = $Amp; SLOTS = "$PerMachine"; EPOCHS = "$Epochs"; MAX_HOURS = "$MaxHours"
             RCLONE_CONFIG_GDRIVE_TYPE = "drive"; RCLONE_CONFIG_GDRIVE_SCOPE = "drive.file"; RCLONE_CONFIG_GDRIVE_TOKEN = $tok
             AMPSURD_RUNPOD_KEY = $Key
         }
@@ -167,10 +167,10 @@ for ($m = 1; $m -le $Machines; $m++) {
         }
         if ($pod) { break }
     }
-    if (-not $pod) { Say "Machine $m could not be rented ($last) - run the command again later (finished work is kept)."; continue }
+    if (-not $pod) { Say "Machine $m could not be rented ($last) - the others take over its recordings."; continue }
     $gpu = if ($pod.gpu.id) { $pod.gpu.id } else { "GPU" }
     $price = if ($pod.cost) { " - `${0}/h" -f $pod.cost } else { "" }
-    Say "  machine $m ($gpu$price): parts $from-$to of $parts"
+    Say "  machine $m ($gpu$price)"
 }
 
 if ($NoWait) {
@@ -186,15 +186,22 @@ do {
     $n = @(& $Rclone lsf "$Root/$Amp/NAMs" --files-only --include "/*.nam" 2>$null).Count
     try { $pods = @(Get-AmpPods) } catch { Say "RunPod did not answer - trying again in 5 minutes"; continue }
     $running = $pods.Count
-    $lines = @(); $worst = 0
+    $lines = @(); $worst = 0; $per = 0
     foreach ($p in ($pods | Sort-Object name)) {
         $st = & $Rclone cat "$Root/$Amp/NAMs/status/status_$($p.id).txt" 2>$null
         if (-not $st) { $st = "starting ..." }
-        $eta = 0; [int]::TryParse(((& $Rclone cat "$Root/$Amp/NAMs/status/eta_$($p.id).txt" 2>$null) -join ""), [ref]$eta) | Out-Null
+        # "<seconds left on the current recordings> <seconds per recording>"
+        $et = ((& $Rclone cat "$Root/$Amp/NAMs/status/eta_$($p.id).txt" 2>$null) -join " ").Trim() -split "\s+"
+        $eta = 0; [int]::TryParse($et[0], [ref]$eta) | Out-Null
+        $one = 0; if ($et.Count -gt 1) { [int]::TryParse($et[1], [ref]$one) | Out-Null }
         if ($eta -gt $worst) { $worst = $eta }
+        if ($one -gt $per) { $per = $one }
         $lines += ("   machine {0}: {1}" -f ($p.name -replace "^ampsurd-$Slug-", ""), $st)
     }
     $left = ""
+    # recordings still waiting in the queue (not finished, not being trained): further rounds on all machines
+    $waiting = [Math]::Max(0, $total - $n - $running * $PerMachine)
+    if ($running -gt 0 -and $per -gt 0) { $worst += [Math]::Ceiling($waiting / ($running * $PerMachine)) * $per }
     if ($worst -gt 0) {
         $left = " - about {0} h {1} min left (around {2})" -f [Math]::Floor($worst / 3600), [Math]::Floor(($worst % 3600) / 60), (Get-Date).AddSeconds($worst).ToString("HH:mm")
     }
@@ -202,4 +209,4 @@ do {
     $lines | ForEach-Object { Write-Host $_ }
 } while ($running -gt 0)
 Collect-Nams
-Get-ChildItem $NamDir -Filter "summary*.txt" | ForEach-Object { Get-Content $_.FullName | Select-String "OK|FAILED|SKIPPED" }
+Get-ChildItem $NamDir -Filter "summary*.txt" -Recurse | ForEach-Object { Get-Content $_.FullName | Select-String "OK|FAILED|SKIPPED" }

@@ -20,6 +20,14 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 - Rerun rented 8 machines again, machines 9-11 refused (400 Bad Request; likely an account spend-rate / machine
   limit). Owner: limit future work to 8 machines - train_amp.ps1 caps -Machines at 8 and says how many recordings are
   left for the next run. Owner topped up $50. Morning: 24 of 32 done, the last 8 (lead 10:00-17:00) on 4 x 2.
+- Owner approved a shared work queue (option 2 of 2): pod_job.sh no longer gets fixed parts - SLOTS (= -PerMachine)
+  workers per machine each claim the next recording that is neither finished (.nam on Drive) nor taken (claims/<rec>__
+  <pod>_<k>; after marking, wait 20 s, the earliest mark wins, the others give it up; flock on the machine), train it
+  (train_batch.py --tag _w<k>), upload at once, and take the next until the queue is empty; then the machine switches
+  off. train_amp.ps1: default -Machines 8 (cap 8), empties claims/ before a run, ETA = current recordings + waiting
+  recordings / (machines x 2) x time per recording (eta file now "<left> <per recording>"); per-recording summaries in
+  NAMs/summaries/. Tested here with a fake rclone / trainer: 3 machines x 2 on 7 recordings - each trained exactly once,
+  all workers ended. Not yet run on RunPod.
 
 ## 2026-11-18 — Session 5t: Framus Cobra CH3 recordings; training script moved to RunPod API v2 - Claude (Opus 5.5)
 
