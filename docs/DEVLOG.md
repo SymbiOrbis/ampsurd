@@ -37,6 +37,9 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
   although the machines trained (pod log: "training 1 takes DigiTech Bad Monkey BOOST.wav" 3 min after start). Cause:
   status() read the name with 'training [^ ]* (' - pedal file names contain spaces, so no status was written. Fixed
   (name up to " (<E> epochs"); applies to machines started from now on. Training itself unaffected.
+- Overdrives done (17 trained, ~2.5 h, the queue gave the 17th to a free slot): ESR 0.0002-0.0039. Final folder
+  "Ampsurd Pedal Capture Overdrives" (16 + the 2 Gerhat TONE3000 captures, both Klon "K" mod captures left out), metadata
+  with settings / description / per-maker notice, READ ME - Overdrive pedals.txt; sent as Overdrives final.zip into _Final.
 
 ## 2026-11-18 — Session 5t: Framus Cobra CH3 recordings; training script moved to RunPod API v2 - Claude (Opus 5.5)
 
