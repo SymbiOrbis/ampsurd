@@ -17,6 +17,9 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 - Owner asked where his $40 went: billing explorer = runs since 8 Nov ($4.9 + $5.0 + $15.5 + $8.2 + ~$6). Machines did
   switch off; my estimates were wrong - 3 trainings on one GPU took 3.5-4 h (finish times of the .nam files), 2 take
   ~1-1.5 h. train_amp.ps1 default -PerMachine 2 (was 3). Advice: top up >= $20, rerun 16 x 2 (~$12-15).
+- Rerun rented 8 machines again, machines 9-11 refused (400 Bad Request; likely an account spend-rate / machine
+  limit). Owner: limit future work to 8 machines - train_amp.ps1 caps -Machines at 8 and says how many recordings are
+  left for the next run. Owner topped up $50. Morning: 24 of 32 done, the last 8 (lead 10:00-17:00) on 4 x 2.
 
 ## 2026-11-18 — Session 5t: Framus Cobra CH3 recordings; training script moved to RunPod API v2 - Claude (Opus 5.5)
 

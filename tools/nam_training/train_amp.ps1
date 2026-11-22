@@ -126,7 +126,12 @@ try { $already = @(Get-AmpPods).Count } catch {
 if ($already -gt 0) { Fail "Machines for '$Amp' are still running - wait for them, or check RunPod." }
 
 # --- machines ---
+# at most 8 machines at once (owner 2026-11-22: RunPod refused machine 9+ twice; 8 are enough)
+$MaxMachines = 8
+if ($Machines -gt $MaxMachines) { Say "At most $MaxMachines machines at once - using $MaxMachines."; $Machines = $MaxMachines }
 $parts = [Math]::Min($Machines * $PerMachine, $files.Count - $done.Count)
+$left = ($files.Count - $done.Count) - $parts
+if ($left -gt 0) { Say "$left recording(s) do not fit on $Machines machine(s) x $PerMachine - run the same command again when this run is done." }
 $Machines = [Math]::Ceiling($parts / $PerMachine)
 $tok = ((& $Rclone config dump) | ConvertFrom-Json).gdrive.token
 Say "Renting $Machines machine(s), $PerMachine trainings each, $Epochs epochs, safety limit $MaxHours h ..."
