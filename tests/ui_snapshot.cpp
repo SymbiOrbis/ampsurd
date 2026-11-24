@@ -2017,7 +2017,8 @@ int main(int argc, char** argv)
             pl->renderNow();
         }
         // TWO PLAYERS (owner 2026-11-12): settings menu -> the cards show P1 / P2 (amps 4 + 5 for player 2 by default),
-        // Frankenstein greyed, the tracks are PLAYER 1 / PLAYER 2, the tuner follows the player who plays
+        // Frankenstein greyed, the tracks are PLAYER 1 / PLAYER 2; the tuner stays on player 1 until P2 is chosen in it
+        // (owner 2026-11-24: no automatic switching, the title is just TUNER)
         {
             pl->setInput2Available(true);
             e->setTwoPlayers(true);
@@ -2035,6 +2036,7 @@ int main(int argc, char** argv)
             std::function<void(juce::Component&)> scan = [&](juce::Component& c) {
                 for (auto* ch : c.getChildren())
                 {
+                    if (dynamic_cast<ampsurd::ui::TunerPanel*>(ch) != nullptr) continue; // its own P1 / P2 (checked below)
                     if (auto* b = dynamic_cast<juce::TextButton*>(ch); b != nullptr && b->isVisible())
                     {
                         if (b->getButtonText() == "P1") ++p1;
@@ -2045,8 +2047,40 @@ int main(int argc, char** argv)
                 }
             };
             scan(*ed);
-            const bool tuner2 = proc->isTunerOnPlayer2();
+            const bool tunerStayed1 = !proc->isTunerOnPlayer2(); // only player 2 played: still player 1
             save(*ed, out.getChildFile("19d_two_players.png"));
+            bool tuner2 = false;
+            e->showGlobalEq(true);
+            e->refreshAll();
+            if (auto* tp = findVisible<ampsurd::ui::TunerPanel>(*ed))
+            {
+                tp->refresh();
+                juce::TextButton* tb = nullptr;
+                for (auto* ch : tp->getChildren())
+                    if (auto* b = dynamic_cast<juce::TextButton*>(ch); b != nullptr && b->isVisible() && b->getButtonText() == "P1") tb = b;
+                if (tb != nullptr)
+                {
+                    const bool clearOfMute = [&] {
+                        for (auto* ch : tp->getChildren())
+                            if (auto* b = dynamic_cast<juce::TextButton*>(ch); b != nullptr && b != tb && b->getBounds().intersects(tb->getBounds())) return false;
+                        return true;
+                    }();
+                    tb->triggerClick();
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
+                    for (int k = 0; k < 20; ++k)
+                    {
+                        buf.clear();
+                        for (int i = 0; i < buf.getNumSamples(); ++i)
+                            buf.setSample(1, i, (float) (0.3 * std::sin(2 * juce::MathConstants<double>::pi * 110.0 * (k * 256 + i) / 48000.0)));
+                        proc->processBlock(buf, midi);
+                    }
+                    tp->refresh();
+                    tuner2 = tunerStayed1 && clearOfMute && proc->isTunerOnPlayer2() && tb->getButtonText() == "P2";
+                    shot("19e_tuner_two_players.png", tp, 4);
+                    tb->triggerClick();
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
+                }
+            }
             const bool on = proc->isTwoPlayersActive() && p1 == 3 && p2 == 2 && frankGrey && pl->isTwoPlayers();
             e->setTwoPlayers(false);
             e->refreshAll();
@@ -2054,7 +2088,8 @@ int main(int argc, char** argv)
             scan(*ed);
             const bool off = p1 == 0 && p2 == 0 && !proc->isTwoPlayersOn();
             std::cout << (on && off && tuner2 ? "[PASS]" : "[FAIL]") << " TWO PLAYERS: P1 / P2 on the cards (" << p1 << "/" << p2
-                      << " after off; on: amps 4 + 5 = P2), Frankenstein greyed, the tuner on player 2 when only player 2 plays ("
+                      << " after off; on: amps 4 + 5 = P2), Frankenstein greyed, tuner: stays P1 when player 2 plays, P1 / P2 button clear of "
+                      << "MUTE OUTPUT switches it to player 2 ("
                       << (int) tuner2 << "), off again: hidden\n";
             for (int s = 0; s < AmpsurdProcessor::kNumSlots; ++s)
                 if (auto* prm = proc->params.getParameter(AmpsurdProcessor::slotParamId(s, "player2"))) prm->setValueNotifyingHost(0.0f);
