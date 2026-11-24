@@ -2065,8 +2065,8 @@ int main(int argc, char** argv)
                             if (auto* b = dynamic_cast<juce::TextButton*>(ch); b != nullptr && b != tb && b->getBounds().intersects(tb->getBounds())) return false;
                         return true;
                     }();
-                    tb->triggerClick();
-                    juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
+                    tb->setToggleState(true, juce::dontSendNotification); // as a click: toggle, then its onClick
+                    tb->onClick();
                     for (int k = 0; k < 20; ++k)
                     {
                         buf.clear();
@@ -2076,9 +2076,9 @@ int main(int argc, char** argv)
                     }
                     tp->refresh();
                     tuner2 = tunerStayed1 && clearOfMute && proc->isTunerOnPlayer2() && tb->getButtonText() == "P2";
-                    shot("19e_tuner_two_players.png", tp, 4);
-                    tb->triggerClick();
-                    juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
+                    save(*tp, out.getChildFile("19e_tuner_two_players.png"));
+                    tb->setToggleState(false, juce::dontSendNotification);
+                    tb->onClick();
                 }
             }
             const bool on = proc->isTwoPlayersActive() && p1 == 3 && p2 == 2 && frankGrey && pl->isTwoPlayers();
