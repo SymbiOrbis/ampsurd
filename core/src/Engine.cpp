@@ -506,7 +506,9 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
             C[(size_t) i][(size_t) j] = cov[(size_t) i][(size_t) j].load(std::memory_order_relaxed);
     }
     std::array<std::array<double, 2>, kNumSlots> pan {};
-    for (int i = 0; i < kNumSlots; ++i) pan[(size_t) i] = panGains(s.slots[(size_t) i].pan);
+    // Frankenstein is mono (owner 2026-11-24): while it plays (NOTES routing), every amp is centred - the
+    // TONE split below uses centred gains too. The amps' PAN settings are kept for when it is switched off.
+    for (int i = 0; i < kNumSlots; ++i) pan[(size_t) i] = notesRouting ? panGains(0.0f) : panGains(s.slots[(size_t) i].pan);
     std::array<double, 2> Gs { 1.0, 1.0 };
     for (int g = 0; g < groups; ++g) Gs[(size_t) g] = computeCompensation(onlyGroup(p, g), C, valid, pan);
     const double G = Gs[0];
@@ -636,8 +638,8 @@ void Engine::process(const double* in, double* out, double* outR, int n, const E
         for (int i = 0; i < kNumSlots; ++i)
         {
             amps[(size_t) i] = isLoaded[(size_t) i] ? scratch.data() + (size_t) i * (size_t) stride : nullptr;
-            lg[(size_t) i] = s.slots[(size_t) i].levelGain * pan[(size_t) i][0];
-            lgR[(size_t) i] = s.slots[(size_t) i].levelGain * pan[(size_t) i][1];
+            lg[(size_t) i] = s.slots[(size_t) i].levelGain; // mono: no PAN in Frankenstein
+            lgR[(size_t) i] = s.slots[(size_t) i].levelGain;
         }
         frankenstein.process(amps, lg, lgR, frankOut.data(), frankOutR.data(), n);
 

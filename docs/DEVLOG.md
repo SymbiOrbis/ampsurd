@@ -6,6 +6,15 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-24 — Session 5v: Create Frankenstein is mono - Claude (Opus 5.5)
+
+- Owner: "Frankenstein should only be mono". Engine: in TONE mode the split uses each amp's level gain without PAN
+  (left = right); in NOTES mode every amp is centred while the routing is active. PAN settings are kept and work again
+  when Frankenstein is off; switching uses the existing 30 ms Frankenstein crossfade / NOTES dip.
+- engine_test "PAN + Frankenstein": left = right = mono output for PAN 0/0, -60/+60, -100/+100 (diff 0 after the fade-in).
+  The MIX loudness check fails (0.87 dB) with the Cobra captures used here - the same without this change.
+- Not changed: the PAN knobs stay visible in Frankenstein (they just have no effect there).
+
 ## 2026-11-21 — Session 5u: Peavey 6505 run stopped (RunPod credit), RunPod cost check - Claude (Opus 5.5)
 
 - 6505+ 112 combo: 32 recordings checked (CH1 rhythm / crunch (7:30 empty, removed) / lead; all fine; 16:00 = 17:00 on

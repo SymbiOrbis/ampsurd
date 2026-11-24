@@ -21,6 +21,8 @@ VIDEO in the player).
 
 ## Next version (not released yet)
 
+- Create Frankenstein is mono: while it plays, the amps' PAN settings are ignored (both sides get the same sound). PAN works again as soon as Frankenstein is switched off.
+
 (nothing yet)
 
 ## AMPSURD 0.9.25 (beta)

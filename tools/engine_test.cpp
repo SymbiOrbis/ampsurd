@@ -586,13 +586,15 @@ int main(int argc, char** argv)
         check(resL < -100 && resR < -100,
               "PAN hard left / hard right: left = amp A only, right = amp B only (anything else %.0f / %.0f dB)", resL, resR);
 
-        const auto fr = render(-0.6f, 0.6f, true);
-        const double fe = stereoLoudnessErr(fr);
-        double frankCentDiff = 0;
-        const auto frc = render(0.0f, 0.0f, true);
-        for (size_t i = 0; i < frc.L.size(); ++i) frankCentDiff = std::max(frankCentDiff, std::abs(frc.L[i] - frc.mono[i]) + std::abs(frc.R[i] - frc.mono[i]));
-        check(frankCentDiff == 0.0 && std::abs(fe) < 2.0,
-              "PAN + Frankenstein: centred = mono exactly; panned -60/+60 stereo loudness %+.2f dB vs single-capture level", fe);
+        // Frankenstein is mono (owner 2026-11-24): the amps' PAN is ignored while it plays
+        double frankDiff = 0;
+        for (auto pr : { std::pair<float, float> { 0.0f, 0.0f }, { -0.6f, 0.6f }, { -1.0f, 1.0f } })
+        {
+            const auto fr = render(pr.first, pr.second, true);
+            for (size_t i = 48000; i < fr.L.size(); ++i) /* after Frankenstein has faded in (30 ms time constant) */
+                frankDiff = std::max(frankDiff, std::abs(fr.L[i] - fr.mono[i]) + std::abs(fr.R[i] - fr.mono[i]));
+        }
+        check(frankDiff == 0.0, "PAN + Frankenstein: mono - left = right = the mono output whatever the amps' PAN (diff %.1e)", frankDiff);
     }
 
     // ---------------- 6e. Cabinet IR per slot ----------------
