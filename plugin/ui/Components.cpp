@@ -4151,18 +4151,36 @@ TunerPanel::TunerPanel(AmpsurdProcessor& p) : proc(p)
     addAndMakeVisible(muteButton);
     muteAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(p.params, "tunerMute", muteButton);
     muteButton.setTooltip("Silence AMPSURD's output while the tuner is shown");
+    // TWO PLAYERS (owner 2026-11-24): the tuner listens to the player chosen here - no automatic switching
+    addChildComponent(playerButton);
+    playerButton.setClickingTogglesState(true);
+    playerButton.setWantsKeyboardFocus(false);
+    playerButton.setToggleState(proc.isTunerOnPlayer2(), juce::dontSendNotification);
+    playerButton.onClick = [this] {
+        proc.setTunerOnPlayer2(playerButton.getToggleState());
+        playerButton.setButtonText(playerButton.getToggleState() ? "P2" : "P1");
+        shown.valid = false; lastNote = -1; recentCount = 0; // no reading of the other guitar left over
+        repaint();
+    };
+    playerButton.setTooltip("TWO PLAYERS: whose guitar the tuner listens to. P1 = player 1 (the guitar input), "
+                            "P2 = player 2 (input 2). Click to switch.");
 }
 
 void TunerPanel::resized()
 {
     muteButton.setBounds(getWidth() - 16 - 116, 12, 116, 24);
+    playerButton.setBounds(68, 14, 34, 20); // after "TUNER", clear of MUTE OUTPUT
 }
 
 void TunerPanel::refresh()
 {
     {
-        const int who = proc.isTwoPlayersActive() ? (proc.isTunerOnPlayer2() ? 2 : 1) : 0;
-        if (who != playerShown) { playerShown = who; repaint(); }
+        const bool two = proc.isTwoPlayersActive();
+        if (playerButton.isVisible() != two) playerButton.setVisible(two);
+        const bool on2 = proc.isTunerOnPlayer2();
+        if (playerButton.getToggleState() != on2) playerButton.setToggleState(on2, juce::dontSendNotification);
+        const juce::String pt = on2 ? "P2" : "P1";
+        if (playerButton.getButtonText() != pt) playerButton.setButtonText(pt);
     }
     const auto r = proc.analyseTuner();
     const double now = juce::Time::getMillisecondCounterHiRes();
@@ -4189,8 +4207,7 @@ void TunerPanel::refresh()
 
 void TunerPanel::paint(juce::Graphics& g)
 {
-    drawLabel(g, proc.isTwoPlayersActive() ? (proc.isTunerOnPlayer2() ? "TUNER - PLAYER 2" : "TUNER - PLAYER 1") : "TUNER", { 16, 12, 200, 24 }, accent,
-              juce::Justification::centredLeft, 11.5f); // TWO PLAYERS: the tuner follows the player who plays
+    drawLabel(g, "TUNER", { 16, 12, 50, 24 }, accent, juce::Justification::centredLeft, 11.5f); // TWO PLAYERS: P1 / P2 button next to it
     const auto area = getLocalBounds().reduced(16, 0).withTrimmedTop(44);
 
     // note name

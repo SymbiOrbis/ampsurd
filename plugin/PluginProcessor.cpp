@@ -877,7 +877,6 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
     twoPlayersActive.store(two, std::memory_order_relaxed);
     if (player) player->setTwoPlayers(two);
     const float* in2p = two ? buffer.getReadPointer(1 - inCh) : nullptr;
-    if (!two) tunerOnPlayer2.store(false, std::memory_order_relaxed);
     float* out = buffer.getWritePointer(0);
     float* outR = numOut > 1 ? buffer.getWritePointer(1) : nullptr; // stereo: per-amp PAN
     const int maxBlock = (int) inBuffer.size();
@@ -927,17 +926,8 @@ void AmpsurdProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Midi
                 inBuffer2[(size_t) i] = x;
             }
             if (pk2 > player2InputPeak.load(std::memory_order_relaxed)) player2InputPeak.store(pk2, std::memory_order_relaxed);
-            // the tuner follows the player who plays (the other one louder for a moment: switch)
-            float p1 = 0.0f, p2 = 0.0f;
-            for (int i = 0; i < n; ++i) { p1 = juce::jmax(p1, std::abs(rawBuffer[(size_t) i])); p2 = juce::jmax(p2, std::abs(rawBuffer2[(size_t) i])); }
-            const double fall = std::exp(-(double) n / (0.4 * sr));
-            tunerEnv1 = juce::jmax((double) p1, tunerEnv1 * fall);
-            tunerEnv2 = juce::jmax((double) p2, tunerEnv2 * fall);
-            const bool on2 = tunerOnPlayer2.load(std::memory_order_relaxed);
-            if (!on2 && tunerEnv2 > 0.01 && tunerEnv2 > 3.0 * tunerEnv1) tunerOnPlayer2.store(true, std::memory_order_relaxed);
-            if (on2 && tunerEnv1 > 0.01 && tunerEnv1 > 3.0 * tunerEnv2) tunerOnPlayer2.store(false, std::memory_order_relaxed);
         }
-        // tuner works on the clean DI, also when bypassed (the real strings); TWO PLAYERS: the player who plays
+        // tuner works on the clean DI, also when bypassed (the real strings); TWO PLAYERS: the player chosen in the tuner (P1 / P2)
         tuner.push(two && tunerOnPlayer2.load(std::memory_order_relaxed) ? rawBuffer2.data() : rawBuffer.data(), n);
         pitch.process(inBuffer.data(), n); // PITCH: the whole guitar re-tuned before the amps
         if (two) pitch2.process(inBuffer2.data(), n);

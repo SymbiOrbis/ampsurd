@@ -6,6 +6,17 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-24 — Session 5w: tuner P1 / P2 chosen by hand; AMPSURD capture names - Claude (Opus 5.5)
+
+- Owner: the tuner title "TUNER - PLAYER 1/2" switched on its own (it followed the louder input) and ran under
+  MUTE OUTPUT. Now the title is just "TUNER"; with TWO PLAYERS active a P1 / P2 button (same style as the amp slots'
+  P1 / P2) sits next to it and chooses whose guitar the tuner listens to. No automatic switching (tunerEnv removed);
+  default P1, the choice stays while TWO PLAYERS is on/off. Switching clears the shown note.
+- tools/nam_training/rename_to_ampsurd_names.py: one-off tool that gave the release pack AMPSURD's own names
+  (HG1 Mesa Dual Rectifier, HG2 EVH 5150 III, HG3 Peavey 6505+ 112, HG4 Framus Cobra; OD1..OD8 pedals); the real gear
+  is only named as "captured from" in READ ME / notice / gear_make + gear_model. Weights and amp data unchanged
+  (checked: 194 NAMs, 17 amps, the artist pack).
+
 ## 2026-11-24 — Session 5v: Create Frankenstein is mono - Claude (Opus 5.5)
 
 - Owner: "Frankenstein should only be mono". Engine: in TONE mode the split uses each amp's level gain without PAN

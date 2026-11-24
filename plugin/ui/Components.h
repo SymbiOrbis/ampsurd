@@ -388,11 +388,11 @@ public:
 private:
     AmpsurdProcessor& proc;
     juce::TextButton muteButton { "MUTE OUTPUT" };
+    juce::TextButton playerButton { "P1" }; // TWO PLAYERS: whose guitar the tuner listens to (P1 / P2)
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> muteAtt;
     ampsurd::PitchDetector::Result shown;
     std::array<double, 5> recentCents {};
     int recentCount = 0, lastNote = -1;
-    int playerShown = -1; // TWO PLAYERS: whose guitar the tuner shows (0 = one player)
     double lastValidMs = 0.0;
 };
 

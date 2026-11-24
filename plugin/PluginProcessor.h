@@ -189,7 +189,9 @@ public:
     // the same effects; each player is recorded on their own track (GUITAR = player 1, INPUT 2 = player 2).
     bool isTwoPlayersOn() const { return twoPlayersParam->load() > 0.5f; }
     bool isTwoPlayersActive() const { return twoPlayersActive.load(std::memory_order_relaxed); } // on AND player 2's input there
+    // the tuner listens to player 1 unless P2 is chosen in the tuner (owner 2026-11-24: no automatic switching)
     bool isTunerOnPlayer2() const { return tunerOnPlayer2.load(std::memory_order_relaxed); }
+    void setTunerOnPlayer2(bool on) { tunerOnPlayer2.store(on, std::memory_order_relaxed); }
     float getAndResetPlayer2InputPeak() { return player2InputPeak.exchange(0.0f); }
     // live spectrum of the guitar (clean DI, after INPUT), magnitudes in dB for bins of `binHz` each
     void getInputSpectrum(std::vector<float>& magsDb, double& binHz);
@@ -511,7 +513,6 @@ private:
     std::vector<float> rawBuffer2;
     std::vector<double> inBuffer2, outBuffer2, outBuffer2R, dryBuffer2, gainBuffer;
     std::vector<float> dryDelay2;
-    double tunerEnv1 = 0.0, tunerEnv2 = 0.0;
     std::atomic<float>* frankModeParam = nullptr;
     static constexpr int kSpecRing = 8192;
     std::vector<float> specRing = std::vector<float>((size_t) kSpecRing, 0.0f); // DI for the note band (audio thread writes)
