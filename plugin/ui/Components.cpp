@@ -585,7 +585,7 @@ void SlotComponent::paint(juce::Graphics& g)
     // the filename - large, fixed size, wrapped, centred
     {
         // PAN row: label, centre tick behind the slider, value (C / L35 / R20)
-        const bool loaded = isLoadedState(status.state);
+        const bool loaded = isLoadedState(status.state) && panSlider.isEnabled(); // greyed while Frankenstein is on
         const auto pr = panArea();
         drawLabel(g, "PAN", pr.withWidth(32), loaded ? textDim : textFaint, juce::Justification::centredLeft);
         const auto sb = panSlider.getBounds();
@@ -747,8 +747,16 @@ void SlotComponent::refresh(bool isSelected, bool irEditorOpen)
     soloButton.setEnabled(loaded);
     muteButton.setEnabled(loaded);
     fader.setEnabled(loaded && !proc.isFrankensteinOn()); // Frankenstein replaces the fader blend
-    panSlider.setEnabled(loaded);
-    panValue.setEnabled(loaded);
+    {
+        // Create Frankenstein is mono: the amps' PAN has no effect while it plays - greyed out (kept for later)
+        const bool panLive = loaded && !proc.isFrankensteinOn();
+        if (panSlider.isEnabled() != panLive) repaint(panArea());
+        panSlider.setEnabled(panLive);
+        panValue.setEnabled(panLive);
+        panSlider.setTooltip(proc.isFrankensteinOn() ? "PAN: no effect while Create Frankenstein is on (Frankenstein is mono) - "
+                                                       "this setting comes back when you switch it off"
+                                                     : "PAN: place this amp in the stereo field (double-click = centre)");
+    }
     editButton.setToggleState(selected && !irEditorOpen, juce::dontSendNotification);
 
     // IR button: ADD IR / IR (lit = loaded and on) / IR OFF / IR ?

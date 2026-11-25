@@ -6,6 +6,13 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-25 — Release 0.9.26 - Claude (Opus 5.5)
+
+- Owner: "1 - grey out, 2 - yes" - 0.9.26 published. Windows files to be
+  signed by the owner.
+
+---
+
 ## 2026-11-24 — Session 5w: tuner P1 / P2 chosen by hand; AMPSURD capture names - Claude (Opus 5.5)
 
 - Owner: the tuner title "TUNER - PLAYER 1/2" switched on its own (it followed the louder input) and ran under
@@ -16,6 +23,13 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
   (HG1 Mesa Dual Rectifier, HG2 EVH 5150 III, HG3 Peavey 6505+ 112, HG4 Framus Cobra; OD1..OD8 pedals); the real gear
   is only named as "captured from" in READ ME / notice / gear_make + gear_model. Weights and amp data unchanged
   (checked: 194 NAMs, 17 amps, the artist pack).
+
+## 2026-11-25 — Session 5w: PAN greyed out in Frankenstein - Claude (Opus 5.5)
+
+- Owner: "1 - grey out, 2 - yes" - the amps' PAN slider, value and label are greyed out while Create Frankenstein is
+  on (tooltip says why); the setting comes back when it is switched off. Then released (see above).
+
+---
 
 ## 2026-11-24 — Session 5v: Create Frankenstein is mono - Claude (Opus 5.5)
 

@@ -21,7 +21,16 @@ VIDEO in the player).
 
 ## Next version (not released yet)
 
-- Create Frankenstein is mono: while it plays, the amps' PAN settings are ignored (both sides get the same sound). PAN works again as soon as Frankenstein is switched off.
+(nothing yet)
+
+## AMPSURD 0.9.26 (beta)
+
+**Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the standalone app.
+**macOS 10.15 or newer:** AMPSURD-macOS.pkg installs the app, the VST3 plugin and the Audio Unit. Installing over an
+older version is fine: presets and recordings (Documents/AMPSURD) stay untouched.
+
+New in 0.9.26:
+- Create Frankenstein is mono: while it plays, the amps' PAN settings are ignored (both sides get the same sound). The PAN controls are greyed out meanwhile; PAN works again as soon as Frankenstein is switched off.
 
 (nothing yet)
 
