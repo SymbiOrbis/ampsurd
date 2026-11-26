@@ -6,6 +6,38 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-26 — Session 5x: Windows camera via Media Foundation (Canon EOS R50, OBS Virtual Camera) - Claude (Opus 5.5)
+
+- Owner: Canon EOS R50 (USB webcam mode, live in the Windows Camera app) and OBS Virtual Camera listed but "The camera
+  could not be opened (in use by another app, or no permission)"; the regular webcam works.
+- Traced: CameraWindow -> VideoCapture::open(index) -> juce::CameraDevice::openDevice(index, 320, 240, 1280, 720) =
+  JUCE's DirectShow camera (juce_CameraDevice_windows.h), device picked by its position in the DirectShow list.
+  selectVideoSize() accepts only a capability inside 320x240..1280x720 (largest area, fps and format ignored); a camera
+  offering only 1920x1080 (Canon documents 1920x1080 30 fps for the R50's webcam mode; OBS Virtual Camera at a 1080p
+  canvas) has none, so the constructor returns before the camera is touched, openDevice gives nullptr without any
+  code, and AMPSURD showed its guessed "in use / no permission" text. (Most likely root cause - fits both failing
+  cameras; not yet confirmed on the owner's PC, the new log will show the advertised formats.)
+- New plugin/player/VideoCapture_win.cpp (VideoCapture.cpp stays for macOS / Linux): list from Media Foundation
+  (MFEnumDeviceSources, device path = symbolic link as the stable id) + DirectShow-only cameras from JUCE's list
+  (matched by name); opened with MFCreateDeviceSource + source reader (advanced video processing -> RGB32 for the
+  preview, MJPEG / YUY2 / NV12 converted). All advertised formats logged; order: >= 23.5 fps, then the largest size up
+  to 1280x720 (as before), else the smallest larger one, fps nearest 30, NV12 > YUY2 > MJPG. Open = the first live
+  picture arrived (8 s limit); a failing format -> the next (up to 6); E_ACCESSDENIED = permission, sharing violation /
+  busy / device in use / preempted / HW MFT failed to start streaming = in use, invalidated / not connected = gone -
+  each with its own message; anything else "The camera could not be started (the log has the details)" + the code in
+  the log. Own preview component (software images, 30 Hz). Video takes: Media Foundation sink writer, WMV3 at up to
+  1280x720 like before (fallback H.264 MP4), first-frame time from the sample's capture time stamp.
+- Fallback: DirectShow-only cameras, or Media Foundation failing for another reason -> JUCE DirectShow with the size
+  range widened (1280x720, 1920x1080, any); its DirectShow formats logged (own probe); open only with a picture (6 s).
+- Switching releases the old session first (thread ended, source shut down; a source that blocks is shut down to end
+  the read); a failed open leaves nothing open and clears the picker, so the same camera can be chosen again; a camera
+  that stops later shows why and is released. macOS: same messages / retry / log lines (JUCE gives no codes there).
+- Log (category Video): camera list with backends, device path, formats, the chosen one, codes, take start / end.
+- Tested: Windows (MSVC) + macOS CI builds and tests green (run 45889359871), Linux build. NOT tested with any camera
+  (no camera here): the owner tests the build (R50, webcam, switching, OBS Virtual Camera).
+
+---
+
 ## 2026-11-25 — Release 0.9.26 - Claude (Opus 5.5)
 
 - Owner: "1 - grey out, 2 - yes" - 0.9.26 published. Windows files to be
