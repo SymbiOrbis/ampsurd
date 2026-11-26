@@ -6,6 +6,28 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-26 — Release 0.9.27 - Claude (Opus 5.5)
+
+- Owner: "make it please more apparent and publish all changes" - 0.9.27 published. Windows files to be
+  signed by the owner.
+
+---
+
+## 2026-11-26 — Session 5y: pedal menu visible; test-build releases - Claude (Opus 5.5)
+
+- Owner (screenshot): the pedal's menu "behind this vertical bar" is hidden too much. Cause: in EDIT the pedal row
+  (BEFORE THE AMP, two pedals, AMP -> GATE / THRESHOLD / DECAY) is ~790 px wide, so each pedal had ~108 px: LEVEL and ON
+  took it all and the name button (= the menu) shrank to a sliver. Now two rows: BEFORE THE AMP (pedals, each name at
+  least 112 px) and AFTER THE AMP (GATE, THRESHOLD, DECAY); the EQ graph is 34 px lower. A button that opens a menu
+  draws a drop-down triangle at the right (LookAndFeel property "menuArrow"; the embedded Inter subset has no arrow
+  glyph); the tooltip starts with "Click: pedal menu ...". Checked in ui_snapshot shots 23 / 04 (the 4 known
+  capture-dependent failures unchanged).
+- The owner could not download Actions artifacts (only when signed in to GitHub). build-windows.yml got a test_build
+  input: a pre-release "test-<commit>" (--prerelease --latest=false; the update check reads its tag as 0.0.0). The first
+  test run was cancelled because the owner asked to publish everything (0.9.27).
+
+---
+
 ## 2026-11-26 — Session 5x: Windows camera via Media Foundation (Canon EOS R50, OBS Virtual Camera) - Claude (Opus 5.5)
 
 - Owner: Canon EOS R50 (USB webcam mode, live in the Windows Camera app) and OBS Virtual Camera listed but "The camera

@@ -1641,7 +1641,7 @@ void EditPanel::resized()
     r.removeFromTop(10);
     auto right = r.removeFromRight(300);
     r.removeFromRight(24);
-    pedals.setBounds(r.removeFromBottom(28));
+    pedals.setBounds(r.removeFromBottom(PedalChain::kHeight)); // two rows: before the amp / after the amp
     r.removeFromBottom(8);
     graph.setBounds(r);
     align.setBounds(right.removeFromTop(134));
@@ -1797,13 +1797,15 @@ void PedalChain::refresh()
         auto& b = blocks[(size_t) k];
         const auto st = proc.getPedalStatus(slot, k);
         const bool has = st.state == S::loaded;
+        // a loaded pedal's name is its menu: a drop-down arrow at the right (owner 2026-11-26)
+        b.name.getProperties().set("menuArrow", st.state != S::empty && st.state != S::loading);
         b.name.setButtonText(st.state == S::empty ? juce::String("+ PEDAL " + juce::String(k + 1))
                              : st.state == S::loading ? juce::String("Loading...")
                              : st.state == S::missing ? st.fileName + " ?"
                              : st.state == S::error ? juce::String("ERROR - click") : st.fileName);
         b.name.setTooltip(st.state == S::empty ? "Add a pedal capture (.nam: boost, overdrive, preamp...) BEFORE this amp - or drop the file here. "
                                                  "It drives the amp like a real pedal. Uses as much CPU as an amp."
-                          : st.info.isNotEmpty() ? st.info : st.path);
+                          : "Click: pedal menu (load another pedal, remove it, show the file)\n\n" + (st.info.isNotEmpty() ? st.info : st.path));
         b.on.setEnabled(has);
         b.level.setEnabled(has);
         b.on.setVisible(st.state != S::empty);
@@ -1815,19 +1817,22 @@ void PedalChain::refresh()
 
 void PedalChain::resized()
 {
-    auto r = getLocalBounds();
+    // row 1: BEFORE THE AMP  [PEDAL 1 v] ON LEVEL  ->  [PEDAL 2 v] ON LEVEL  ->  AMP
+    // row 2: AFTER THE AMP   GATE  THRESHOLD  DECAY
+    // (owner 2026-11-26: in one row the pedal's name - its menu - had shrunk to a thin bar nobody recognised)
+    auto all = getLocalBounds();
+    auto r = all.removeFromTop(kRow);
+    all.removeFromTop(kGap);
+    auto g = all.removeFromTop(kRow);
     r.removeFromLeft(118); // "BEFORE THE AMP"
+    g.removeFromLeft(118); // "AFTER THE AMP"
+    gateButton.setBounds(g.removeFromLeft(56));
+    g.removeFromLeft(12);
+    const int gw = juce::jmin(240, (g.getWidth() - 12) / 2);
+    gateThreshold.setBounds(g.removeFromLeft(gw));
+    g.removeFromLeft(12);
+    gateDecay.setBounds(g.removeFromLeft(gw));
     const int arrow = 26;
-    // after the amp: GATE, THRESHOLD, DECAY (the amp's own noise gate)
-    {
-        auto g = r.removeFromRight(juce::jmin(366, r.getWidth() / 2));
-        gateDecay.setBounds(g.removeFromRight(116));
-        g.removeFromRight(6);
-        gateThreshold.setBounds(g.removeFromRight(154));
-        g.removeFromRight(6);
-        gateButton.setBounds(g.removeFromRight(56));
-        r.removeFromRight(arrow); // AMP -> GATE
-    }
     const int bw = (r.getWidth() - arrow * 2 - 44) / AmpsurdProcessor::kNumPedals; // "AMP" at the end
     for (int k = 0; k < AmpsurdProcessor::kNumPedals; ++k)
     {
@@ -1837,7 +1842,10 @@ void PedalChain::resized()
         const bool used = b.on.isVisible();
         if (used)
         {
-            b.level.setBounds(a.removeFromRight(juce::jmin(124, a.getWidth() / 2)));
+            // the name (= the pedal's menu) keeps a readable width; LEVEL gives way first, down to its value box
+            const int nameMin = 112;
+            const int levelW = juce::jlimit(juce::jmin(66, juce::jmax(0, a.getWidth() - 48)), 124, a.getWidth() - nameMin - 48);
+            b.level.setBounds(a.removeFromRight(levelW));
             a.removeFromRight(4);
             b.on.setBounds(a.removeFromRight(40));
             a.removeFromRight(4);
@@ -1850,20 +1858,19 @@ void PedalChain::resized()
 void PedalChain::paint(juce::Graphics& g)
 {
     if (slot < 0) return;
-    drawLabel(g, "BEFORE THE AMP", getLocalBounds().withWidth(114), textDim, juce::Justification::centredLeft, 10.5f);
+    const auto row1 = getLocalBounds().removeFromTop(kRow);
+    const auto row2 = getLocalBounds().withTrimmedTop(kRow + kGap).removeFromTop(kRow);
+    drawLabel(g, "BEFORE THE AMP", row1.withWidth(114), textDim, juce::Justification::centredLeft, 10.5f);
+    drawLabel(g, "AFTER THE AMP", row2.withWidth(114), textDim, juce::Justification::centredLeft, 10.5f);
     g.setColour(textDim);
     g.setFont(Fonts::get().regular(14.0f));
     for (int k = 0; k < AmpsurdProcessor::kNumPedals; ++k)
     {
         const auto& a = blocks[(size_t) k].area;
-        g.drawText(juce::String::charToString((juce::juce_wchar) 0x2192), juce::Rectangle<int>(a.getRight(), 0, 26, getHeight()),
+        g.drawText(juce::String::charToString((juce::juce_wchar) 0x2192), juce::Rectangle<int>(a.getRight(), row1.getY(), 26, kRow),
                    juce::Justification::centred, false);
     }
-    drawLabel(g, "AMP", juce::Rectangle<int>(blocks.back().area.getRight() + 26, 0, 44, getHeight()), text, juce::Justification::centredLeft, 11.0f);
-    g.setColour(textDim);
-    g.setFont(Fonts::get().regular(14.0f));
-    g.drawText(juce::String::charToString((juce::juce_wchar) 0x2192), juce::Rectangle<int>(gateButton.getX() - 26, 0, 26, getHeight()),
-               juce::Justification::centred, false);
+    drawLabel(g, "AMP", juce::Rectangle<int>(blocks.back().area.getRight() + 26, row1.getY(), 44, kRow), text, juce::Justification::centredLeft, 11.0f);
 }
 
 bool PedalChain::isInterestedInFileDrag(const juce::StringArray& files)

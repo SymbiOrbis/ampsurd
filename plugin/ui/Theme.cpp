@@ -167,7 +167,17 @@ void LookAndFeel::drawButtonText(juce::Graphics& g, juce::TextButton& b, bool, b
     const bool red = (on && (bool) b.getProperties().getWithDefault("redWhenOn", false))
                      || (bool) b.getProperties().getWithDefault("redAlways", false);
     g.setColour((red ? juce::Colours::white : on ? onText : text).withAlpha(b.isEnabled() ? 1.0f : 0.35f));
-    g.drawFittedText(b.getButtonText(), b.getLocalBounds().reduced(3, 0), juce::Justification::centred, 1, 0.85f);
+    auto area = b.getLocalBounds().reduced(3, 0);
+    if ((bool) b.getProperties().getWithDefault("menuArrow", false))
+    {
+        // a button that opens a menu: a down arrow at the right, like a drop-down box (the fonts have no arrow glyph)
+        const auto ar = area.removeFromRight(16).toFloat();
+        const float cx = ar.getCentreX(), cy = ar.getCentreY();
+        juce::Path tri;
+        tri.addTriangle(cx - 4.5f, cy - 2.5f, cx + 4.5f, cy - 2.5f, cx, cy + 3.0f);
+        g.fillPath(tri);
+    }
+    g.drawFittedText(b.getButtonText(), area, juce::Justification::centred, 1, 0.85f);
 }
 
 // amp knobs (AMPSURD amps): a thin ring from 7 to 5 o'clock, the set part lighter, a pointer line - no colour coding

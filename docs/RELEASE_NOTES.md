@@ -21,6 +21,15 @@ VIDEO in the player).
 
 ## Next version (not released yet)
 
+(nothing yet)
+
+## AMPSURD 0.9.27 (beta)
+
+**Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the standalone app.
+**macOS 10.15 or newer:** AMPSURD-macOS.pkg installs the app, the VST3 plugin and the Audio Unit. Installing over an
+older version is fine: presets and recordings (Documents/AMPSURD) stay untouched.
+
+New in 0.9.27:
 - Windows: VIDEO cameras are opened with Media Foundation (the camera system that the Windows Camera app uses).
   The camera's own formats are read and one is chosen automatically, so cameras that only offer 1920 x 1080 (for
   example a Canon EOS camera in its USB webcam mode) are no longer refused. Virtual cameras that only exist for
@@ -29,6 +38,8 @@ VIDEO in the player).
 - Clearer camera messages: "in use by another app" and "Windows does not let AMPSURD use the camera" only when
   Windows reports exactly that; otherwise "The camera could not be started" - the log (footer -> LOG) lists the
   cameras, their formats, the chosen one and the error codes. After a failure, the camera can simply be chosen again.
+- EDIT: a loaded pedal's name is a wide button with a drop-down arrow - click it for the pedal menu (load another,
+  remove, show the file). The amp's GATE moved to its own row (AFTER THE AMP) to make room.
 
 ## AMPSURD 0.9.26 (beta)
 

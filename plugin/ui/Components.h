@@ -268,6 +268,7 @@ private:
 class PedalChain final : public juce::Component, public juce::FileDragAndDropTarget
 {
 public:
+    static constexpr int kRow = 28, kGap = 6, kHeight = kRow * 2 + kGap; // two rows
     explicit PedalChain(AmpsurdProcessor&);
     void setSlot(int s);
     void refresh();
