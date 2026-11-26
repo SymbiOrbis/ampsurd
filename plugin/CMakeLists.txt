@@ -56,7 +56,7 @@ target_sources(Ampsurd PRIVATE
   player/VideoCapture.cpp)
 # VIDEO takes: MP4 export with the operating system's own media framework
 if(WIN32)
-  target_sources(Ampsurd PRIVATE player/VideoMux_win.cpp player/ScreenCapture_win.cpp ui/SaveDialog_win.cpp)
+  target_sources(Ampsurd PRIVATE player/VideoMux_win.cpp player/ScreenCapture_win.cpp player/VideoCapture_win.cpp ui/SaveDialog_win.cpp)
 elseif(APPLE)
   target_sources(Ampsurd PRIVATE player/VideoMux_mac.mm player/ScreenCapture_mac.mm ui/SaveDialog_mac.mm)
   # SCREEN BOX: ScreenCaptureKit exists from macOS 12.3 - weakly linked, so AMPSURD still starts on 10.15

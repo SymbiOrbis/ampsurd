@@ -2874,9 +2874,16 @@ PlayerPanel::PlayerPanel(AmpsurdProcessor& p, PlayerRecorder& pl) : proc(p), pla
     videoButton.setClickingTogglesState(true);
     videoButton.setWantsKeyboardFocus(false);
     videoButton.onClick = [this] { setVideo(videoButton.getToggleState()); };
-    camera.onError = [sp = juce::Component::SafePointer<PlayerPanel>(this)](const juce::String& e) {
-        juce::MessageManager::callAsync([sp, e] { if (sp != nullptr) sp->setStatus("Camera: " + e); });
+    camera.onError = [this, sp = juce::Component::SafePointer<PlayerPanel>(this)](const juce::String& e) {
+        proc.getEventLog().add("Video", "Camera: " + e);
+        juce::MessageManager::callAsync([sp, e] {
+            if (sp == nullptr) return;
+            sp->setStatus("Camera: " + e);
+            if (sp->cameraWindow != nullptr) sp->cameraWindow->view().setStatus("Camera: " + e);
+        });
     };
+    // which camera, its formats, what was chosen, error codes (owner 2026-11-26: the Canon R50 could not be opened)
+    camera.onInfo = [this](const juce::String& e) { proc.getEventLog().add("Video", e); };
     // SCREEN BOX problems: shown (in the player and the camera window) and kept in the log (owner 2026-11-12: the
     // screen was not in his video and nothing said why)
     screenCap.onError = [this](const juce::String& e) {

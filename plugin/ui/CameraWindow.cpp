@@ -167,9 +167,10 @@ CameraView::CameraView(VideoCapture& c, ScreenCapture& sc, PlayerRecorder& p) : 
     listScreens();
     addAndMakeVisible(cameraBox);
     cameraBox.setTooltip("The camera that films you while you record a VIDEO take");
+    cameraBox.setTextWhenNothingSelected("Choose a camera");
     cameraBox.onChange = [this] {
         const int i = cameraBox.getSelectedItemIndex();
-        if (i >= 0 && i != camera.getOpenIndex()) message = openCamera(i);
+        if (i >= 0 && (i != camera.getOpenIndex() || !camera.isOpen())) message = openCamera(i);
         repaint();
     };
 
@@ -466,7 +467,13 @@ juce::String CameraView::openCamera(int index)
     if (camera.isRecording()) return "The camera cannot be changed while a video take is being recorded.";
     preview.reset();
     const auto err = camera.open(index);
-    if (err.isNotEmpty()) return err;
+    if (err.isNotEmpty())
+    {
+        if (camera.onInfo) camera.onInfo("Camera \"" + cameraBox.getItemText(index) + "\": shown to the user: " + err);
+        // nothing chosen any more: choosing the camera again tries again
+        cameraBox.setSelectedId(0, juce::dontSendNotification);
+        return "\"" + cameraBox.getItemText(index) + "\": " + err;
+    }
     preview = camera.createPreview();
     if (preview != nullptr) addAndMakeVisible(*preview);
     juce::PropertiesFile pf(settingsOptions());
@@ -635,6 +642,9 @@ void CameraView::refresh()
     if (noticeUntil > 0.0 && juce::Time::getMillisecondCounterHiRes() > noticeUntil) { noticeUntil = 0.0; notice.clear(); repaint(); }
     showButton.setEnabled(chosen.existsAsFile() || (hasSavedFile && hasSavedFile()));
     soundBox.setEnabled(!recording);
+    // the camera stopped (unplugged, taken by another app ...): nothing chosen, so it can be chosen again
+    if (!camera.isRecording() && !camera.isOpen() && cameraBox.getSelectedId() != 0)
+        cameraBox.setSelectedId(0, juce::dontSendNotification);
     if (camera.isRecording() != recordingShown)
     {
         recordingShown = camera.isRecording();
