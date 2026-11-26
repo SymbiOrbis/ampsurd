@@ -21,7 +21,14 @@ VIDEO in the player).
 
 ## Next version (not released yet)
 
-(nothing yet)
+- Windows: VIDEO cameras are opened with Media Foundation (the camera system that the Windows Camera app uses).
+  The camera's own formats are read and one is chosen automatically, so cameras that only offer 1920 x 1080 (for
+  example a Canon EOS camera in its USB webcam mode) are no longer refused. Virtual cameras that only exist for
+  DirectShow (such as OBS Virtual Camera) still work through the old way, now with their own sizes. A camera counts
+  as open only when its first live picture has arrived. Not yet tested with real cameras.
+- Clearer camera messages: "in use by another app" and "Windows does not let AMPSURD use the camera" only when
+  Windows reports exactly that; otherwise "The camera could not be started" - the log (footer -> LOG) lists the
+  cameras, their formats, the chosen one and the error codes. After a failure, the camera can simply be chosen again.
 
 ## AMPSURD 0.9.26 (beta)
 

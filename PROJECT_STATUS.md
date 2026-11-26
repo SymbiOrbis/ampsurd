@@ -64,6 +64,8 @@ https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.0
 
 **Public beta v0.9.25 released 2026-11-17:** Mac: Bluetooth usage text added - macOS 27 closed AMPSURD right after start without it (crash report 2026-11-16); macOS now asks once instead (untested on macOS 27). Windows files to be signed by the owner.
 
+**In main, not released yet:** Windows camera via Media Foundation (automatic format choice, DirectShow fallback, logged error codes) - untested with real cameras.
+
 **Public beta v0.9.26 released 2026-11-25:** Create Frankenstein is mono (amps' PAN ignored while it plays and greyed out; engine_test).
 
 **Public beta v0.9.24 released 2026-11-15:** the amp builder uses the quiet tone sweep when the loud one clips (only a clip in the quiet sweep stops the build); a new video take can start while the last one's MP4 is still being made (untested on Windows / Mac).
