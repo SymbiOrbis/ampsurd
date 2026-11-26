@@ -13,6 +13,10 @@ on:
         description: "With publish_release: replace an existing release of this version (deletes it and its tag first)"
         type: boolean
         default: false
+      test_build:
+        description: "Publish a TEST pre-release (tag test-<commit>, never 'latest', unsigned) for the owner to try a fix"
+        type: boolean
+        default: false
 
 permissions:
   contents: write   # creating GitHub Releases from tags
@@ -263,7 +267,7 @@ jobs:
 
   release:
     needs: [windows, macos]
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release && github.ref == 'refs/heads/main')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.test_build)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -274,7 +278,19 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - name: Test build (pre-release test-<commit>, not latest - the website and the update check keep the real release)
+        if: github.event_name == 'workflow_dispatch' && inputs.test_build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="test-${GITHUB_SHA::7}"
+          ls -l dist
+          printf 'TEST BUILD - not a release. Unsigned. Built from %s for trying a fix; do not share.\n' "${GITHUB_SHA::7}" > notes.txt
+          gh release create "$TAG" dist/* --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "AMPSURD test build ${GITHUB_SHA::7} (not a release)" \
+            --notes-file notes.txt --prerelease --latest=false || { echo "::error title=release::test release failed"; exit 1; }
+
       - name: GitHub Release (tag v<version>, or "Run workflow" with publish_release on main)
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.test_build) }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
