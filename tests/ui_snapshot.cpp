@@ -888,17 +888,27 @@ int main(int argc, char** argv)
             proc->processBlock(b, midi);
             if (k > 50) peak = juce::jmax(peak, b.getMagnitude(0, 0, 256));
         }
-        // SLIDING / MOVING ROWS (owner 2026-11-01): the chosen point stays on the screen, the rows move under it
+        // SLIDING / MOVING ROWS (owner 2026-11-01): the rows move under the chosen point; a slid row takes the chosen
+        // point in it along, at its exact place (owner 2026-11-28), so it keeps its sound
         bool rowsOk = false;
         {
             mx.choose({ 3.0, 45.0 }); // display row 3 = HEAVY 77 + DYN, box 4 = 45 mm
             mx.flush();
             settleIr(600);
-            mx.slideRow(3, 2); // HEAVY 77 DYN two boxes right: box 4 now shows 35 mm
+            mx.slideRow(3, 2); // HEAVY 77 DYN two boxes right: the point goes along to box 6, still 45 mm
             mx.flush();
             settleIr(900);
             ampsurd::CabPoint a, b;
-            const bool slid = proc->getCabIrPoint(0, a) && a.row == 3.0 && a.mm == 35.0 && a.hasLayout && a.offset[3] == 2;
+            bool slid = proc->getCabIrPoint(0, a) && a.row == 3.0 && a.mm == 45.0 && a.hasLayout && a.offset[3] == 2
+                              && std::abs(a.x - 6.0) < 1e-9;
+            // slid left by 3: the point goes 3 boxes left with it, same sound
+            mx.choose(ampsurd::CabIrModel::atMap(mx.getOrder(), mx.getOffsets(), 14.3, 2.0)); // row 2, near the right end
+            const double mmBefore = mx.getChosen().mm;
+            mx.slideRow(2, -3);
+            const bool along = std::abs(mx.getChosen().x - 11.3) < 1e-9 && std::abs(mx.getChosen().mm - mmBefore) < 1e-9;
+            mx.slideRow(2, 3);
+            std::cout << "  a slid row takes its point along " << slid << along << "\n";
+            slid = slid && along;
             mx.moveRow(5, 4); // HEAVY 77 DYN WIDE (display row 5) up above HEAVY 77 RIBBON
             mx.choose(ampsurd::CabIrModel::atMap(mx.getOrder(), mx.getOffsets(), 4.0, 3.5)); // between HEAVY 77 DYN and HEAVY 77 DYN WIDE
             mx.flush();
@@ -932,6 +942,7 @@ int main(int argc, char** argv)
             mx.mouseDown(mev(start, start, false));
             mx.mouseDrag(mev(start + juce::Point<int> { cw, 2 }, start, true));
             mx.mouseDrag(mev(start + juce::Point<int> { 2 * cw, 3 }, start, true));
+            save(*ed, out.getChildFile("22c_ampsurd_irs_row_held.png")); // the white frame around the held row
             mx.mouseUp(mev(start + juce::Point<int> { 2 * cw, 3 }, start, true));
             const bool mouseSlide = mx.getOffsets()[0] == 2 && mx.getChosen().x == before.x && mx.getChosen().y == before.y;
             const juce::Point<int> clickAt { area.getX() + cw * 10 + cw / 2, area.getY() + rh * 6 + rh / 2 }; // box 10, row 6

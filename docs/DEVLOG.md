@@ -6,6 +6,23 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-28 — Session 5z: AMPSURD IRs map - frame, point follows its row, rows jump - Claude (Opus 5.5)
+
+- Owner: a grabbed row framed in white (may vanish at once or after a few seconds); a chosen point moves with
+  its row left / right at its exact place in the box; other rows jump when one is moved up / down.
+- plugin/ui/CabIrMatrix.*: white 2 px frame around the held row (name + boxes) while held (name pressed,
+  sideways drag on the boxes, < > arrows flash it); stays 1.5 s after release, fades over the last 0.4 s.
+  setOffset(): the chosen point in the slid row (lround(y) == row) moves by the slide; if that place is off
+  the map, the same position further along / mirrored (the row repeats every 30 boxes) is used, otherwise it
+  stops at the edge. moveRow(): every row animates from its drawn place to its new one (260 ms ease-out with
+  overshoot). Driven by a juce::VBlankAttachment (the IR timer stays 30 Hz).
+- Tests: ui_snapshot 38 PASS + the 4 known capture-dependent FAILs; the rows test now checks the point goes
+  along (45 mm kept, x 4 -> 6; x 14.3 -> 11.3). New shot 22c_ampsurd_irs_row_held.png (frame checked). The
+  up / down jump is time based and was not seen moving (only the code path ran).
+- Not released.
+
+---
+
 ## 2026-11-26 — Release 0.9.27 - Claude (Opus 5.5)
 
 - Owner: "make it please more apparent and publish all changes" - 0.9.27 published. Windows files to be

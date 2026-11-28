@@ -21,7 +21,10 @@ VIDEO in the player).
 
 ## Next version (not released yet)
 
-(nothing yet)
+- AMPSURD IRs map: a row you grab gets a white frame (it stays for about 1.5 seconds after you let go,
+  then fades). When you slide a row left / right, your chosen point moves with it, at its exact place in its
+  box, so it keeps its sound (if its position slides off the map, the point stops at the edge). When you
+  move a row up / down, the other rows jump to their new places.
 
 ## AMPSURD 0.9.27 (beta)
 

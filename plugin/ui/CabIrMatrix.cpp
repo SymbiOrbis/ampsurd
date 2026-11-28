@@ -202,8 +202,63 @@ juce::Rectangle<int> CabIrMatrix::rightArrow(int d) const { auto r = rowLabel(d)
 void CabIrMatrix::slideRow(int d, int boxes)
 {
     if (d < 0 || d >= M::kRows || boxes == 0) return;
-    offsets[(size_t) d] = (((offsets[(size_t) d] + boxes) % 30) + 30) % 30;
+    setOffset(d, offsets[(size_t) d] + boxes);
+}
+
+void CabIrMatrix::setOffset(int d, int want)
+{
+    want = ((want % 30) + 30) % 30;
+    const int old = offsets[(size_t) d];
+    if (want == old) return;
+    // the chosen point in this row moves with the row, at its exact place in its box (owner 2026-11-28), so it
+    // keeps its sound. The row runs 25 .. 100 .. 25 (every 30 boxes): when its box leaves the map, the same
+    // position may be on the map further along (or mirrored); if it is not on the map at all, the point stops at the edge
+    if (chosenValid && chosen.hasLayout && (int) std::lround(chosen.y) == d)
+    {
+        int shift = (((want - old) % 30) + 30) % 30;
+        if (shift > 15) shift -= 30;
+        const double target = chosen.x + shift, q = chosen.x - old, last = M::kColumns - 1;
+        double best = -1.0, bestDist = 1e9;
+        for (int k = -2; k <= 2; ++k)
+            for (const double c : { want + q + 30.0 * k, want - q + 30.0 * k })
+                if (c >= -1e-9 && c <= last + 1e-9 && std::abs(c - target) < bestDist) { best = c; bestDist = std::abs(c - target); }
+        chosen.x = best >= 0.0 ? juce::jlimit(0.0, last, best) : juce::jlimit(0.0, last, target);
+    }
+    offsets[(size_t) d] = want;
     layoutChanged();
+}
+
+float CabIrMatrix::shiftOf(int d) const
+{
+    if (!shifting) return 0.0f;
+    // ease out with a small overshoot: the rows jump into place
+    const double p = juce::jlimit(0.0, 1.0, (juce::Time::getMillisecondCounterHiRes() - shiftStartMs) / 260.0);
+    const double c1 = 1.9, c3 = c1 + 1.0, e = 1.0 + c3 * std::pow(p - 1.0, 3.0) + c1 * std::pow(p - 1.0, 2.0);
+    return shiftStart[(size_t) d] * (float) (1.0 - e);
+}
+
+void CabIrMatrix::flashFrame(int d)
+{
+    frameRow = d;
+    frameUntilMs = juce::Time::getMillisecondCounterHiRes() + 1500.0;
+    repaint();
+}
+
+void CabIrMatrix::animate()
+{
+    const double now = juce::Time::getMillisecondCounterHiRes();
+    bool again = false;
+    if (shifting)
+    {
+        if (now - shiftStartMs >= 260.0) { shifting = false; shiftStart = {}; }
+        again = true;
+    }
+    if (frameRow >= 0 && !grabbed())
+    {
+        if (now >= frameUntilMs) frameRow = -1;
+        again = true;
+    }
+    if (again) repaint();
 }
 
 void CabIrMatrix::moveRow(int from, int to)
@@ -211,6 +266,10 @@ void CabIrMatrix::moveRow(int from, int to)
     from = juce::jlimit(0, M::kRows - 1, from);
     to = juce::jlimit(0, M::kRows - 1, to);
     if (from == to) return;
+    // the rows jump from where they are drawn now to their new places
+    std::array<float, 9> now {};
+    for (int i = 0; i < M::kRows; ++i) now[(size_t) i] = shiftOf(i);
+    std::array<int, 9> was { 0, 1, 2, 3, 4, 5, 6, 7, 8 };
     auto moveIn = [from, to](std::array<int, 9>& a) {
         const int v = a[(size_t) from];
         if (from < to) for (int i = from; i < to; ++i) a[(size_t) i] = a[(size_t) i + 1];
@@ -219,6 +278,12 @@ void CabIrMatrix::moveRow(int from, int to)
     };
     moveIn(order);
     moveIn(offsets);
+    moveIn(was);
+    for (int i = 0; i < M::kRows; ++i) shiftStart[(size_t) i] = now[(size_t) was[(size_t) i]] + (float) (was[(size_t) i] - i);
+    shiftStartMs = juce::Time::getMillisecondCounterHiRes();
+    shifting = true;
+    for (int i = 0; i < M::kRows; ++i)
+        if (frameRow >= 0 && was[(size_t) i] == frameRow) { frameRow = i; break; }
     layoutChanged();
 }
 
@@ -324,12 +389,13 @@ void CabIrMatrix::mouseDown(const juce::MouseEvent& e)
     if (labels.contains(pos))
     {
         const int d = rowAtY(pos.y);
-        if (leftArrow(d).contains(pos)) { slideRow(d, -1); return; }
-        if (rightArrow(d).contains(pos)) { slideRow(d, 1); return; }
+        if (leftArrow(d).contains(pos)) { slideRow(d, -1); flashFrame(d); return; }
+        if (rightArrow(d).contains(pos)) { slideRow(d, 1); flashFrame(d); return; }
         rowDrag = RowDrag::undecided;
         dragRow = d;
         dragStart = pos;
         dragStartOffset = offsets[(size_t) d];
+        repaint(); // the frame shows the row is held
         return;
     }
     if (!map.contains(pos)) return;
@@ -352,8 +418,7 @@ void CabIrMatrix::mouseDrag(const juce::MouseEvent& e)
         {
             // the row follows the mouse in whole boxes, so the boxes stay below each other
             const double cw = map.getWidth() / (double) M::kColumns;
-            const int want = (((dragStartOffset + (int) std::lround(delta.x / cw)) % 30) + 30) % 30;
-            if (want != offsets[(size_t) dragRow]) { offsets[(size_t) dragRow] = want; layoutChanged(); }
+            setOffset(dragRow, dragStartOffset + (int) std::lround(delta.x / cw));
         }
         else if (rowDrag == RowDrag::move)
         {
@@ -369,12 +434,12 @@ void CabIrMatrix::mouseDrag(const juce::MouseEvent& e)
         {
             mapDrag = std::abs(delta.x) >= std::abs(delta.y) ? RowDrag::slide : RowDrag::move;
             if (mapDrag == RowDrag::move) { dragging = true; endPreview(); }
+            else repaint();
         }
         if (mapDrag == RowDrag::slide)
         {
             const double cw = map.getWidth() / (double) M::kColumns;
-            const int want = (((dragStartOffset + (int) std::lround(delta.x / cw)) % 30) + 30) % 30;
-            if (want != offsets[(size_t) dragRow]) { offsets[(size_t) dragRow] = want; layoutChanged(); }
+            setOffset(dragRow, dragStartOffset + (int) std::lround(delta.x / cw));
         }
         else if (mapDrag == RowDrag::move) choose(pointAt(e.getPosition()));
         return;
@@ -385,6 +450,7 @@ void CabIrMatrix::mouseDrag(const juce::MouseEvent& e)
 void CabIrMatrix::mouseUp(const juce::MouseEvent& e)
 {
     if (mapDrag == RowDrag::undecided) choose(pointAt(e.getMouseDownPosition())); // a click on the boxes
+    if (grabbed()) flashFrame(dragRow); // the frame stays a moment after letting go
     mapDrag = RowDrag::none;
     rowDrag = RowDrag::none;
     dragRow = -1;
@@ -456,16 +522,16 @@ void CabIrMatrix::paint(juce::Graphics& g)
     for (int d = 0; d < M::kRows; ++d)
     {
         const int row = order[(size_t) d];
-        const float y = (float) map.getY() + rh * d;
+        const float dy = rh * shiftOf(d);
+        const float y = (float) map.getY() + rh * d + dy;
         // a line where the speaker changes
         if (d == 0 || M::speakerOfRow(order[(size_t) d - 1]) != M::speakerOfRow(row))
         {
             g.setColour(line);
             g.drawHorizontalLine((int) y, (float) labels.getX(), (float) map.getRight());
         }
-        const auto lr = rowLabel(d);
-        const bool grabbed = dragRow == d && (rowDrag != RowDrag::none || mapDrag == RowDrag::slide);
-        if (grabbed || (isMouseOver(true) && lr.contains(getMouseXYRelative())))
+        const auto lr = rowLabel(d).translated(0, juce::roundToInt(dy));
+        if ((grabbed() && dragRow == d) || (isMouseOver(true) && lr.contains(getMouseXYRelative())))
         {
             g.setColour(text.withAlpha(0.06f));
             g.fillRect(lr);
@@ -476,8 +542,8 @@ void CabIrMatrix::paint(juce::Graphics& g)
         g.drawText(M::micName(M::micOfRow(row)), lr.withTrimmedLeft(72).withTrimmedRight(42), juce::Justification::centredLeft, false);
         g.setFont(Fonts::get().regular(13.0f));
         g.setColour(textDim);
-        g.drawText("<", leftArrow(d), juce::Justification::centred, false);
-        g.drawText(">", rightArrow(d), juce::Justification::centred, false);
+        g.drawText("<", leftArrow(d).translated(0, juce::roundToInt(dy)), juce::Justification::centred, false);
+        g.drawText(">", rightArrow(d).translated(0, juce::roundToInt(dy)), juce::Justification::centred, false);
         // the boxes: the position number in the middle (= that IR alone); darker = further out on the cone
         for (int c = 0; c < M::kColumns; ++c)
         {
@@ -495,6 +561,18 @@ void CabIrMatrix::paint(juce::Graphics& g)
     g.setColour(line);
     g.drawHorizontalLine(map.getBottom(), (float) labels.getX(), (float) map.getRight());
     g.drawRect(map);
+
+    // the row being moved: a white frame around its name and boxes; after letting go it stays ~1.5 s, then fades
+    const int fr = grabbed() ? dragRow : frameRow;
+    if (fr >= 0 && fr < M::kRows)
+    {
+        const double left = frameUntilMs - juce::Time::getMillisecondCounterHiRes();
+        const float alpha = grabbed() ? 1.0f : (float) juce::jlimit(0.0, 1.0, left / 400.0);
+        const auto fy = (float) map.getY() + rh * ((float) fr + shiftOf(fr));
+        const auto frame = juce::Rectangle<float>((float) labels.getX(), fy, (float) (map.getRight() - labels.getX()), rh).reduced(0.5f, 0.0f);
+        g.setColour(juce::Colours::white.withAlpha(alpha));
+        g.drawRoundedRectangle(frame, 3.0f, 2.0f);
+    }
 
     // hovered point (ring) and the chosen one (filled, with cross lines)
     if (hovering || (isMouseOver(true) && map.contains(getMouseXYRelative())))

@@ -74,6 +74,11 @@ private:
     CabPoint onMap(CabPoint p) const;      // a simple point -> the current map at the same place
     void layoutChanged();                 // the chosen / hovered point stays where it is: its sound follows the rows
     int rowAtY(int y) const;
+    void setOffset(int d, int want);      // slides display row d; the chosen point in that row moves with it
+    void flashFrame(int d);               // the white frame around a row, for a moment after it was moved
+    void animate();                       // each screen refresh: rows jumping into place, the frame fading out
+    float shiftOf(int d) const;           // display row d drawn this many rows away from its place (animation)
+    bool grabbed() const { return dragRow >= 0 && (rowDrag != RowDrag::none || mapDrag == RowDrag::slide); }
     juce::Rectangle<int> rowLabel(int d) const, leftArrow(int d) const, rightArrow(int d) const;
 
     AmpsurdProcessor& proc;
@@ -87,6 +92,13 @@ private:
     juce::Point<int> dragStart;
     CabPoint chosen, hover, pending, sent;
     bool chosenValid = false, hovering = false, dragging = false, hasPending = false;
+    // owner 2026-11-28: a grabbed row has a white frame (it stays ~1.5 s after letting go, then fades); when a
+    // row moves up / down, the rows making room jump to their new places
+    std::array<float, 9> shiftStart {};
+    double shiftStartMs = 0.0, frameUntilMs = 0.0;
+    bool shifting = false;
+    int frameRow = -1;
+    juce::VBlankAttachment vblank { this, [this] { animate(); } };
     AmpsurdProcessor::IrStatus original; // the IR before the map was opened (restored after a hover preview)
     juce::String status;
 };
