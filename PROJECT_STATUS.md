@@ -64,6 +64,8 @@ https://github.com/SymbiOrbis/ampsurd/releases/tag/v0.9.0
 
 **Public beta v0.9.25 released 2026-11-17:** Mac: Bluetooth usage text added - macOS 27 closed AMPSURD right after start without it (crash report 2026-11-16); macOS now asks once instead (untested on macOS 27). Windows files to be signed by the owner.
 
+**Public beta v0.9.28 released 2026-11-28:** AMPSURD IRs map - white frame on a held row, the chosen point moves with its slid row, other rows jump when one is moved; the pedal file dialog opens the last pedal folder (or Documents). Windows files to be signed by the owner.
+
 **Public beta v0.9.27 released 2026-11-26:** Windows camera via Media Foundation (automatic format choice, DirectShow fallback, logged error codes) - untested with real cameras; pedal menu button with a drop-down arrow, the amp GATE on its own row in EDIT. Windows files to be signed by the owner.
 
 **Public beta v0.9.26 released 2026-11-25:** Create Frankenstein is mono (amps' PAN ignored while it plays and greyed out; engine_test).

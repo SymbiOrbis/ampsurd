@@ -6,6 +6,13 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-28 — Release 0.9.28 - Claude (Opus 5.5)
+
+- Owner: "release pleas ethe latest version" - 0.9.28 published. Windows files to be
+  signed by the owner.
+
+---
+
 ## 2026-11-28 — Session 5z2: pedal file dialog remembers its folder
 
 - Owner: "always when i open the pedal menu, i am redirect to some old pack folder. Can you ensure the app

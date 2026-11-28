@@ -21,6 +21,15 @@ VIDEO in the player).
 
 ## Next version (not released yet)
 
+(nothing yet)
+
+## AMPSURD 0.9.28 (beta)
+
+**Windows 10 / 11 (64-bit):** AMPSURD-Windows-Setup.exe installs the VST3 plugin and the standalone app.
+**macOS 10.15 or newer:** AMPSURD-macOS.pkg installs the app, the VST3 plugin and the Audio Unit. Installing over an
+older version is fine: presets and recordings (Documents/AMPSURD) stay untouched.
+
+New in 0.9.28:
 - AMPSURD IRs map: a row you grab gets a white frame (it stays for about 1.5 seconds after you let go,
   then fades). When you slide a row left / right, your chosen point moves with it, at its exact place in its
   box, so it keeps its sound (if its position slides off the map, the point stops at the edge). When you
