@@ -6,6 +6,16 @@ Newest entry first. Each entry: implemented / files / tested / known issues / bu
 
 ---
 
+## 2026-11-28 — Session 5z2: pedal file dialog remembers its folder
+
+- Owner: "always when i open the pedal menu, i am redirect to some old pack folder. Can you ensure the app
+  remembers the last visited pedal folder or starts with something neutral?"
+- PedalChain::chooseFile now starts in the settings value `lastPedalFolder` (saved when a pedal is picked in
+  the dialog), else in Documents. It no longer starts in the current pedal's / amp's folder (often a pack folder).
+- Files: plugin/ui/Components.cpp. Tested: builds; ui_snapshot unchanged (dialog itself not opened in tests).
+
+---
+
 ## 2026-11-28 — Session 5z: AMPSURD IRs map - frame, point follows its row, rows jump - Claude (Opus 5.5)
 
 - Owner: a grabbed row framed in white (may vanish at once or after a few seconds); a chosen point moves with

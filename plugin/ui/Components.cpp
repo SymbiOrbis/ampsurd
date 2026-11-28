@@ -1890,13 +1890,25 @@ void PedalChain::filesDropped(const juce::StringArray& files, int x, int)
 void PedalChain::chooseFile(int k)
 {
     if (slot < 0) return;
-    auto start = juce::File(proc.getPedalStatus(slot, k).path).getParentDirectory();
-    if (!start.isDirectory()) start = juce::File(proc.getSlotStatus(slot).path).getParentDirectory();
+    // Opens where a pedal was last picked from (remembered between runs), otherwise in Documents -
+    // never in the folder of whatever pack the current pedal or amp came from.
+    juce::PropertiesFile::Options o;
+    o.applicationName = "AMPSURD"; o.filenameSuffix = ".settings"; o.osxLibrarySubFolder = "Application Support";
+    juce::File start;
+    {
+        juce::PropertiesFile pf(o);
+        start = juce::File(pf.getValue("lastPedalFolder"));
+    }
+    if (start.getFullPathName().isEmpty() || !start.isDirectory()) start = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory);
     chooser = std::make_unique<juce::FileChooser>("Pedal capture " + juce::String(k + 1) + " before amp " + juce::String(slot + 1), start, "*.nam");
     chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                         [this, k](const juce::FileChooser& fc) {
+                         [this, k, o](const juce::FileChooser& fc) {
                              const auto f = fc.getResult();
-                             if (f.existsAsFile() && slot >= 0) proc.loadPedal(slot, k, f);
+                             if (!f.existsAsFile()) return;
+                             juce::PropertiesFile pf(o);
+                             pf.setValue("lastPedalFolder", f.getParentDirectory().getFullPathName());
+                             pf.saveIfNeeded();
+                             if (slot >= 0) proc.loadPedal(slot, k, f);
                          });
 }
 

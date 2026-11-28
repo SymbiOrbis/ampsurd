@@ -25,6 +25,8 @@ VIDEO in the player).
   then fades). When you slide a row left / right, your chosen point moves with it, at its exact place in its
   box, so it keeps its sound (if its position slides off the map, the point stops at the edge). When you
   move a row up / down, the other rows jump to their new places.
+- Loading a pedal opens the folder you last picked a pedal from (remembered after a restart), or
+  Documents the first time - no longer the folder of an old pack.
 
 ## AMPSURD 0.9.27 (beta)
 
